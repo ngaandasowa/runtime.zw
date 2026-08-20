@@ -1,0 +1,7 @@
+{
+  "name": "Runtime",
+  "description": "Next-generation cloud and developer platform starting with Zimbabwean domain infrastructure (.co.zw at $2/year) powered by Ngaatec.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
