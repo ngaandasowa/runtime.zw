@@ -45,7 +45,7 @@ export const DashboardBilling: React.FC = () => {
       {/* Top Heading */}
       <div className="border-b border-zinc-200 pb-4">
         <h1 className="text-xl sm:text-2xl font-extrabold text-zinc-950 tracking-tight flex items-center space-x-2">
-          <CreditCard className="h-6 w-6 text-[#FF2D20]" />
+          <CreditCard className="h-6 w-6 text-[#3120ff]" />
           <span>Billing &amp; Financial Invoices</span>
         </h1>
         <p className="text-xs text-zinc-500 mt-1">
@@ -56,7 +56,7 @@ export const DashboardBilling: React.FC = () => {
       {/* Renewals Tracking Section */}
       <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
         <h2 className="text-base font-bold text-zinc-950 mb-3 flex items-center space-x-2">
-          <Calendar className="h-4 w-4 text-[#FF2D20]" />
+          <Calendar className="h-4 w-4 text-[#3120ff]" />
           <span>Domain Renewal &amp; Expiry Monitor</span>
         </h2>
 
@@ -77,7 +77,7 @@ export const DashboardBilling: React.FC = () => {
                   <td className="py-3.5 font-bold font-mono text-zinc-950">
                     {d.domain_name}
                   </td>
-                  <td className="py-3.5 text-[#FF2D20] font-bold">
+                  <td className="py-3.5 text-[#3120ff] font-bold">
                     ${d.renewal_price.toFixed(2)}/yr
                   </td>
                   <td className="py-3.5 text-zinc-500">
@@ -95,7 +95,7 @@ export const DashboardBilling: React.FC = () => {
                   <td className="py-3.5 text-right">
                     <button
                       onClick={() => showNotification(`Domain ${d.domain_name} renewal reminder dispatched.`, 'info')}
-                      className="rounded-lg bg-zinc-100 px-2.5 py-1 text-zinc-700 font-semibold hover:bg-[#FF2D20] hover:text-white transition"
+                      className="rounded-lg bg-zinc-100 px-2.5 py-1 text-zinc-700 font-semibold hover:bg-[#3120ff] hover:text-white transition"
                     >
                       Renew ($2)
                     </button>
@@ -110,7 +110,7 @@ export const DashboardBilling: React.FC = () => {
       {/* Orders & Invoices Table */}
       <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
         <h2 className="text-base font-bold text-zinc-950 mb-3 flex items-center space-x-2">
-          <Receipt className="h-4 w-4 text-[#FF2D20]" />
+          <Receipt className="h-4 w-4 text-[#3120ff]" />
           <span>Orders &amp; Receipts</span>
         </h2>
 
@@ -132,7 +132,7 @@ export const DashboardBilling: React.FC = () => {
               <tbody className="divide-y divide-zinc-100 text-zinc-700">
                 {userOrders.map(order => (
                   <tr key={order.id} className="hover:bg-zinc-50 transition">
-                    <td className="py-3.5 font-bold font-mono text-[#FF2D20]">
+                    <td className="py-3.5 font-bold font-mono text-[#3120ff]">
                       {order.reference}
                     </td>
                     <td className="py-3.5 text-zinc-500">
@@ -155,7 +155,7 @@ export const DashboardBilling: React.FC = () => {
                         onClick={() => setSelectedReceipt(order)}
                         className="inline-flex items-center space-x-1 rounded-xl bg-zinc-100 px-2.5 py-1 text-zinc-700 font-semibold hover:bg-zinc-200 transition"
                       >
-                        <FileText className="h-3 w-3 text-[#FF2D20]" />
+                        <FileText className="h-3 w-3 text-[#3120ff]" />
                         <span>View Receipt</span>
                       </button>
                     </td>
@@ -174,11 +174,11 @@ export const DashboardBilling: React.FC = () => {
             
             <div className="flex justify-between items-start border-b border-zinc-200 pb-4 mb-4">
               <div>
-                <div className="text-xs font-bold text-[#FF2D20]">OFFICIAL INVOICE &amp; RECEIPT</div>
+                <div className="text-xs font-bold text-[#3120ff]">OFFICIAL INVOICE &amp; RECEIPT</div>
                 <div className="text-lg font-bold font-mono text-zinc-950">{selectedReceipt.reference}</div>
               </div>
               <div className="text-right text-xs text-zinc-500">
-                <div className="font-bold text-zinc-800">Ngaatec Private Limited</div>
+                <div className="font-bold text-zinc-800">Runtime Private Limited</div>
                 <div>Harare, Zimbabwe</div>
               </div>
             </div>
@@ -209,15 +209,15 @@ export const DashboardBilling: React.FC = () => {
 
               <div className="flex justify-between pt-3 border-t border-zinc-200 text-sm font-bold text-zinc-950">
                 <span>Total Amount Paid:</span>
-                <span className="text-[#FF2D20] font-extrabold">${selectedReceipt.total.toFixed(2)} USD</span>
+                <span className="text-[#3120ff] font-extrabold">${selectedReceipt.total.toFixed(2)} USD</span>
               </div>
             </div>
 
             <div className="flex justify-between items-center pt-4 border-t border-zinc-200 text-xs">
-              <span className="text-zinc-500">Status: Tax Paid &amp; Registry Submitted</span>
+              <span className="text-zinc-500">Status: Tax Paid &amp; Registration Submitted</span>
               <button
                 onClick={() => setSelectedReceipt(null)}
-                className="rounded-xl bg-[#FF2D20] px-4 py-2 text-xs font-bold text-white hover:bg-[#E0241A] shadow-xs"
+                className="rounded-xl bg-[#3120ff] px-4 py-2 text-xs font-bold text-white hover:bg-[#2819d9] shadow-xs"
               >
                 Close Receipt
               </button>

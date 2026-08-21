@@ -1,5 +1,5 @@
-import { Domain, RegistryRequest, ZispaAction, RegistryRequestStatus } from '../types';
-import { zispaTemplateService } from './ZispaTemplateService';
+import { Domain, RegistryRequest, RegistryAction, RegistryRequestStatus } from '../types';
+import { registryTemplateService } from './RegistryTemplateService';
 
 export class RegistryService {
   /**
@@ -7,11 +7,11 @@ export class RegistryService {
    */
   createRequest(
     domain: Domain, 
-    action: ZispaAction, 
+    action: RegistryAction, 
     submittedBy: string = 'admin'
   ): RegistryRequest {
-    const template = zispaTemplateService.generateTemplate(domain, action);
-    const subject = zispaTemplateService.getSubject(domain.domain_name, action);
+    const template = registryTemplateService.generateTemplate(domain, action);
+    const subject = registryTemplateService.getSubject(domain.domain_name, action);
     
     return {
       id: 'reg-' + Math.random().toString(36).substring(2, 9),
@@ -30,27 +30,27 @@ export class RegistryService {
 
   /**
    * Simulates dispatching the registry submission email with attachment
-   * From: dns@ngaatec.com -> To: admin@zispa.org.zw
+   * From: dns@runtime.co.zw -> To: admin@registry.org.zw
    */
-  async submitToZispa(request: RegistryRequest): Promise<{ success: boolean; message: string; updatedRequest: RegistryRequest }> {
+  async submitToRegistry(request: RegistryRequest): Promise<{ success: boolean; message: string; updatedRequest: RegistryRequest }> {
     // In production, this queues a Laravel Mailable with attached .txt template
     const updated: RegistryRequest = {
       ...request,
       status: 'submitted',
       submitted_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      registry_response_notes: 'Automated email dispatched to admin@zispa.org.zw from dns@ngaatec.com with attachment ' + zispaTemplateService.getFilename(request.domain_name, request.action),
+      registry_response_notes: 'Automated email dispatched to admin@registry.org.zw from dns@runtime.co.zw with attachment ' + registryTemplateService.getFilename(request.domain_name, request.action),
     };
 
     return {
       success: true,
-      message: `Registry application for ${request.domain_name} (${request.action}) submitted to ZISPA successfully.`,
+      message: `Registry application for ${request.domain_name} (${request.action}) submitted to domain registry successfully.`,
       updatedRequest: updated,
     };
   }
 
   /**
-   * Confirms a ZISPA response (N, M, D, T)
+   * Confirms a domain registry response (N, M, D, T)
    */
   confirmRegistration(request: RegistryRequest): RegistryRequest {
     return {
@@ -58,7 +58,7 @@ export class RegistryService {
       status: 'confirmed',
       confirmed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      registry_response_notes: 'ZISPA registry confirmation email parsed and validated successfully.',
+      registry_response_notes: 'domain registry confirmation email parsed and validated successfully.',
     };
   }
 }

@@ -30,8 +30,7 @@ export const DomainRegistrationModal: React.FC = () => {
     settings,
     registerNewDomain,
     setActiveView,
-    setDashboardSubView,
-    setAuthModalOpen
+    setDashboardSubView
   } = useStore();
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1); // 1: Search, 2: Registrant Info, 3: Nameservers, 4: Checkout
@@ -58,8 +57,8 @@ export const DomainRegistrationModal: React.FC = () => {
   // Nameservers
   const [nsMode, setNsMode] = useState<'default' | 'custom'>('default');
   const [customNs, setCustomNs] = useState<string[]>([
-    'ns1.ngaatec.com',
-    'ns2.ngaatec.com',
+    'ns1.runtime.co.zw',
+    'ns2.runtime.co.zw',
     '',
     ''
   ]);
@@ -108,7 +107,7 @@ export const DomainRegistrationModal: React.FC = () => {
   const validateStep2 = () => {
     if (!fullName.trim()) return 'Full Name is required';
     if (!email.trim() || !email.includes('@')) return 'A valid email address is required';
-    if (!physicalAddress.trim()) return 'Physical address is required by ZISPA registry';
+    if (!physicalAddress.trim()) return 'Physical address is required by domain service';
     if (!city.trim()) return 'Town / City is required';
     if (!phone.trim()) return 'Phone number is required';
     if (!orgDescription.trim()) return 'Organisation description is required';
@@ -191,7 +190,7 @@ export const DomainRegistrationModal: React.FC = () => {
                 {step === 4 && 'Step 4: Review & Confirmed Payment'}
               </h3>
               <p className="text-xs font-mono text-slate-400">
-                Official ZISPA .co.zw Registration ($2.00/yr)
+                Official domain service .co.zw Registration ($2.00/yr)
               </p>
             </div>
           </div>
@@ -241,8 +240,8 @@ export const DomainRegistrationModal: React.FC = () => {
                   className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 font-mono text-sm text-cyan-300 focus:border-cyan-500 focus:outline-none"
                 >
                   <option value=".co.zw">.co.zw ($2/yr)</option>
-                  <option value=".org.zw">.org.zw ($2/yr)</option>
-                  <option value=".ac.zw">.ac.zw ($2/yr)</option>
+                  <option value=".org.zw">.org.zw ($3/yr)</option>
+                  <option value=".ac.zw">.ac.zw ($3/yr)</option>
                 </select>
                 <button
                   type="submit"
@@ -493,7 +492,7 @@ export const DomainRegistrationModal: React.FC = () => {
                 >
                   <div className="font-semibold text-sm mb-1 text-cyan-300">Use Runtime Default Nameservers</div>
                   <div className="text-[11px] text-slate-400 leading-relaxed">
-                    Recommended. Automatically binds to Ngaatec high-availability DNS cluster with instant delegation.
+                    Recommended. Automatically binds to Runtime high-availability DNS cluster with instant delegation.
                   </div>
                 </button>
 
@@ -589,7 +588,7 @@ export const DomainRegistrationModal: React.FC = () => {
               </div>
               <div className="flex justify-between border-b border-slate-800 pb-2">
                 <span className="text-slate-400">Registration Period:</span>
-                <span className="text-white">1 Year (ZISPA ccTLD)</span>
+                <span className="text-white">1 Year (domain service ccTLD)</span>
               </div>
               <div className="flex justify-between border-b border-slate-800 pb-2">
                 <span className="text-slate-400">Registrant Owner:</span>
@@ -597,7 +596,7 @@ export const DomainRegistrationModal: React.FC = () => {
               </div>
               <div className="flex justify-between border-b border-slate-800 pb-2">
                 <span className="text-slate-400">Assigned Nameservers:</span>
-                <span className="text-cyan-300">{nsMode === 'default' ? 'Runtime Default Cluster (4 nodes)' : 'Custom (RFC Validated)'}</span>
+                <span className="text-cyan-300">{nsMode === 'default' ? 'Runtime Default Nameservers' : 'Custom Nameservers'}</span>
               </div>
               <div className="flex justify-between pt-1 text-sm font-bold">
                 <span className="text-slate-200">Total Due Today:</span>
@@ -661,11 +660,11 @@ export const DomainRegistrationModal: React.FC = () => {
               </div>
             </div>
 
-            {/* Registry Submission Rule Notice */}
+            {/* Registration Rule Notice */}
             <div className="flex items-start space-x-2.5 rounded-lg bg-cyan-950/30 p-3 border border-cyan-500/20 text-xs text-cyan-200">
               <ShieldCheck className="h-4 w-4 text-cyan-400 shrink-0 mt-0.5" />
               <div className="leading-relaxed">
-                <strong>ZISPA Registry Guarantee:</strong> Once payment is confirmed by server-side verification, the official plain-text application is queued for direct registrar dispatch to <code className="text-white">admin@zispa.org.zw</code>.
+                <strong>Registration status:</strong> Once payment is confirmed, your order is added to your account for processing.
               </div>
             </div>
 
@@ -688,7 +687,7 @@ export const DomainRegistrationModal: React.FC = () => {
                 {isProcessing ? (
                   <>
                     <div className="h-4 w-4 rounded-full border-2 border-black border-t-transparent animate-spin"></div>
-                    <span>Processing Payment &amp; ZISPA Queue...</span>
+                    <span>Processing Payment &amp; domain service Queue...</span>
                   </>
                 ) : (
                   <>

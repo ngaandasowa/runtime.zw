@@ -28,7 +28,7 @@ export const DashboardAccount: React.FC = () => {
       
       <div className="border-b border-zinc-200 pb-4">
         <h1 className="text-xl sm:text-2xl font-extrabold text-zinc-950 tracking-tight flex items-center space-x-2">
-          <User className="h-6 w-6 text-[#FF2D20]" />
+          <User className="h-6 w-6 text-[#3120ff]" />
           <span>Account Settings &amp; Security</span>
         </h1>
         <p className="text-xs text-zinc-500 mt-1">
@@ -41,7 +41,7 @@ export const DashboardAccount: React.FC = () => {
         {/* Profile Card */}
         <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
           <h2 className="text-base font-bold text-zinc-950 mb-4 flex items-center space-x-2">
-            <User className="h-4 w-4 text-[#FF2D20]" />
+            <User className="h-4 w-4 text-[#3120ff]" />
             <span>Profile Details</span>
           </h2>
 
@@ -52,7 +52,7 @@ export const DashboardAccount: React.FC = () => {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#FF2D20] focus:bg-white focus:outline-none"
+                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none"
               />
             </div>
 
@@ -78,24 +78,24 @@ export const DashboardAccount: React.FC = () => {
                 value={organisation}
                 onChange={(e) => setOrganisation(e.target.value)}
                 placeholder="e.g. Acme Zimbabwe (Pvt) Ltd"
-                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#FF2D20] focus:bg-white focus:outline-none"
+                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none"
               />
             </div>
 
             <div>
-              <label className="block text-zinc-700 font-semibold mb-1">Phone Number (ZISPA Contact)</label>
+              <label className="block text-zinc-700 font-semibold mb-1">Phone Number (domain service Contact)</label>
               <input
                 type="text"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="+263 77 123 4567"
-                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#FF2D20] focus:bg-white focus:outline-none font-mono"
+                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none font-mono"
               />
             </div>
 
             <button
               type="submit"
-              className="rounded-xl bg-[#FF2D20] px-4 py-2 text-xs font-bold text-white hover:bg-[#E0241A] transition shadow-xs"
+              className="rounded-xl bg-[#3120ff] px-4 py-2 text-xs font-bold text-white hover:bg-[#2819d9] transition shadow-xs"
             >
               Save Profile Changes
             </button>
@@ -106,7 +106,7 @@ export const DashboardAccount: React.FC = () => {
         <div className="rounded-2xl border border-zinc-200 bg-white p-6 space-y-6 shadow-sm">
           <div>
             <h2 className="text-base font-bold text-zinc-950 mb-4 flex items-center space-x-2">
-              <Lock className="h-4 w-4 text-[#FF2D20]" />
+              <Lock className="h-4 w-4 text-[#3120ff]" />
               <span>Password &amp; Authentication</span>
             </h2>
 
@@ -118,7 +118,7 @@ export const DashboardAccount: React.FC = () => {
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#FF2D20] focus:bg-white focus:outline-none"
+                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none"
                 />
               </div>
 
@@ -129,7 +129,7 @@ export const DashboardAccount: React.FC = () => {
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#FF2D20] focus:bg-white focus:outline-none"
+                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none"
                 />
               </div>
 
@@ -145,7 +145,7 @@ export const DashboardAccount: React.FC = () => {
           <div className="border-t border-zinc-200 pt-4 text-xs text-zinc-500">
             <div className="flex items-center justify-between py-1">
               <span>Account Role:</span>
-              <span className="text-[#FF2D20] uppercase font-bold">{currentUser?.role}</span>
+              <span className="text-[#3120ff] uppercase font-bold">{currentUser?.role}</span>
             </div>
             <div className="flex justify-between py-1">
               <span>Member Since:</span>

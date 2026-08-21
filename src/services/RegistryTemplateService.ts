@@ -1,11 +1,11 @@
-import { Domain, ZispaAction } from '../types';
+import { Domain, RegistryAction } from '../types';
 
-export class ZispaTemplateService {
+export class RegistryTemplateService {
   /**
-   * Generates standard RFC / ZISPA registry plain-text application form
-   * Preserves exact official ZISPA field names on left side of colons.
+   * Generates standard RFC / domain registry plain-text application form
+   * Preserves exact official domain registry field names on left side of colons.
    */
-  generateTemplate(domain: Domain, action: ZispaAction): string {
+  generateTemplate(domain: Domain, action: RegistryAction): string {
     const owner = domain.owner_details;
     const ns = domain.nameservers;
 
@@ -17,7 +17,7 @@ export class ZispaTemplateService {
     }[action];
 
     const lines: string[] = [
-      '** ZISPA DOMAIN APPLICATION FORM **',
+      '** domain registry DOMAIN APPLICATION FORM **',
       '',
       `0. Action                      : ${action}`,
       `1. Fully Qualified Domain Name : ${domain.domain_name}`,
@@ -33,18 +33,18 @@ export class ZispaTemplateService {
       `2h. Email Address              : ${owner.email || domain.user_email}`,
       '',
       `3. Technical Contact Details (Registrar)`,
-      `3a. Name                       : Ngaatec DNS Operations`,
-      `3b. Organisation               : Ngaatec Private Limited`,
+      `3a. Name                       : Runtime DNS Operations`,
+      `3b. Organisation               : Runtime Private Limited`,
       `3c. Address                    : 147 Kwame Nkrumah Ave, Harare, Zimbabwe`,
       `3d. Telephone                  : +263 77 123 4567`,
-      `3e. Email                      : dns@ngaatec.com`,
+      `3e. Email                      : dns@runtime.co.zw`,
       '',
       `4. Primary Nameserver`,
-      `4a. Hostname                   : ${ns[0] || 'ns1.ngaatec.com'}`,
+      `4a. Hostname                   : ${ns[0] || 'ns1.runtime.co.zw'}`,
       `4b. IP Address (optional)      : `,
       '',
       `5. Secondary Nameserver`,
-      `5a. Hostname                   : ${ns[1] || 'ns2.ngaatec.com'}`,
+      `5a. Hostname                   : ${ns[1] || 'ns2.runtime.co.zw'}`,
       `5b. IP Address (optional)      : `,
     ];
 
@@ -77,8 +77,8 @@ export class ZispaTemplateService {
     return lines.join('\n');
   }
 
-  getSubject(domainName: string, action: ZispaAction): string {
-    const map: Record<ZispaAction, string> = {
+  getSubject(domainName: string, action: RegistryAction): string {
+    const map: Record<RegistryAction, string> = {
       N: `NEW: ${domainName}`,
       M: `MODIFY: ${domainName}`,
       D: `DELETE: ${domainName}`,
@@ -87,10 +87,10 @@ export class ZispaTemplateService {
     return map[action];
   }
 
-  getFilename(domainName: string, action: ZispaAction): string {
+  getFilename(domainName: string, action: RegistryAction): string {
     const cleanDomain = domainName.replace(/[^a-zA-Z0-9.-]/g, '_');
-    return `zispa-${action}-${cleanDomain}.txt`;
+    return `registry-${action}-${cleanDomain}.txt`;
   }
 }
 
-export const zispaTemplateService = new ZispaTemplateService();
+export const registryTemplateService = new RegistryTemplateService();

@@ -1,9 +1,9 @@
 export class NameserverService {
   private defaultNameservers: string[] = [
-    'ns1.ngaatec.com',
-    'ns2.ngaatec.com',
-    'ns3.ngaatec.com',
-    'ns4.ngaatec.com',
+    'ns1.runtime.co.zw',
+    'ns2.runtime.co.zw',
+    'ns3.runtime.co.zw',
+    'ns4.runtime.co.zw',
   ];
 
   getDefaultNameservers(): string[] {
@@ -16,7 +16,7 @@ export class NameserverService {
     if (cleaned.length < 2) {
       return {
         valid: false,
-        error: 'At least two (2) nameservers are required for domain delegation under ZISPA policy.',
+        error: 'At least two (2) nameservers are required for domain delegation under domain registry policy.',
       };
     }
 

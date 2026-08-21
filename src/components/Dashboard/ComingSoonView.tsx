@@ -26,7 +26,7 @@ export const ComingSoonView: React.FC<ComingSoonViewProps> = ({
             <div className="inline-flex items-center space-x-2 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-0.5 text-xs text-zinc-600">
               <span className="font-bold">{category.toUpperCase()}</span>
               <span>•</span>
-              <span className="text-[#FF2D20] font-bold">PHASE 2 ROADMAP</span>
+              <span className="text-[#3120ff] font-bold">PHASE 2 ROADMAP</span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold text-zinc-950 tracking-tight">
               {moduleName}
@@ -38,7 +38,7 @@ export const ComingSoonView: React.FC<ComingSoonViewProps> = ({
 
           <div className="shrink-0">
             <div className="rounded-xl border border-red-200 bg-red-50/50 px-4 py-3 text-center">
-              <span className="text-xs font-bold text-[#FF2D20] uppercase tracking-wider block">
+              <span className="text-xs font-bold text-[#3120ff] uppercase tracking-wider block">
                 Module Status
               </span>
               <span className="text-sm font-extrabold text-zinc-950">
@@ -52,14 +52,14 @@ export const ComingSoonView: React.FC<ComingSoonViewProps> = ({
       {/* Architecture Spec Blueprint */}
       <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
         <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-900 mb-4 flex items-center space-x-2">
-          <Terminal className="h-4 w-4 text-[#FF2D20]" />
+          <Terminal className="h-4 w-4 text-[#3120ff]" />
           <span>Planned Architecture &amp; Service Layer</span>
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {architectureSpecs.map((spec, i) => (
             <div key={i} className="flex items-start space-x-3 p-3.5 rounded-xl border border-zinc-200 bg-zinc-50">
-              <div className="flex h-5 w-5 items-center justify-center rounded-lg bg-red-50 text-[#FF2D20] font-bold text-xs shrink-0 mt-0.5 border border-red-200 font-mono">
+              <div className="flex h-5 w-5 items-center justify-center rounded-lg bg-red-50 text-[#3120ff] font-bold text-xs shrink-0 mt-0.5 border border-red-200 font-mono">
                 {i + 1}
               </div>
               <p className="text-xs text-zinc-700 leading-relaxed font-mono">
@@ -75,7 +75,7 @@ export const ComingSoonView: React.FC<ComingSoonViewProps> = ({
           </div>
           <button
             onClick={() => setActiveView('docs')}
-            className="inline-flex items-center space-x-1.5 text-[#FF2D20] hover:text-[#E0241A] font-bold transition"
+            className="inline-flex items-center space-x-1.5 text-[#3120ff] hover:text-[#2819d9] font-bold transition"
           >
             <span>Read Architecture Specs</span>
             <ArrowRight className="h-3.5 w-3.5" />

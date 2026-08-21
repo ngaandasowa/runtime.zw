@@ -41,7 +41,7 @@ export const DashboardOverview: React.FC = () => {
       <div className="rounded-2xl border border-zinc-200 bg-white p-6 sm:p-8 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center space-x-2 text-xs font-bold text-[#FF2D20] mb-1">
+            <div className="flex items-center space-x-2 text-xs font-bold text-[#3120ff] mb-1">
               <span>CLOUD WORKSPACE</span>
               <span>•</span>
               <span>{currentUser?.organisation || 'Individual Account'}</span>
@@ -57,7 +57,7 @@ export const DashboardOverview: React.FC = () => {
           <div className="flex items-center space-x-3 shrink-0">
             <button
               onClick={() => setRegistrationModalOpen(true)}
-              className="inline-flex items-center space-x-2 rounded-xl bg-[#FF2D20] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#E0241A] transition shadow-sm active:scale-95"
+              className="inline-flex items-center space-x-2 rounded-xl bg-[#3120ff] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#2819d9] transition shadow-sm active:scale-95"
             >
               <Plus className="h-4 w-4" />
               <span>Register New Domain</span>
@@ -90,13 +90,13 @@ export const DashboardOverview: React.FC = () => {
         <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-xs">
           <div className="flex items-center justify-between text-zinc-500 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">ACTIVE DOMAINS</span>
-            <Globe className="h-4 w-4 text-[#FF2D20]" />
+            <Globe className="h-4 w-4 text-[#3120ff]" />
           </div>
           <div className="text-2xl font-extrabold text-zinc-950">
             {activeDomainsCount}
           </div>
           <div className="text-[11px] text-zinc-500 mt-1">
-            Delegated to ZISPA registry
+            Delegated to domain service
           </div>
         </div>
 
@@ -110,7 +110,7 @@ export const DashboardOverview: React.FC = () => {
             {pendingDomainsCount}
           </div>
           <div className="text-[11px] text-zinc-500 mt-1">
-            Awaiting registry confirmation
+            Awaiting registration confirmation
           </div>
         </div>
 
@@ -118,7 +118,7 @@ export const DashboardOverview: React.FC = () => {
         <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-xs">
           <div className="flex items-center justify-between text-zinc-500 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">TOTAL ORDERS</span>
-            <CreditCard className="h-4 w-4 text-[#FF2D20]" />
+            <CreditCard className="h-4 w-4 text-[#3120ff]" />
           </div>
           <div className="text-2xl font-extrabold text-zinc-950">
             {orders.length}
@@ -132,9 +132,9 @@ export const DashboardOverview: React.FC = () => {
         <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-xs">
           <div className="flex items-center justify-between text-zinc-500 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">CLOUD RUNTIME</span>
-            <Cpu className="h-4 w-4 text-[#FF2D20]" />
+            <Cpu className="h-4 w-4 text-[#3120ff]" />
           </div>
-          <div className="text-sm font-bold text-[#FF2D20] mt-1">
+          <div className="text-sm font-bold text-[#3120ff] mt-1">
             PHASE 2 READY
           </div>
           <div className="text-[11px] text-zinc-500 mt-1">
@@ -148,13 +148,13 @@ export const DashboardOverview: React.FC = () => {
       <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-bold text-zinc-950 flex items-center space-x-2">
-            <Globe className="h-4 w-4 text-[#FF2D20]" />
+            <Globe className="h-4 w-4 text-[#3120ff]" />
             <span>My Registered Domains</span>
           </h2>
 
           <button
             onClick={() => setDashboardSubView('domains')}
-            className="text-xs font-bold text-[#FF2D20] hover:text-[#E0241A] flex items-center space-x-1"
+            className="text-xs font-bold text-[#3120ff] hover:text-[#2819d9] flex items-center space-x-1"
           >
             <span>View All ({userDomains.length})</span>
             <ArrowRight className="h-3.5 w-3.5" />
@@ -168,7 +168,7 @@ export const DashboardOverview: React.FC = () => {
             <p className="text-xs text-zinc-500 mt-1">Start by securing your .co.zw name for $2/year.</p>
             <button
               onClick={() => setRegistrationModalOpen(true)}
-              className="mt-4 inline-flex items-center space-x-1.5 rounded-xl bg-[#FF2D20] px-4 py-2 text-xs font-bold text-white hover:bg-[#E0241A] shadow-xs"
+              className="mt-4 inline-flex items-center space-x-1.5 rounded-xl bg-[#3120ff] px-4 py-2 text-xs font-bold text-white hover:bg-[#2819d9] shadow-xs"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>Register Domain</span>
@@ -208,12 +208,12 @@ export const DashboardOverview: React.FC = () => {
                       {d.nameservers.length > 2 ? ` (+${d.nameservers.length - 2})` : ''}
                     </td>
                     <td className="py-3.5 text-zinc-500">
-                      {d.expires_at ? new Date(d.expires_at).toLocaleDateString() : 'Pending ZISPA'}
+                      {d.expires_at ? new Date(d.expires_at).toLocaleDateString() : 'Pending domain service'}
                     </td>
                     <td className="py-3.5 text-right">
                       <button
                         onClick={() => setDashboardSubView('domains')}
-                        className="rounded-lg bg-zinc-100 px-2.5 py-1 text-zinc-700 font-semibold hover:bg-[#FF2D20] hover:text-white transition"
+                        className="rounded-lg bg-zinc-100 px-2.5 py-1 text-zinc-700 font-semibold hover:bg-[#3120ff] hover:text-white transition"
                       >
                         Manage
                       </button>

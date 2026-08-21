@@ -19,7 +19,7 @@ export class OrderService {
       order_id: orderId,
       item_type: 'domain_registration',
       reference_id: domainName,
-      description: `Domain Registration: ${domainName} (1 Year @ $2.00/yr)`,
+      description: `Domain Registration: ${domainName} (1 Year @ $${price.toFixed(2)}/yr)`,
       quantity: 1,
       unit_price: price,
       total: price,

@@ -123,14 +123,14 @@ export interface TldPricing {
   updated_at: string;
 }
 
-export type ZispaAction = 'N' | 'M' | 'D' | 'T';
+export type RegistryAction = 'N' | 'M' | 'D' | 'T';
 export type RegistryRequestStatus = 'draft' | 'ready' | 'submitted' | 'awaiting_confirmation' | 'confirmed' | 'failed' | 'cancelled';
 
 export interface RegistryRequest {
   id: string;
   domain_id: string;
   domain_name: string;
-  action: ZispaAction;
+  action: RegistryAction;
   generated_template: string;
   status: RegistryRequestStatus;
   submitted_at?: string;
@@ -148,7 +148,7 @@ export interface PlatformSettings {
   default_nameservers: string[];
   registry_email_from: string;
   registry_email_to: string;
-  auto_submit_zispa: boolean;
+  auto_submit_registry: boolean;
   platform_name: string;
   operator_name: string;
   support_email: string;

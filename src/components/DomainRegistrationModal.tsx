@@ -28,7 +28,6 @@ export const DomainRegistrationModal: React.FC = () => {
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [domainName, setDomainName] = useState<string>(pendingRegisterDomain || 'mybusiness.co.zw');
-  const [periodYears, setPeriodYears] = useState<number>(1);
   const [registrantType, setRegistrantType] = useState<'myself' | 'client'>('myself');
   
   // Registrant Details
@@ -48,10 +47,10 @@ export const DomainRegistrationModal: React.FC = () => {
   // Nameservers
   const [useDefaultNs, setUseDefaultNs] = useState<boolean>(true);
   const [customNs, setCustomNs] = useState<string[]>([
-    settings.default_nameservers[0] || 'ns1.ngaatec.com',
-    settings.default_nameservers[1] || 'ns2.ngaatec.com',
-    settings.default_nameservers[2] || 'ns3.ngaatec.com',
-    settings.default_nameservers[3] || 'ns4.ngaatec.com',
+    settings.default_nameservers[0] || 'ns1.runtime.co.zw',
+    settings.default_nameservers[1] || 'ns2.runtime.co.zw',
+    settings.default_nameservers[2] || 'ns3.runtime.co.zw',
+    settings.default_nameservers[3] || 'ns4.runtime.co.zw',
   ]);
   const [nsError, setNsError] = useState<string | null>(null);
 
@@ -60,6 +59,9 @@ export const DomainRegistrationModal: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [registrationSuccess, setRegistrationSuccess] = useState<boolean>(false);
   const [completedOrderRef, setCompletedOrderRef] = useState<string>('');
+
+  const selectedTld = ['.co.zw', '.org.zw', '.ac.zw'].find(tld => domainName.toLowerCase().endsWith(tld)) || '.co.zw';
+  const selectedPrice = selectedTld === '.ac.zw' ? 3 : 2;
 
   useEffect(() => {
     if (pendingRegisterDomain) {
@@ -79,7 +81,7 @@ export const DomainRegistrationModal: React.FC = () => {
   const handleStep2Next = (e: React.FormEvent) => {
     e.preventDefault();
     if (!registrantDetails.full_name || !registrantDetails.email || !registrantDetails.phone) {
-      showNotification('Please fill in all mandatory ZISPA applicant details', 'error');
+      showNotification('Please fill in all required details', 'error');
       return;
     }
     setStep(3);
@@ -137,7 +139,7 @@ export const DomainRegistrationModal: React.FC = () => {
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-zinc-200 pb-4 mb-6">
           <div className="flex items-center space-x-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-50 text-[#FF2D20] border border-red-200">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-50 text-[#3120ff] border border-red-200">
               <Globe className="h-5 w-5" />
             </div>
             <div>
@@ -145,7 +147,7 @@ export const DomainRegistrationModal: React.FC = () => {
                 {registrationSuccess ? 'Registration Confirmed' : 'Register .co.zw Domain'}
               </h2>
               <div className="text-xs text-zinc-500">
-                {registrationSuccess ? 'ZISPA Application Staged' : `Fixed $2.00 USD/year • Official ZISPA Registrar Engine`}
+                {registrationSuccess ? 'Registration submitted' : `$${selectedPrice.toFixed(2)} USD/year`}
               </div>
             </div>
           </div>
@@ -162,16 +164,16 @@ export const DomainRegistrationModal: React.FC = () => {
         {!registrationSuccess && (
           <div className="mb-6">
             <div className="grid grid-cols-4 gap-2 text-center text-xs font-semibold">
-              <div className={`p-2 rounded-xl border ${step >= 1 ? 'border-[#FF2D20] bg-[#FF2D20]/10 text-[#FF2D20]' : 'border-zinc-200 bg-zinc-50 text-zinc-400'}`}>
+              <div className={`p-2 rounded-xl border ${step >= 1 ? 'border-[#3120ff] bg-[#3120ff]/10 text-[#3120ff]' : 'border-zinc-200 bg-zinc-50 text-zinc-400'}`}>
                 1. Domain
               </div>
-              <div className={`p-2 rounded-xl border ${step >= 2 ? 'border-[#FF2D20] bg-[#FF2D20]/10 text-[#FF2D20]' : 'border-zinc-200 bg-zinc-50 text-zinc-400'}`}>
+              <div className={`p-2 rounded-xl border ${step >= 2 ? 'border-[#3120ff] bg-[#3120ff]/10 text-[#3120ff]' : 'border-zinc-200 bg-zinc-50 text-zinc-400'}`}>
                 2. Registrant
               </div>
-              <div className={`p-2 rounded-xl border ${step >= 3 ? 'border-[#FF2D20] bg-[#FF2D20]/10 text-[#FF2D20]' : 'border-zinc-200 bg-zinc-50 text-zinc-400'}`}>
+              <div className={`p-2 rounded-xl border ${step >= 3 ? 'border-[#3120ff] bg-[#3120ff]/10 text-[#3120ff]' : 'border-zinc-200 bg-zinc-50 text-zinc-400'}`}>
                 3. Nameservers
               </div>
-              <div className={`p-2 rounded-xl border ${step >= 4 ? 'border-[#FF2D20] bg-[#FF2D20]/10 text-[#FF2D20]' : 'border-zinc-200 bg-zinc-50 text-zinc-400'}`}>
+              <div className={`p-2 rounded-xl border ${step >= 4 ? 'border-[#3120ff] bg-[#3120ff]/10 text-[#3120ff]' : 'border-zinc-200 bg-zinc-50 text-zinc-400'}`}>
                 4. Payment
               </div>
             </div>
@@ -190,42 +192,27 @@ export const DomainRegistrationModal: React.FC = () => {
                 value={domainName}
                 onChange={(e) => setDomainName(e.target.value.toLowerCase().replace(/[^a-z0-9-.]/g, ''))}
                 placeholder="mybusiness.co.zw"
-                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-xs sm:text-sm text-zinc-900 focus:border-[#FF2D20] focus:bg-white focus:outline-none font-mono"
+                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-xs sm:text-sm text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none font-mono"
               />
               <p className="text-[11px] text-zinc-500 mt-1">
                 Standard Zimbabwean Top-Level Domains (.co.zw, .org.zw, .ac.zw)
               </p>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                Registration Period
-              </label>
-              <select
-                value={periodYears}
-                onChange={(e) => setPeriodYears(parseInt(e.target.value))}
-                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-xs sm:text-sm text-zinc-900 focus:border-[#FF2D20] focus:outline-none font-medium"
-              >
-                <option value={1}>1 Year ($2.00 USD)</option>
-                <option value={2}>2 Years ($4.00 USD)</option>
-                <option value={3}>3 Years ($6.00 USD)</option>
-              </select>
-            </div>
-
             <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 flex items-center justify-between">
               <div>
                 <div className="text-xs font-bold text-zinc-900">Registration Guarantee</div>
-                <div className="text-[11px] text-zinc-500">Fixed rate $2.00/yr for initial registration and annual renewal.</div>
+                <div className="text-[11px] text-zinc-500">Registration and renewal are charged at the same annual rate.</div>
               </div>
-              <div className="text-lg font-extrabold text-[#FF2D20]">
-                ${(2.00 * periodYears).toFixed(2)} USD
+              <div className="text-lg font-extrabold text-[#3120ff]">
+                ${selectedPrice.toFixed(2)} USD / year
               </div>
             </div>
 
             <div className="flex justify-end pt-4 border-t border-zinc-200">
               <button
                 type="submit"
-                className="inline-flex items-center space-x-2 rounded-xl bg-[#FF2D20] px-6 py-2.5 text-xs font-bold text-white hover:bg-[#E0241A] transition shadow-sm"
+                className="inline-flex items-center space-x-2 rounded-xl bg-[#3120ff] px-6 py-2.5 text-xs font-bold text-white hover:bg-[#2819d9] transition shadow-sm"
               >
                 <span>Continue to Registrant</span>
                 <ArrowRight className="h-4 w-4" />
@@ -234,7 +221,7 @@ export const DomainRegistrationModal: React.FC = () => {
           </form>
         )}
 
-        {/* STEP 2: Registrant Details (ZISPA Applicant Details) */}
+        {/* STEP 2: Registrant Details */}
         {!registrationSuccess && step === 2 && (
           <form onSubmit={handleStep2Next} className="space-y-4">
             
@@ -246,7 +233,7 @@ export const DomainRegistrationModal: React.FC = () => {
                   name="regType"
                   checked={registrantType === 'myself'}
                   onChange={() => setRegistrantType('myself')}
-                  className="text-[#FF2D20] focus:ring-[#FF2D20]"
+                  className="text-[#3120ff] focus:ring-[#3120ff]"
                 />
                 <span className="text-zinc-800 font-medium">Myself / My Business</span>
               </label>
@@ -256,7 +243,7 @@ export const DomainRegistrationModal: React.FC = () => {
                   name="regType"
                   checked={registrantType === 'client'}
                   onChange={() => setRegistrantType('client')}
-                  className="text-[#FF2D20] focus:ring-[#FF2D20]"
+                  className="text-[#3120ff] focus:ring-[#3120ff]"
                 />
                 <span className="text-zinc-800 font-medium">A Client</span>
               </label>
@@ -271,7 +258,7 @@ export const DomainRegistrationModal: React.FC = () => {
                   value={registrantDetails.full_name}
                   onChange={(e) => setRegistrantDetails({ ...registrantDetails, full_name: e.target.value })}
                   placeholder="e.g. Farai Moyo"
-                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#FF2D20] focus:bg-white focus:outline-none"
+                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none"
                 />
               </div>
 
@@ -282,7 +269,7 @@ export const DomainRegistrationModal: React.FC = () => {
                   value={registrantDetails.org_name}
                   onChange={(e) => setRegistrantDetails({ ...registrantDetails, org_name: e.target.value })}
                   placeholder="e.g. ZimTech Ltd"
-                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#FF2D20] focus:bg-white focus:outline-none"
+                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none"
                 />
               </div>
             </div>
@@ -295,20 +282,20 @@ export const DomainRegistrationModal: React.FC = () => {
                 value={registrantDetails.physical_address}
                 onChange={(e) => setRegistrantDetails({ ...registrantDetails, physical_address: e.target.value })}
                 placeholder="45 Samora Machel Avenue, Harare"
-                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#FF2D20] focus:bg-white focus:outline-none"
+                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none"
               />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div>
-                <label className="block text-zinc-700 font-semibold mb-1">Phone Number (ZISPA Contact) *</label>
+                <label className="block text-zinc-700 font-semibold mb-1">Phone Number *</label>
                 <input
                   type="text"
                   required
                   value={registrantDetails.phone}
                   onChange={(e) => setRegistrantDetails({ ...registrantDetails, phone: e.target.value })}
                   placeholder="+263 77 123 4567"
-                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#FF2D20] focus:bg-white focus:outline-none"
+                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none"
                 />
               </div>
 
@@ -320,32 +307,32 @@ export const DomainRegistrationModal: React.FC = () => {
                   value={registrantDetails.email}
                   onChange={(e) => setRegistrantDetails({ ...registrantDetails, email: e.target.value })}
                   placeholder="farai@zimtech.co.zw"
-                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#FF2D20] focus:bg-white focus:outline-none"
+                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none"
                 />
               </div>
             </div>
 
             <div className="text-xs">
-              <label className="block text-zinc-700 font-semibold mb-1">Organisation Description (ZISPA Section 2a) *</label>
+              <label className="block text-zinc-700 font-semibold mb-1">Organisation Description *</label>
               <input
                 type="text"
                 required
                 value={registrantDetails.org_description}
                 onChange={(e) => setRegistrantDetails({ ...registrantDetails, org_description: e.target.value })}
                 placeholder="e.g. Software engineering, cloud hosting, and mobile apps"
-                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#FF2D20] focus:bg-white focus:outline-none"
+                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none"
               />
             </div>
 
             <div className="text-xs">
-              <label className="block text-zinc-700 font-semibold mb-1">Proposed Domain Use (ZISPA Section 2b) *</label>
+              <label className="block text-zinc-700 font-semibold mb-1">Proposed Domain Use *</label>
               <input
                 type="text"
                 required
                 value={registrantDetails.proposed_usage}
                 onChange={(e) => setRegistrantDetails({ ...registrantDetails, proposed_usage: e.target.value })}
                 placeholder="e.g. Corporate website, developer APIs, and business email"
-                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#FF2D20] focus:bg-white focus:outline-none"
+                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none"
               />
             </div>
 
@@ -361,7 +348,7 @@ export const DomainRegistrationModal: React.FC = () => {
 
               <button
                 type="submit"
-                className="inline-flex items-center space-x-2 rounded-xl bg-[#FF2D20] px-6 py-2.5 text-xs font-bold text-white hover:bg-[#E0241A] transition shadow-sm"
+                className="inline-flex items-center space-x-2 rounded-xl bg-[#3120ff] px-6 py-2.5 text-xs font-bold text-white hover:bg-[#2819d9] transition shadow-sm"
               >
                 <span>Continue to Nameservers</span>
                 <ArrowRight className="h-4 w-4" />
@@ -377,7 +364,7 @@ export const DomainRegistrationModal: React.FC = () => {
             <div className="space-y-3">
               <div 
                 onClick={() => setUseDefaultNs(true)}
-                className={`p-4 rounded-xl border cursor-pointer transition ${useDefaultNs ? 'border-[#FF2D20] bg-red-50/40' : 'border-zinc-200 bg-zinc-50 hover:border-zinc-300'}`}
+                className={`p-4 rounded-xl border cursor-pointer transition ${useDefaultNs ? 'border-[#3120ff] bg-red-50/40' : 'border-zinc-200 bg-zinc-50 hover:border-zinc-300'}`}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
@@ -385,14 +372,14 @@ export const DomainRegistrationModal: React.FC = () => {
                       type="radio"
                       checked={useDefaultNs}
                       onChange={() => setUseDefaultNs(true)}
-                      className="text-[#FF2D20]"
+                      className="text-[#3120ff]"
                     />
                     <div>
-                      <div className="text-xs font-bold text-zinc-950">Use Ngaatec Authoritative Nameservers (Recommended)</div>
+                      <div className="text-xs font-bold text-zinc-950">Use Runtime Authoritative Nameservers (Recommended)</div>
                       <div className="text-[11px] text-zinc-500">Zero-config DNS routing, ready for instant cloud deployment.</div>
                     </div>
                   </div>
-                  <span className="text-[10px] bg-[#FF2D20]/10 text-[#FF2D20] px-2 py-0.5 rounded-full font-bold">
+                  <span className="text-[10px] bg-[#3120ff]/10 text-[#3120ff] px-2 py-0.5 rounded-full font-bold">
                     Fastest
                   </span>
                 </div>
@@ -408,14 +395,14 @@ export const DomainRegistrationModal: React.FC = () => {
 
               <div 
                 onClick={() => setUseDefaultNs(false)}
-                className={`p-4 rounded-xl border cursor-pointer transition ${!useDefaultNs ? 'border-[#FF2D20] bg-red-50/40' : 'border-zinc-200 bg-zinc-50 hover:border-zinc-300'}`}
+                className={`p-4 rounded-xl border cursor-pointer transition ${!useDefaultNs ? 'border-[#3120ff] bg-red-50/40' : 'border-zinc-200 bg-zinc-50 hover:border-zinc-300'}`}
               >
                 <div className="flex items-center space-x-3">
                   <input
                     type="radio"
                     checked={!useDefaultNs}
                     onChange={() => setUseDefaultNs(false)}
-                    className="text-[#FF2D20]"
+                    className="text-[#3120ff]"
                   />
                   <div>
                     <div className="text-xs font-bold text-zinc-950">Use Custom Nameservers</div>
@@ -439,7 +426,7 @@ export const DomainRegistrationModal: React.FC = () => {
                             setCustomNs(copy);
                           }}
                           placeholder={`ns${idx + 1}.example.com`}
-                          className="w-full rounded-xl bg-white border border-zinc-200 p-2 text-xs text-zinc-900 focus:border-[#FF2D20] focus:outline-none font-mono"
+                          className="w-full rounded-xl bg-white border border-zinc-200 p-2 text-xs text-zinc-900 focus:border-[#3120ff] focus:outline-none font-mono"
                         />
                       </div>
                     ))}
@@ -466,7 +453,7 @@ export const DomainRegistrationModal: React.FC = () => {
 
               <button
                 type="submit"
-                className="inline-flex items-center space-x-2 rounded-xl bg-[#FF2D20] px-6 py-2.5 text-xs font-bold text-white hover:bg-[#E0241A] transition shadow-sm"
+                className="inline-flex items-center space-x-2 rounded-xl bg-[#3120ff] px-6 py-2.5 text-xs font-bold text-white hover:bg-[#2819d9] transition shadow-sm"
               >
                 <span>Continue to Checkout</span>
                 <ArrowRight className="h-4 w-4" />
@@ -483,19 +470,19 @@ export const DomainRegistrationModal: React.FC = () => {
             <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 space-y-2 text-xs">
               <div className="flex justify-between text-zinc-600">
                 <span>Domain Item:</span>
-                <span className="text-zinc-900 font-bold font-mono">{domainName} ({periodYears} Yr)</span>
+                <span className="text-zinc-900 font-bold font-mono">{domainName} (1 Year)</span>
               </div>
               <div className="flex justify-between text-zinc-600">
                 <span>Registrant:</span>
                 <span className="text-zinc-800 font-medium">{registrantDetails.full_name}</span>
               </div>
               <div className="flex justify-between text-zinc-600">
-                <span>Registry Action:</span>
-                <span className="text-[#FF2D20] font-bold">Action N (ZISPA New Delegation)</span>
+                <span>Registration:</span>
+                <span className="text-[#3120ff] font-bold">New domain</span>
               </div>
               <div className="flex justify-between pt-2 border-t border-zinc-200 text-sm font-bold text-zinc-950">
                 <span>Total Amount:</span>
-                <span className="text-[#FF2D20] font-extrabold">${(2.00 * periodYears).toFixed(2)} USD</span>
+                <span className="text-[#3120ff] font-extrabold">${selectedPrice.toFixed(2)} USD</span>
               </div>
             </div>
 
@@ -509,7 +496,7 @@ export const DomainRegistrationModal: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setSelectedGateway('paynow')}
-                  className={`p-3 rounded-xl border text-left transition ${selectedGateway === 'paynow' ? 'border-[#FF2D20] bg-red-50/40 text-zinc-900' : 'border-zinc-200 bg-zinc-50 text-zinc-600 hover:border-zinc-300'}`}
+                  className={`p-3 rounded-xl border text-left transition ${selectedGateway === 'paynow' ? 'border-[#3120ff] bg-red-50/40 text-zinc-900' : 'border-zinc-200 bg-zinc-50 text-zinc-600 hover:border-zinc-300'}`}
                 >
                   <div className="text-xs font-bold text-zinc-950">Paynow Zimbabwe</div>
                   <div className="text-[10px] text-zinc-500">EcoCash, OneMoney, ZimSwitch</div>
@@ -518,7 +505,7 @@ export const DomainRegistrationModal: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setSelectedGateway('ecocash')}
-                  className={`p-3 rounded-xl border text-left transition ${selectedGateway === 'ecocash' ? 'border-[#FF2D20] bg-red-50/40 text-zinc-900' : 'border-zinc-200 bg-zinc-50 text-zinc-600 hover:border-zinc-300'}`}
+                  className={`p-3 rounded-xl border text-left transition ${selectedGateway === 'ecocash' ? 'border-[#3120ff] bg-red-50/40 text-zinc-900' : 'border-zinc-200 bg-zinc-50 text-zinc-600 hover:border-zinc-300'}`}
                 >
                   <div className="text-xs font-bold text-zinc-950">EcoCash Direct USD</div>
                   <div className="text-[10px] text-zinc-500">Mobile Wallet Instant Push</div>
@@ -527,7 +514,7 @@ export const DomainRegistrationModal: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setSelectedGateway('innbucks')}
-                  className={`p-3 rounded-xl border text-left transition ${selectedGateway === 'innbucks' ? 'border-[#FF2D20] bg-red-50/40 text-zinc-900' : 'border-zinc-200 bg-zinc-50 text-zinc-600 hover:border-zinc-300'}`}
+                  className={`p-3 rounded-xl border text-left transition ${selectedGateway === 'innbucks' ? 'border-[#3120ff] bg-red-50/40 text-zinc-900' : 'border-zinc-200 bg-zinc-50 text-zinc-600 hover:border-zinc-300'}`}
                 >
                   <div className="text-xs font-bold text-zinc-950">InnBucks</div>
                   <div className="text-[10px] text-zinc-500">Retail QR &amp; Express Code</div>
@@ -536,7 +523,7 @@ export const DomainRegistrationModal: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setSelectedGateway('stripe_card')}
-                  className={`p-3 rounded-xl border text-left transition ${selectedGateway === 'stripe_card' ? 'border-[#FF2D20] bg-red-50/40 text-zinc-900' : 'border-zinc-200 bg-zinc-50 text-zinc-600 hover:border-zinc-300'}`}
+                  className={`p-3 rounded-xl border text-left transition ${selectedGateway === 'stripe_card' ? 'border-[#3120ff] bg-red-50/40 text-zinc-900' : 'border-zinc-200 bg-zinc-50 text-zinc-600 hover:border-zinc-300'}`}
                 >
                   <div className="text-xs font-bold text-zinc-950">International Card</div>
                   <div className="text-[10px] text-zinc-500">Visa / Mastercard / Amex</div>
@@ -545,8 +532,8 @@ export const DomainRegistrationModal: React.FC = () => {
             </div>
 
             <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200 text-xs text-zinc-600 flex items-center space-x-2">
-              <ShieldCheck className="h-4 w-4 shrink-0 text-[#FF2D20]" />
-              <span>Server-side verified transaction. Receipt and official ZISPA registration staged instantly.</span>
+              <ShieldCheck className="h-4 w-4 shrink-0 text-[#3120ff]" />
+              <span>Payment is processed securely and your receipt is issued immediately.</span>
             </div>
 
             <div className="flex justify-between pt-4 border-t border-zinc-200">
@@ -563,7 +550,7 @@ export const DomainRegistrationModal: React.FC = () => {
                 type="button"
                 disabled={isProcessing}
                 onClick={handleCompleteRegistration}
-                className="inline-flex items-center space-x-2 rounded-xl bg-[#FF2D20] px-6 py-2.5 text-xs font-bold text-white hover:bg-[#E0241A] transition shadow-sm active:scale-95 disabled:opacity-50"
+                className="inline-flex items-center space-x-2 rounded-xl bg-[#3120ff] px-6 py-2.5 text-xs font-bold text-white hover:bg-[#2819d9] transition shadow-sm active:scale-95 disabled:opacity-50"
               >
                 {isProcessing ? (
                   <>
@@ -573,7 +560,7 @@ export const DomainRegistrationModal: React.FC = () => {
                 ) : (
                   <>
                     <Lock className="h-3.5 w-3.5" />
-                    <span>Pay ${(2.00 * periodYears).toFixed(2)} USD &amp; Register</span>
+                    <span>Pay ${selectedPrice.toFixed(2)} USD &amp; Register</span>
                   </>
                 )}
               </button>
@@ -593,21 +580,21 @@ export const DomainRegistrationModal: React.FC = () => {
                 Domain Successfully Registered!
               </h3>
               <p className="text-xs text-zinc-500 max-w-md mx-auto mt-1">
-                Order <span className="text-[#FF2D20] font-bold font-mono">{completedOrderRef}</span> has been confirmed.
+                Order <span className="text-[#3120ff] font-bold font-mono">{completedOrderRef}</span> has been confirmed.
               </p>
             </div>
 
             <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-left text-xs space-y-1.5 max-w-lg mx-auto">
               <div className="text-zinc-500">Target: <span className="text-zinc-900 font-bold font-mono">{domainName}</span></div>
-              <div className="text-zinc-500">Status: <span className="text-emerald-700 font-bold">pending_registration (ZISPA Action N)</span></div>
+              <div className="text-zinc-500">Status: <span className="text-emerald-700 font-bold">Registration received</span></div>
               <div className="text-zinc-500">Authoritative Nameservers: <span className="text-zinc-800 font-mono">{settings.default_nameservers.slice(0, 2).join(', ')}</span></div>
-              <div className="text-zinc-500">Registrar Dispatch: <span className="text-zinc-800 font-mono">dns@ngaatec.com → admin@zispa.org.zw</span></div>
+              <div className="text-zinc-500">Need help? <a href="https://wa.me/263788350229" target="_blank" rel="noreferrer" className="text-zinc-800 font-semibold hover:text-[#3120ff]">Message us on WhatsApp</a></div>
             </div>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-4">
               <button
                 onClick={goToDashboard}
-                className="w-full sm:w-auto inline-flex items-center justify-center space-x-2 rounded-xl bg-[#FF2D20] px-6 py-2.5 text-xs font-bold text-white hover:bg-[#E0241A] transition shadow-sm"
+                className="w-full sm:w-auto inline-flex items-center justify-center space-x-2 rounded-xl bg-[#3120ff] px-6 py-2.5 text-xs font-bold text-white hover:bg-[#2819d9] transition shadow-sm"
               >
                 <span>View in Customer Dashboard</span>
                 <ArrowRight className="h-4 w-4" />

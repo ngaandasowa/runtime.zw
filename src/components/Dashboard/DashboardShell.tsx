@@ -42,7 +42,7 @@ export const DashboardShell: React.FC = () => {
           {/* User Brief */}
           <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
             <div className="flex items-center space-x-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-[#FF2D20] font-bold border border-red-200">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-[#3120ff] font-bold border border-red-200">
                 {currentUser?.name.charAt(0)}
               </div>
               <div className="overflow-hidden">
@@ -58,7 +58,7 @@ export const DashboardShell: React.FC = () => {
               onClick={() => setDashboardSubView('overview')}
               className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl text-xs font-bold transition ${
                 dashboardSubView === 'overview'
-                  ? 'bg-[#FF2D20] text-white shadow-xs'
+                  ? 'bg-[#3120ff] text-white shadow-xs'
                   : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
               }`}
             >
@@ -78,7 +78,7 @@ export const DashboardShell: React.FC = () => {
               onClick={() => setDashboardSubView('build_projects')}
               className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
                 dashboardSubView === 'build_projects'
-                  ? 'bg-[#FF2D20] text-white shadow-xs'
+                  ? 'bg-[#3120ff] text-white shadow-xs'
                   : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
               }`}
             >
@@ -92,7 +92,7 @@ export const DashboardShell: React.FC = () => {
               onClick={() => setDashboardSubView('build_deployments')}
               className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
                 dashboardSubView === 'build_deployments'
-                  ? 'bg-[#FF2D20] text-white shadow-xs'
+                  ? 'bg-[#3120ff] text-white shadow-xs'
                   : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
               }`}
             >
@@ -106,7 +106,7 @@ export const DashboardShell: React.FC = () => {
               onClick={() => setDashboardSubView('build_databases')}
               className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
                 dashboardSubView === 'build_databases'
-                  ? 'bg-[#FF2D20] text-white shadow-xs'
+                  ? 'bg-[#3120ff] text-white shadow-xs'
                   : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
               }`}
             >
@@ -119,16 +119,16 @@ export const DashboardShell: React.FC = () => {
 
           {/* Nav Group: Domains (Active Live Product) */}
           <div className="space-y-1">
-            <div className="px-3 text-[10px] font-bold uppercase tracking-wider text-[#FF2D20] flex items-center justify-between">
+            <div className="px-3 text-[10px] font-bold uppercase tracking-wider text-[#3120ff] flex items-center justify-between">
               <span>Domains</span>
-              <span className="text-[9px] bg-red-50 text-[#FF2D20] px-1.5 py-0.5 rounded font-bold border border-red-200">Active</span>
+              <span className="text-[9px] bg-red-50 text-[#3120ff] px-1.5 py-0.5 rounded font-bold border border-red-200">Active</span>
             </div>
 
             <button
               onClick={() => setDashboardSubView('domains')}
               className={`w-full flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
                 dashboardSubView === 'domains'
-                  ? 'bg-[#FF2D20] text-white shadow-xs'
+                  ? 'bg-[#3120ff] text-white shadow-xs'
                   : 'text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950'
               }`}
             >
@@ -138,7 +138,7 @@ export const DashboardShell: React.FC = () => {
 
             <button
               onClick={() => setRegistrationModalOpen(true)}
-              className="w-full flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-semibold text-zinc-700 hover:bg-red-50 hover:text-[#FF2D20] transition"
+              className="w-full flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-semibold text-zinc-700 hover:bg-red-50 hover:text-[#3120ff] transition"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>Register Domain</span>
@@ -156,7 +156,7 @@ export const DashboardShell: React.FC = () => {
               onClick={() => setDashboardSubView('develop_keys')}
               className={`w-full flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
                 dashboardSubView === 'develop_keys'
-                  ? 'bg-[#FF2D20] text-white shadow-xs'
+                  ? 'bg-[#3120ff] text-white shadow-xs'
                   : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
               }`}
             >
@@ -168,7 +168,7 @@ export const DashboardShell: React.FC = () => {
               onClick={() => setDashboardSubView('develop_webhooks')}
               className={`w-full flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
                 dashboardSubView === 'develop_webhooks'
-                  ? 'bg-[#FF2D20] text-white shadow-xs'
+                  ? 'bg-[#3120ff] text-white shadow-xs'
                   : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
               }`}
             >
@@ -180,7 +180,7 @@ export const DashboardShell: React.FC = () => {
               onClick={() => setDashboardSubView('develop_logs')}
               className={`w-full flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
                 dashboardSubView === 'develop_logs'
-                  ? 'bg-[#FF2D20] text-white shadow-xs'
+                  ? 'bg-[#3120ff] text-white shadow-xs'
                   : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
               }`}
             >
@@ -199,7 +199,7 @@ export const DashboardShell: React.FC = () => {
               onClick={() => setDashboardSubView('billing')}
               className={`w-full flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
                 dashboardSubView === 'billing'
-                  ? 'bg-[#FF2D20] text-white shadow-xs'
+                  ? 'bg-[#3120ff] text-white shadow-xs'
                   : 'text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950'
               }`}
             >
@@ -218,7 +218,7 @@ export const DashboardShell: React.FC = () => {
               onClick={() => setDashboardSubView('account')}
               className={`w-full flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
                 dashboardSubView === 'account'
-                  ? 'bg-[#FF2D20] text-white shadow-xs'
+                  ? 'bg-[#3120ff] text-white shadow-xs'
                   : 'text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950'
               }`}
             >
@@ -232,7 +232,7 @@ export const DashboardShell: React.FC = () => {
         {/* Sidebar Footer */}
         <div className="pt-4 border-t border-zinc-200">
           <div className="text-[10px] font-mono text-zinc-400 text-center pb-2">
-            Ngaatec Engine v1.0
+            Runtime Engine v1.0
           </div>
           <button
             onClick={logout}
@@ -312,12 +312,12 @@ export const DashboardShell: React.FC = () => {
           <ComingSoonView
             category="Develop"
             moduleName="Event Webhooks"
-            description="Receive real-time HTTP callbacks when domains are delegated by ZISPA, DNS records update, or bills renew."
+            description="Receive real-time HTTP callbacks when domains are delegated by domain service, DNS records update, or bills renew."
             architectureSpecs={[
               'HMAC-SHA256 request payload verification',
               'Automatic exponential backoff retry policy',
               'Webhook event log inspection and manual payload redelivery',
-              'Events: domain.registered, zispa.confirmed, payment.verified, invoice.created'
+              'Events: domain.registered, domain.confirmed, payment.verified, invoice.created'
             ]}
           />
         )}
@@ -326,7 +326,7 @@ export const DashboardShell: React.FC = () => {
           <ComingSoonView
             category="Develop"
             moduleName="Platform Telemetry &amp; Logs"
-            description="Unified queryable observability logs for all API requests, registry dispatches, and infrastructure events."
+            description="Unified queryable observability logs for all API requests, domain updates, and infrastructure events."
             architectureSpecs={[
               'Structured JSON log streaming',
               'Filter by actor, domain, HTTP status, and response latency',

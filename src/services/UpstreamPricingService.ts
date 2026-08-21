@@ -7,11 +7,11 @@ export interface UpstreamTldPrice {
   last_synced: string;
 }
 
-export class NgaatecPricingService {
-  private endpoint = 'https://clientzone.ngaatec.com/api-proxy.php?action=GetTLDPricing';
+export class RuntimePricingService {
+  private endpoint = 'https://clientzone.runtime.co.zw/api-proxy.php?action=GetTLDPricing';
 
   /**
-   * Fetches upstream registry rates from Ngaatec clientzone proxy
+   * Fetches upstream registry rates from Runtime clientzone proxy
    */
   async fetchUpstreamPricing(): Promise<UpstreamTldPrice[]> {
     try {
@@ -52,10 +52,10 @@ export class NgaatecPricingService {
         }
       ];
     } catch (error) {
-      console.error('Failed to sync Ngaatec upstream pricing', error);
+      console.error('Failed to sync Runtime upstream pricing', error);
       throw error;
     }
   }
 }
 
-export const ngaatecPricingService = new NgaatecPricingService();
+export const runtimeUpstreamPricingService = new RuntimePricingService();
