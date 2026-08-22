@@ -1,9 +1,11 @@
 import React from 'react';
 import { MessageCircle, Server } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
 
 export const Navbar: React.FC = () => {
   const { currentUser, setActiveView, logout } = useStore();
+  const navigate = useNavigate();
   const whatsappUrl = 'https://wa.me/263788350229';
 
   return (
@@ -26,9 +28,9 @@ export const Navbar: React.FC = () => {
               <button onClick={logout} className="hidden text-sm text-zinc-500 hover:text-zinc-950 sm:block">Sign out</button>
             </>
           ) : (
-            <a href="/login" className="hidden px-3 py-2 text-sm font-semibold text-zinc-700 sm:block">Sign in</a>
+            <Link to="/login" className="hidden px-3 py-2 text-sm font-semibold text-zinc-700 sm:block">Sign in</Link>
           )}
-          <button onClick={() => currentUser ? setActiveView('dashboard') : (window.location.href = '/register')} className="rounded-lg bg-[#3120ff] px-4 py-2 text-sm font-semibold text-white hover:bg-[#2819d9]">Register a domain</button>
+          <button onClick={() => currentUser ? setActiveView('dashboard') : navigate('/register')} className="rounded-lg bg-[#3120ff] px-4 py-2 text-sm font-semibold text-white hover:bg-[#2819d9]">Register a domain</button>
         </div>
       </div>
     </header>

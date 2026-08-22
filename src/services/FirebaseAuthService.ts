@@ -2,7 +2,6 @@ import { getApp, getApps, initializeApp } from 'firebase/app';
 import {
   GoogleAuthProvider,
   browserLocalPersistence,
-  browserSessionPersistence,
   createUserWithEmailAndPassword,
   getAuth,
   sendPasswordResetEmail,
@@ -55,10 +54,10 @@ export const firebaseAuthService = {
     return onAuthStateChanged(getFirebaseAuth(), user => callback(user ? toRuntimeUser(user) : null));
   },
 
-  async signIn(email: string, password: string, remember: boolean) {
+  async signIn(email: string, password: string) {
     requireFirebaseConfig();
     const firebaseAuth = getFirebaseAuth();
-    await setPersistence(firebaseAuth, remember ? browserLocalPersistence : browserSessionPersistence);
+    await setPersistence(firebaseAuth, browserLocalPersistence);
     const result = await signInWithEmailAndPassword(firebaseAuth, email, password);
     return toRuntimeUser(result.user);
   },
@@ -66,6 +65,7 @@ export const firebaseAuthService = {
   async signUp(name: string, email: string, password: string) {
     requireFirebaseConfig();
     const firebaseAuth = getFirebaseAuth();
+    await setPersistence(firebaseAuth, browserLocalPersistence);
     const result = await createUserWithEmailAndPassword(firebaseAuth, email, password);
     await updateProfile(result.user, { displayName: name });
     return toRuntimeUser(result.user);
@@ -73,7 +73,9 @@ export const firebaseAuthService = {
 
   async signInWithGoogle() {
     requireFirebaseConfig();
-    const result = await signInWithPopup(getFirebaseAuth(), new GoogleAuthProvider());
+    const firebaseAuth = getFirebaseAuth();
+    await setPersistence(firebaseAuth, browserLocalPersistence);
+    const result = await signInWithPopup(firebaseAuth, new GoogleAuthProvider());
     return toRuntimeUser(result.user);
   },
 

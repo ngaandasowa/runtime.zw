@@ -26,6 +26,12 @@ const ProtectedDashboard: React.FC = () => {
   return currentUser ? <DashboardShell /> : <Navigate to="/login" replace />;
 };
 
+const AuthRoute: React.FC<{ mode: 'login' | 'register' }> = ({ mode }) => {
+  const { currentUser, authReady } = useStore();
+  if (!authReady) return <div className="min-h-screen bg-white" />;
+  return currentUser ? <Navigate to="/dashboard" replace /> : <AuthPage mode={mode} />;
+};
+
 const AppContent: React.FC = () => {
   const { notification, registrationModalOpen } = useStore();
   const location = useLocation();
@@ -38,8 +44,8 @@ const AppContent: React.FC = () => {
         <Route path="/pricing" element={<PublicLayout><PricingSection /></PublicLayout>} />
         <Route path="/terms" element={<PublicLayout><LegalPage type="terms" /></PublicLayout>} />
         <Route path="/privacy" element={<PublicLayout><LegalPage type="privacy" /></PublicLayout>} />
-        <Route path="/login" element={<AuthPage mode="login" />} />
-        <Route path="/register" element={<AuthPage mode="register" />} />
+        <Route path="/login" element={<AuthRoute mode="login" />} />
+        <Route path="/register" element={<AuthRoute mode="register" />} />
         <Route path="/dashboard/*" element={<ProtectedDashboard />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

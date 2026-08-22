@@ -13,14 +13,13 @@ export const AuthPage: React.FC<AuthPageProps> = ({ mode }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [remember, setRemember] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault(); setError(''); setLoading(true);
     try {
-      if (isLogin) await login(email, password, remember);
+      if (isLogin) await login(email, password);
       else await register(name, email, password);
       navigate('/dashboard', { replace: true });
     }
@@ -58,7 +57,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ mode }) => {
             {!isLogin && <label className="block text-sm font-medium text-zinc-800">Name<span className="relative mt-2 block"><UserRound className="absolute left-3 top-3 h-5 w-5 text-zinc-400" /><input required value={name} onChange={(event) => setName(event.target.value)} className="h-11 w-full rounded-xl border border-transparent bg-zinc-100 pl-11 pr-3 outline-none transition focus:border-[#3120FF] focus:bg-white" /></span></label>}
             <label className="block text-sm font-medium text-zinc-800">Email<span className="relative mt-2 block"><Mail className="absolute left-3 top-3 h-5 w-5 text-zinc-400" /><input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} className="h-11 w-full rounded-xl border border-transparent bg-zinc-100 pl-11 pr-3 outline-none transition focus:border-[#3120FF] focus:bg-white" /></span></label>
             <label className="block text-sm font-medium text-zinc-800">Password<span className="relative mt-2 block"><Lock className="absolute left-3 top-3 h-5 w-5 text-zinc-400" /><input type={showPassword ? 'text' : 'password'} required minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} className="h-11 w-full rounded-xl border border-transparent bg-zinc-100 pl-11 pr-11 outline-none transition focus:border-[#3120FF] focus:bg-white" /><button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Hide password' : 'Show password'} className="absolute right-2 top-1 h-9 w-9 rounded-lg text-zinc-500 hover:text-zinc-950">{showPassword ? <EyeOff className="mx-auto h-5 w-5" /> : <Eye className="mx-auto h-5 w-5" />}</button></span></label>
-            {isLogin && <div className="flex items-center justify-between gap-3 text-sm"><label className="flex items-center gap-2 text-zinc-600"><input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} className="h-4 w-4 accent-[#3120FF]" /> Remember me</label><button type="button" onClick={forgotPassword} className="font-semibold text-[#3120FF] hover:underline">Forgot password?</button></div>}
+            {isLogin && <div className="flex justify-end text-sm"><button type="button" onClick={forgotPassword} className="font-semibold text-[#3120FF] hover:underline">Forgot password?</button></div>}
             {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
             <button disabled={loading} type="submit" className="h-11 w-full rounded-xl bg-[#3120FF] text-sm font-semibold text-white transition hover:bg-[#2819d9] disabled:opacity-50">{loading ? 'Please wait...' : isLogin ? 'Sign in' : 'Create account'}</button>
             <button disabled={loading} type="button" onClick={googleSignIn} className="h-11 w-full rounded-xl border border-zinc-200 bg-white text-sm font-semibold text-zinc-800 transition hover:bg-zinc-50 disabled:opacity-50">Sign in with Google</button>

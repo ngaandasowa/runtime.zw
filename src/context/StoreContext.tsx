@@ -39,7 +39,7 @@ interface StoreContextType {
   pendingRegisterDomain: string | null;
   setPendingRegisterDomain: (domain: string | null) => void;
   // Auth methods
-  login: (email: string, password: string, remember: boolean) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -478,8 +478,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setTimeout(() => setNotification(null), 4000);
   };
 
-  const login = async (email: string, password: string, remember: boolean) => {
-    const user = await firebaseAuthService.signIn(email, password, remember);
+  const login = async (email: string, password: string) => {
+    const user = await firebaseAuthService.signIn(email, password);
     setCurrentUser(user);
     setActiveView('dashboard');
     showNotification(`Welcome back, ${email}`, 'success');
