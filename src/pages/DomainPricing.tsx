@@ -1,0 +1,239 @@
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+
+import {
+  Search,
+} from 'lucide-react';
+
+import {
+  domainService,
+  DomainPricingRow,
+} from '../services/DomainService';
+
+export const DomainPricing: React.FC =
+  () => {
+    const [pricing, setPricing] =
+      useState<
+        DomainPricingRow[]
+      >([]);
+
+    const [loading, setLoading] =
+      useState(true);
+
+    const [query, setQuery] =
+      useState('');
+
+    const [error, setError] =
+      useState<string | null>(
+        null
+      );
+
+    useEffect(() => {
+      const load = async () => {
+        try {
+          const data =
+            await domainService.getPricing();
+
+          setPricing(data);
+        } catch (error) {
+          console.error(error);
+
+          setError(
+            'Unable to load domain pricing right now.'
+          );
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      load();
+    }, []);
+
+    const filteredPricing =
+      useMemo(() => {
+        const search =
+          query
+            .trim()
+            .toLowerCase();
+
+        if (!search) {
+          return pricing;
+        }
+
+        return pricing.filter(
+          (item) =>
+            item.tld.includes(
+              search
+            )
+        );
+      }, [pricing, query]);
+
+    return (
+      <main className="min-h-screen bg-white">
+        <section className="border-b border-zinc-200 bg-[linear-gradient(135deg,#f8f9ff_0%,#ffffff_55%,#eef0ff_100%)] px-4 py-20 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-4xl text-center">
+            <h1 className="text-4xl font-bold tracking-tight text-zinc-950 sm:text-6xl">
+              Domain pricing.
+            </h1>
+
+            <p className="mx-auto mt-5 max-w-xl text-base leading-7 text-zinc-600">
+              Registration,
+              renewal and transfer
+              pricing for our
+              supported domain
+              extensions.
+            </p>
+          </div>
+        </section>
+
+        <section className="px-4 py-12 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-5xl">
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-zinc-950">
+                  All extensions
+                </h2>
+
+                <p className="mt-1 text-sm text-zinc-500">
+                  Prices shown are
+                  for one year.
+                </p>
+              </div>
+
+              <div className="flex w-full max-w-sm items-center gap-3 rounded-xl border border-zinc-200 bg-white px-4 shadow-sm">
+                <Search className="h-4 w-4 shrink-0 text-zinc-400" />
+
+                <input
+                  value={query}
+                  onChange={(
+                    event
+                  ) =>
+                    setQuery(
+                      event.target
+                        .value
+                    )
+                  }
+                  placeholder="Search extension"
+                  className="min-w-0 flex-1 py-3 text-sm outline-none placeholder:text-zinc-400"
+                />
+              </div>
+            </div>
+
+            <div className="mt-8 overflow-hidden rounded-2xl border border-zinc-200 bg-white">
+              <div className="hidden grid-cols-4 border-b border-zinc-200 bg-zinc-50 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-zinc-500 sm:grid">
+                <span>
+                  Extension
+                </span>
+                <span>
+                  Register
+                </span>
+                <span>
+                  Renew
+                </span>
+                <span>
+                  Transfer
+                </span>
+              </div>
+
+              {loading && (
+                <div className="px-5 py-12 text-center text-sm text-zinc-500">
+                  Loading domain
+                  pricing...
+                </div>
+              )}
+
+              {error && (
+                <div className="px-5 py-12 text-center text-sm text-zinc-500">
+                  {error}
+                </div>
+              )}
+
+              {!loading &&
+                !error &&
+                filteredPricing.map(
+                  (
+                    item,
+                    index
+                  ) => (
+                    <div
+                      key={
+                        item.tld
+                      }
+                      className={`grid gap-4 px-5 py-5 sm:grid-cols-4 sm:items-center ${
+                        index !==
+                        filteredPricing.length -
+                          1
+                          ? 'border-b border-zinc-200'
+                          : ''
+                      }`}
+                    >
+                      <p className="font-mono text-lg font-semibold text-zinc-950">
+                        {item.tld}
+                      </p>
+
+                      <div>
+                        <p className="text-xs text-zinc-500 sm:hidden">
+                          Register
+                        </p>
+
+                        <p className="mt-1 font-semibold text-zinc-950 sm:mt-0">
+                          {item.register !==
+                          undefined
+                            ? `$${item.register.toFixed(
+                                2
+                              )}`
+                            : '—'}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-xs text-zinc-500 sm:hidden">
+                          Renew
+                        </p>
+
+                        <p className="mt-1 font-semibold text-zinc-950 sm:mt-0">
+                          {item.renew !==
+                          undefined
+                            ? `$${item.renew.toFixed(
+                                2
+                              )}`
+                            : '—'}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-xs text-zinc-500 sm:hidden">
+                          Transfer
+                        </p>
+
+                        <p className="mt-1 font-semibold text-zinc-950 sm:mt-0">
+                          {item.transfer !==
+                          undefined
+                            ? `$${item.transfer.toFixed(
+                                2
+                              )}`
+                            : '—'}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                )}
+
+              {!loading &&
+                !error &&
+                filteredPricing.length ===
+                  0 && (
+                  <div className="px-5 py-12 text-center text-sm text-zinc-500">
+                    No matching
+                    extension found.
+                  </div>
+                )}
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  };

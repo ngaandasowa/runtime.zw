@@ -38,7 +38,8 @@ export class RegistryDomainAvailabilityProvider implements DomainAvailabilityPro
     'reservebank.co.zw',
     'paynow.co.zw',
     'liquid.co.zw',
-    'zesa.co.zw'
+    'zesa.co.zw',
+    'ngaatec.co.zw'
   ]);
 
   async check(domain: string): Promise<DomainAvailabilityResult> {
