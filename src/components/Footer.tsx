@@ -492,7 +492,7 @@ export const Footer: React.FC =
             </FooterSection>
           </div>
 
-          {/* PAYMENT + REGISTRY */}
+          {/* PAYMENT + WHATSAPP */}
           <div className="grid gap-10 border-t border-zinc-200 py-9 md:grid-cols-2 lg:gap-20 lg:py-10">
 
             {/* PAYMENT METHODS */}
@@ -507,47 +507,40 @@ export const Footer: React.FC =
                   'Mastercard',
                   'EcoCash',
                   'Bank Transfer',
-                ].map(
-                  (method) => (
-                    <div
-                      key={
-                        method
-                      }
-                      className="flex h-9 items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-700"
-                    >
-                      <CreditCard className="h-4 w-4" />
-
-                      {method}
-                    </div>
-                  )
-                )}
+                ].map((method) => (
+                  <div
+                    key={method}
+                    className="flex h-9 items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-700"
+                  >
+                    <CreditCard className="h-4 w-4" />
+                    {method}
+                  </div>
+                ))}
               </div>
             </div>
 
-            {/* ZISPA */}
+            {/* WHATSAPP GROUP */}
             <div>
               <h3 className="font-semibold text-zinc-950">
-                ZISPA Registry
+                Special Offers
               </h3>
 
-              <div className="mt-5 flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#3120ff] text-white">
-                  <Server className="h-5 w-5" />
-                </div>
+              <p className="mt-5 text-sm text-zinc-500">
+                Join our WhatsApp group for special offers.
+              </p>
 
-                <div>
-                  <p className="font-medium text-zinc-950">
-                    .co.zw Domain Registrar
-                  </p>
-
-                  <p className="mt-1 max-w-sm text-sm leading-6 text-zinc-500">
-                    Domain registration services connected to the Zimbabwe .co.zw registry.
-                  </p>
-                </div>
-              </div>
+              <a
+                href="YOUR_WHATSAPP_GROUP_LINK"
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-[#3120ff] transition-colors hover:text-[#2819d9]"
+              >
+                <FaWhatsapp className="h-5 w-5" />
+                Join WhatsApp Group
+              </a>
             </div>
-          </div>
 
+          </div>
           {/* BOTTOM */}
           <div className="flex flex-col gap-4 border-t border-zinc-200 py-7 text-xs text-zinc-500 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2">
