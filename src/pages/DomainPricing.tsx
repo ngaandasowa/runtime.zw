@@ -123,112 +123,87 @@ export const DomainPricing: React.FC =
             </div>
 
             <div className="mt-8 overflow-hidden rounded-2xl border border-zinc-200 bg-white">
-              <div className="hidden grid-cols-4 border-b border-zinc-200 bg-zinc-50 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-zinc-500 sm:grid">
+              {/* Header */}
+              <div className="grid grid-cols-4 border-b border-zinc-200 bg-zinc-50 px-3 py-3 text-[10px] font-semibold uppercase tracking-wide text-zinc-500 sm:px-5 sm:text-xs">
                 <span>
                   Extension
                 </span>
-                <span>
+
+                <span className="text-center">
                   Register
                 </span>
-                <span>
+
+                <span className="text-center">
                   Renew
                 </span>
-                <span>
+
+                <span className="text-center">
                   Transfer
                 </span>
               </div>
 
+              {/* Loading */}
               {loading && (
                 <div className="px-5 py-12 text-center text-sm text-zinc-500">
-                  Loading domain
-                  pricing...
+                  Loading domain pricing...
                 </div>
               )}
 
+              {/* Error */}
               {error && (
                 <div className="px-5 py-12 text-center text-sm text-zinc-500">
                   {error}
                 </div>
               )}
 
+              {/* Pricing Rows */}
               {!loading &&
                 !error &&
                 filteredPricing.map(
-                  (
-                    item,
-                    index
-                  ) => (
+                  (item, index) => (
                     <div
-                      key={
-                        item.tld
-                      }
-                      className={`grid gap-4 px-5 py-5 sm:grid-cols-4 sm:items-center ${
-                        index !==
-                        filteredPricing.length -
-                          1
+                      key={item.tld}
+                      className={`grid grid-cols-4 items-center px-3 py-4 sm:px-5 sm:py-5 ${
+                        index !== filteredPricing.length - 1
                           ? 'border-b border-zinc-200'
                           : ''
                       }`}
                     >
-                      <p className="font-mono text-lg font-semibold text-zinc-950">
+                      {/* Extension */}
+                      <p className="truncate font-mono text-sm font-semibold text-zinc-950 sm:text-lg">
                         {item.tld}
                       </p>
 
-                      <div>
-                        <p className="text-xs text-zinc-500 sm:hidden">
-                          Register
-                        </p>
+                      {/* Register */}
+                      <p className="text-center text-xs font-semibold text-zinc-950 sm:text-base">
+                        {item.register !== undefined
+                          ? `$${item.register.toFixed(2)}`
+                          : '—'}
+                      </p>
 
-                        <p className="mt-1 font-semibold text-zinc-950 sm:mt-0">
-                          {item.register !==
-                          undefined
-                            ? `$${item.register.toFixed(
-                                2
-                              )}`
-                            : '—'}
-                        </p>
-                      </div>
+                      {/* Renew */}
+                      <p className="text-center text-xs font-semibold text-zinc-950 sm:text-base">
+                        {item.renew !== undefined
+                          ? `$${item.renew.toFixed(2)}`
+                          : '—'}
+                      </p>
 
-                      <div>
-                        <p className="text-xs text-zinc-500 sm:hidden">
-                          Renew
-                        </p>
-
-                        <p className="mt-1 font-semibold text-zinc-950 sm:mt-0">
-                          {item.renew !==
-                          undefined
-                            ? `$${item.renew.toFixed(
-                                2
-                              )}`
-                            : '—'}
-                        </p>
-                      </div>
-
-                      <div>
-                        <p className="text-xs text-zinc-500 sm:hidden">
-                          Transfer
-                        </p>
-
-                        <p className="mt-1 font-semibold text-zinc-950 sm:mt-0">
-                          {item.transfer !==
-                          undefined
-                            ? `$${item.transfer.toFixed(
-                                2
-                              )}`
-                            : '—'}
-                        </p>
-                      </div>
+                      {/* Transfer */}
+                      <p className="text-center text-xs font-semibold text-zinc-950 sm:text-base">
+                        {item.transfer !== undefined
+                          ? `$${item.transfer.toFixed(2)}`
+                          : '—'}
+                      </p>
                     </div>
                   )
                 )}
 
+              {/* Empty */}
               {!loading &&
                 !error &&
-                filteredPricing.length ===
-                  0 && (
+                filteredPricing.length === 0 && (
                   <div className="px-5 py-12 text-center text-sm text-zinc-500">
-                    No matching
-                    extension found.
+                    No matching extension found.
                   </div>
                 )}
             </div>

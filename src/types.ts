@@ -64,6 +64,8 @@ export interface Domain {
   history: DomainHistoryItem[];
   created_at: string;
   updated_at: string;
+  processing_type?: 'zispa' | 'manual';
+  registration_price?: number;
 }
 
 export type OrderStatus = 'pending' | 'paid' | 'failed' | 'cancelled' | 'refunded';
@@ -151,5 +153,6 @@ export interface PlatformSettings {
   auto_submit_registry: boolean;
   platform_name: string;
   operator_name: string;
+  operator_phone: string;
   support_email: string;
 }

@@ -27,6 +27,7 @@ import { NotFound } from './pages/NotFound';
 
 import { DomainRegistrationModal } from './components/DomainRegistrationModal';
 import { AuthPage } from './components/AuthPage';
+import { AdminShell } from './components/Admin/AdminShell';
 import { DashboardShell } from './components/Dashboard/DashboardShell';
 import { LegalPage } from './components/LegalPage';
 
@@ -82,14 +83,20 @@ const ProtectedDashboard: React.FC = () => {
     );
   }
 
-  return currentUser ? (
-    <DashboardShell />
-  ) : (
-    <Navigate
-      to="/login"
-      replace
-    />
-  );
+  if (!currentUser) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+      />
+    );
+  }
+
+  if (currentUser.role === 'super_admin') {
+    return <AdminShell />;
+  }
+
+  return <DashboardShell />;
 };
 
 /*

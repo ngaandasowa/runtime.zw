@@ -1,19 +1,59 @@
-import React, { useState } from 'react';
+import React, {
+  useEffect,
+  useState,
+} from 'react';
 import { User, Shield, Lock, Key, CheckCircle2, Phone, Mail, Building, Bell } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
 
 export const DashboardAccount: React.FC = () => {
-  const { currentUser, showNotification } = useStore();
+  const { currentUser, updateCurrentUserProfile, showNotification } = useStore();
   const [name, setName] = useState(currentUser?.name || '');
   const [organisation, setOrganisation] = useState(currentUser?.organisation || '');
   const [phone, setPhone] = useState(currentUser?.phone || '');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
 
-  const handleSaveProfile = (e: React.FormEvent) => {
-    e.preventDefault();
-    showNotification('Account profile information updated.', 'success');
-  };
+  useEffect(() => {
+  if (!currentUser) {
+    return;
+  }
+
+  setName(
+    currentUser.name || ''
+  );
+
+  setOrganisation(
+    currentUser.organisation || ''
+  );
+
+  setPhone(
+    currentUser.phone || ''
+  );
+}, [currentUser]);
+
+ const handleSaveProfile = async (
+  e: React.FormEvent
+) => {
+  e.preventDefault();
+
+  try {
+    await updateCurrentUserProfile({
+      name,
+      organisation,
+      phone,
+    });
+  } catch (error) {
+    console.error(
+      'Failed to update profile:',
+      error
+    );
+
+    showNotification(
+      'Unable to update profile.',
+      'error'
+    );
+  }
+};
 
   const handleChangePassword = (e: React.FormEvent) => {
     e.preventDefault();

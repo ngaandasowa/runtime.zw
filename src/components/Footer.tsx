@@ -492,21 +492,15 @@ export const Footer: React.FC =
             </FooterSection>
           </div>
 
-          {/* PAYMENT + WHATSAPP */}
-          <div className="grid gap-10 border-t border-zinc-200 py-9 md:grid-cols-2 lg:gap-20 lg:py-10">
-
-            {/* PAYMENT METHODS */}
+          <div className="grid gap-8 py-8 md:grid-cols-2 md:gap-12 lg:gap-20 lg:border-t lg:border-zinc-200 lg:py-10">
             <div>
               <h3 className="font-semibold text-zinc-950">
-                Payment Methods
+                Payment Options
               </h3>
 
-              <div className="mt-5 flex flex-wrap gap-2">
+              <div className="mt-4 flex flex-wrap gap-2">
                 {[
-                  'Visa',
-                  'Mastercard',
                   'EcoCash',
-                  'Bank Transfer',
                 ].map((method) => (
                   <div
                     key={method}
@@ -519,13 +513,12 @@ export const Footer: React.FC =
               </div>
             </div>
 
-            {/* WHATSAPP GROUP */}
             <div>
               <h3 className="font-semibold text-zinc-950">
                 Special Offers
               </h3>
 
-              <p className="mt-5 text-sm text-zinc-500">
+              <p className="mt-4 text-sm text-zinc-500">
                 Join our WhatsApp group for special offers.
               </p>
 
@@ -539,8 +532,8 @@ export const Footer: React.FC =
                 Join WhatsApp Group
               </a>
             </div>
-
           </div>
+          
           {/* BOTTOM */}
           <div className="flex flex-col gap-4 border-t border-zinc-200 py-7 text-xs text-zinc-500 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2">

@@ -55,34 +55,60 @@ export const Hero: React.FC = () => {
    * Load popular extension prices
    */
   useEffect(() => {
-    const loadPrices = async () => {
-      try {
-        const pricing =
-          await domainService.getPricing();
+  const loadPrices = async () => {
+    try {
+      const pricing =
+        await domainService.getPricing();
 
-        const map: Record<
-          string,
-          number
-        > = {};
+      const map: Record<
+        string,
+        number
+      > = {};
 
-        pricing.forEach((item) => {
-          if (
-            item.register !==
-            undefined
-          ) {
-            map[item.tld] =
-              item.register;
-          }
-        });
+      /*
+       * Load normal upstream pricing.
+       */
+      pricing.forEach((item) => {
+        if (
+          item.register !==
+          undefined
+        ) {
+          map[item.tld] =
+            item.register;
+        }
+      });
 
-        setPrices(map);
-      } catch (error) {
-        console.error(error);
-      }
-    };
+      /*
+       * Runtime Zimbabwe pricing.
+       *
+       * These prices always override
+       * the upstream Ngaatec prices.
+       */
+      map['.co.zw'] = 2;
+      map['.org.zw'] = 3;
+      map['.ac.zw'] = 3;
 
-    loadPrices();
-  }, []);
+      setPrices(map);
+    } catch (error) {
+      console.error(
+        'Unable to load domain pricing:',
+        error
+      );
+
+      /*
+       * Even when upstream pricing fails,
+       * our Zimbabwe pricing still works.
+       */
+      setPrices({
+        '.co.zw': 2,
+        '.org.zw': 3,
+        '.ac.zw': 3,
+      });
+    }
+  };
+
+  loadPrices();
+}, []);
 
   /*
    * Search

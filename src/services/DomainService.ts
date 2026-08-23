@@ -56,9 +56,11 @@ const API_BASE =
 
 export const POPULAR_EXTENSIONS = [
   '.co.zw',
+  '.online',
   '.com',
   '.net',
   '.org',
+  
 ];
 
 class DomainService {

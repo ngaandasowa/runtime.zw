@@ -9,6 +9,7 @@ import {
   PlatformSettings,
   RegistryAction,
   DomainStatus,
+  DomainHistoryItem,
   RegistrantDetails
 } from '../types';
 import { runtimePricingService } from '../services/RuntimePricingService';
@@ -17,6 +18,14 @@ import { orderService } from '../services/OrderService';
 import { paymentService } from '../services/PaymentService';
 import { registryTemplateService } from '../services/RegistryTemplateService';
 import { firebaseAuthService } from '../services/FirebaseAuthService';
+import { userService } from '../services/UserService';
+import {
+  domainRepository,
+} from '../services/DomainRepository';
+
+import {
+  domainService,
+} from '../services/DomainService';
 
 interface StoreContextType {
   currentUser: User | null;
@@ -39,11 +48,29 @@ interface StoreContextType {
   pendingRegisterDomain: string | null;
   setPendingRegisterDomain: (domain: string | null) => void;
   // Auth methods
-  login: (email: string, password: string) => Promise<void>;
+  login: (
+    email: string,
+    password: string
+  ) => Promise<void>;
+
   loginWithGoogle: () => Promise<void>;
-  resetPassword: (email: string) => Promise<void>;
+
+  resetPassword: (
+    email: string
+  ) => Promise<void>;
+
   logout: () => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<boolean>;
+
+  register: (
+    name: string,
+    email: string,
+    password: string
+  ) => Promise<boolean>;
+
+  updateCurrentUserProfile: (
+    changes: Partial<User>
+  ) => Promise<void>;
+  
   // Domain actions
   registerNewDomain: (
     domainName: string, 
@@ -55,7 +82,8 @@ interface StoreContextType {
   updateDomainNameservers: (domainId: string, nameservers: string[]) => void;
   requestDomainModify: (domainId: string, updatedOwner: RegistrantDetails, nameservers: string[]) => void;
   requestDomainDelete: (domainId: string, confirmationText: string) => boolean;
-  requestDomainTransfer: (domainName: string, authCode: string) => void;
+  requestDomainTransfer: (domainName: string, authCode: string) => Promise<void>;
+  updateDomainStatus: (domainId: string, status: DomainStatus) => void;
   // Admin Registry actions
   submitRegistryRequest: (requestId: string) => Promise<void>;
   confirmRegistryRequest: (requestId: string) => void;
@@ -257,17 +285,16 @@ const SEED_SETTINGS: PlatformSettings = {
   auto_submit_registry: false,
   platform_name: 'Runtime',
   operator_name: 'Runtime Private Limited',
+  operator_phone: '+263 242 700000',
   support_email: 'support@runtime.co.zw',
 };
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
-  const [users] = useState<User[]>(SEED_USERS);
-  const [domains, setDomains] = useState<Domain[]>(() => {
-    const saved = localStorage.getItem('runtime_domains');
-    return saved ? JSON.parse(saved) : SEED_DOMAINS;
-  });
+  const [users, setUsers] = useState<User[]>([]);
+  const [domains, setDomains] =
+  useState<Domain[]>([]);
   
   const [orders, setOrders] = useState<Order[]>(() => {
     const saved = localStorage.getItem('runtime_orders');
@@ -421,10 +448,87 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [pendingRegisterDomain, setPendingRegisterDomain] = useState<string | null>(null);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
 
-  useEffect(() => firebaseAuthService.onUserChanged(user => {
-    setCurrentUser(user);
-    setAuthReady(true);
-  }), []);
+  useEffect(() => {
+  return firebaseAuthService.onUserChanged(
+    async (user) => {
+      try {
+        if (!user) {
+          setCurrentUser(
+            null
+          );
+
+          setAuthReady(
+            true
+          );
+
+          return;
+        }
+
+        const profile =
+          await userService.ensureUser(
+            user
+          );
+
+        setCurrentUser(
+          profile
+        );
+      } catch (
+        error
+      ) {
+        console.error(
+          'Failed to load user profile:',
+          error
+        );
+
+        setCurrentUser(
+          user
+        );
+      } finally {
+        setAuthReady(
+          true
+        );
+      }
+    }
+  );
+}, []);
+
+/*
+ * ----------------------------------------------------------
+ * LOAD USERS FOR SUPER ADMIN
+ * ----------------------------------------------------------
+ */
+
+useEffect(() => {
+  const loadUsers = async () => {
+    // No logged-in user
+    if (!currentUser) {
+      setUsers([]);
+      return;
+    }
+
+    // Only super admin should load all platform users
+    if (currentUser.role !== 'super_admin') {
+      setUsers([]);
+      return;
+    }
+
+    try {
+      const allUsers =
+        await userService.getAllUsers();
+
+      setUsers(allUsers);
+    } catch (error) {
+      console.error(
+        'Failed to load admin users:',
+        error
+      );
+
+      setUsers([]);
+    }
+  };
+
+  loadUsers();
+}, [currentUser]);
 
   const setActiveView = (view: string) => {
     const routes: Record<string, string> = {
@@ -448,11 +552,50 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return () => window.removeEventListener('popstate', syncRoute);
   }, []);
 
-  // Sync to local storage
   useEffect(() => {
-    localStorage.setItem('runtime_domains', JSON.stringify(domains));
-  }, [domains]);
+  const loadDomains = async () => {
+    if (!currentUser) {
+      setDomains([]);
+      return;
+    }
 
+    try {
+      if (
+        currentUser.role ===
+        'super_admin'
+      ) {
+        const allDomains =
+          await domainRepository.getAllDomains();
+
+        setDomains(
+          allDomains
+        );
+
+        return;
+      }
+
+      const userDomains =
+        await domainRepository.getDomainsForUser(
+          currentUser.id
+        );
+
+      setDomains(
+        userDomains
+      );
+    } catch (error) {
+      console.error(
+        'Failed to load domains:',
+        error
+      );
+
+      setDomains([]);
+    }
+  };
+
+  loadDomains();
+}, [currentUser]);
+
+  // Sync to local storage
   useEffect(() => {
     localStorage.setItem('runtime_orders', JSON.stringify(orders));
   }, [orders]);
@@ -478,18 +621,52 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setTimeout(() => setNotification(null), 4000);
   };
 
-  const login = async (email: string, password: string) => {
-    const user = await firebaseAuthService.signIn(email, password);
-    setCurrentUser(user);
-    setActiveView('dashboard');
-    showNotification(`Welcome back, ${email}`, 'success');
-  };
+  const login = async (
+  email: string,
+  password: string
+) => {
+  const authUser =
+    await firebaseAuthService.signIn(
+      email,
+      password
+    );
+
+  const profile =
+    await userService.ensureUser(
+      authUser
+    );
+
+  setCurrentUser(
+    profile
+  );
+
+  setActiveView(
+    'dashboard'
+  );
+
+  showNotification(
+    `Welcome back, ${profile.name}`,
+    'success'
+  );
+};
 
   const loginWithGoogle = async () => {
-    const user = await firebaseAuthService.signInWithGoogle();
-    setCurrentUser(user);
-    setActiveView('dashboard');
-  };
+  const authUser =
+    await firebaseAuthService.signInWithGoogle();
+
+  const profile =
+    await userService.ensureUser(
+      authUser
+    );
+
+  setCurrentUser(
+    profile
+  );
+
+  setActiveView(
+    'dashboard'
+  );
+};
 
   const resetPassword = async (email: string) => {
     await firebaseAuthService.resetPassword(email);
@@ -503,6 +680,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showNotification('Logged out of Runtime session.', 'info');
   };
 
+  
+
   const register = async (name: string, email: string, password: string) => {
     const user = await firebaseAuthService.signUp(name, email, password);
     if (user) {
@@ -515,6 +694,104 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return false;
   };
 
+  const updateCurrentUserProfile = async (
+  changes: Partial<User>
+) => {
+  if (!currentUser) {
+    throw new Error(
+      'You must be signed in to update your profile.'
+    );
+  }
+
+  await userService.updateProfile(
+    currentUser.id,
+    changes
+  );
+
+  setCurrentUser((previous) => {
+    if (!previous) {
+      return previous;
+    }
+
+    return {
+      ...previous,
+      ...changes,
+    };
+  });
+
+  showNotification(
+    'Profile updated successfully.',
+    'success'
+  );
+};
+
+const getDomainOrderDetails = async (
+  domainName: string
+) => {
+  const normalized = domainService.cleanDomain(domainName);
+
+  const fixedPricing: Record<
+    string,
+    {
+      register: number;
+      renew: number;
+      transfer: number;
+    }
+  > = {
+    '.co.zw': {
+      register: 2,
+      renew: 2,
+      transfer: 2,
+    },
+    '.org.zw': {
+      register: 3,
+      renew: 3,
+      transfer: 3,
+    },
+    '.ac.zw': {
+      register: 3,
+      renew: 3,
+      transfer: 3,
+    },
+  };
+
+  const fixedTld = Object.keys(fixedPricing)
+    .sort((a, b) => b.length - a.length)
+    .find((tld) => normalized.endsWith(tld));
+
+  if (fixedTld) {
+    const prices = fixedPricing[fixedTld];
+
+    return {
+      tld: fixedTld,
+      registrationPrice: prices.register,
+      renewalPrice: prices.renew,
+      transferPrice: prices.transfer,
+      processingType: 'zispa' as const,
+    };
+  }
+
+  const pricing = await domainService.getPricing();
+
+  const match = [...pricing]
+    .sort((a, b) => b.tld.length - a.tld.length)
+    .find((item) => normalized.endsWith(item.tld));
+
+  if (!match || match.register === undefined) {
+    throw new Error(
+      'This domain extension is not currently available for registration.'
+    );
+  }
+
+  return {
+    tld: match.tld,
+    registrationPrice: match.register,
+    renewalPrice: match.renew ?? match.register,
+    transferPrice: match.transfer ?? match.register,
+    processingType: 'manual' as const,
+  };
+};
+
   const registerNewDomain = async (
     domainName: string,
     registrantType: 'myself' | 'client',
@@ -522,210 +799,482 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     nameservers: string[],
     gateway: any = 'paynow'
   ) => {
-    const user = currentUser || {
-      id: 'usr-guest',
-      email: ownerDetails.email,
-      name: ownerDetails.full_name,
-      role: 'customer' as const,
-      created_at: new Date().toISOString()
-    };
+    if (!currentUser) {
+      throw new Error('You must be signed in to register a domain.');
+    }
 
-    const tld = ['.co.zw', '.org.zw', '.ac.zw'].find(candidate => domainName.toLowerCase().endsWith(candidate)) || '.co.zw';
-    const price = tld === '.ac.zw' ? 3.00 : 2.00;
+    const normalizedDomain = domainService.cleanDomain(domainName);
+
+    const {
+      tld,
+      registrationPrice,
+      renewalPrice,
+      processingType,
+    } = await getDomainOrderDetails(normalizedDomain);
 
     // 1. Create order
-    const order = orderService.createDomainRegistrationOrder(user.id, user.email, domainName, price, 'USD');
-    
-    // 2. Process payment (simulated server-side verified payment)
-    const payment = await paymentService.processCheckout(order.id, price, 'USD', user.email, gateway);
+    const order = orderService.createDomainRegistrationOrder(
+      currentUser.id,
+      currentUser.email,
+      normalizedDomain,
+      registrationPrice,
+      'USD'
+    );
+
+    // 2. Prototype payment flow.
+    // Replace this with real gateway verification before production.
+    const payment = await paymentService.processCheckout(
+      order.id,
+      registrationPrice,
+      'USD',
+      currentUser.email,
+      gateway
+    );
+
     const paidOrder = orderService.markPaid(order);
 
-    // 3. Create Domain entity in pending_registration status
-    const newDomain: Domain = {
-      id: 'dom-' + Math.random().toString(36).substring(2, 8),
-      domain_name: domainName,
+    const now = new Date().toISOString();
+
+    // 3. Create one unified domain record for every TLD.
+    const newDomain = {
+      id: 'dom-' + Math.random().toString(36).substring(2, 10),
+      domain_name: normalizedDomain,
       tld,
-      user_id: user.id,
-      user_email: user.email,
-      status: 'pending_registration',
-      nameservers: nameservers.length > 0 ? nameservers : [...settings.default_nameservers],
+      user_id: currentUser.id,
+      user_email: currentUser.email,
+      status: 'pending_registration' as DomainStatus,
+      nameservers:
+        nameservers.length > 0
+          ? nameservers
+          : [...settings.default_nameservers],
       auto_renew: true,
-      renewal_price: price,
+      renewal_price: renewalPrice,
       currency: 'USD',
       registrant_type: registrantType,
       owner_details: ownerDetails,
+
+      // Internal operational fields.
+      // Keep these out of customer-facing components.
+      processing_type: processingType,
+      registration_price: registrationPrice,
+
       history: [
         {
-          id: 'hist-' + Math.random().toString(36).substring(2, 7),
-          domain_id: domainName,
-          action: 'NEW',
-          description: `Order ${order.reference} confirmed ($${price.toFixed(2)}). Registration request prepared.`,
+          id: 'hist-' + Math.random().toString(36).substring(2, 9),
+          domain_id: normalizedDomain,
+          action: 'NEW' as const,
+          description: `Order ${order.reference} received. Domain registration is being processed.`,
           status: 'ready',
-          actor: user.email,
-          created_at: new Date().toISOString(),
-        }
+          actor: currentUser.email,
+          created_at: now,
+        },
       ],
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+
+      created_at: now,
+      updated_at: now,
+    } as Domain & {
+      processing_type: 'zispa' | 'manual';
+      registration_price: number;
     };
 
-    // 4. Create Registry Request for domain registry queue
-    const regReq = registryService.createRequest(newDomain, 'N', 'system');
-    regReq.payment_reference = payment.reference;
+    // 4. Save the domain to Firestore first.
+    await domainRepository.createDomain(newDomain);
 
-    // Update state
-    setOrders(prev => [paidOrder, ...prev]);
-    setPayments(prev => [payment, ...prev]);
-    setDomains(prev => [newDomain, ...prev]);
-    setRegistryRequests(prev => [regReq, ...prev]);
+    // 5. Only Zimbabwe registry TLDs create an internal registry request.
+    if (processingType === 'zispa') {
+      const registryRequest = registryService.createRequest(
+        newDomain,
+        'N',
+        'system'
+      );
 
-    showNotification(`Domain ${domainName} ordered & queued for domain registry submission!`, 'success');
-    return { success: true, domain: newDomain, order: paidOrder };
+      registryRequest.payment_reference = payment.reference;
+
+      setRegistryRequests((prev) => [
+        registryRequest,
+        ...prev,
+      ]);
+    }
+
+    // 6. Keep the current prototype order/payment state for now.
+    setOrders((prev) => [paidOrder, ...prev]);
+    setPayments((prev) => [payment, ...prev]);
+    setDomains((prev) => [newDomain, ...prev]);
+
+    showNotification(
+      `Your domain order for ${normalizedDomain} has been received and is being processed.`,
+      'success'
+    );
+
+    return {
+      success: true,
+      domain: newDomain,
+      order: paidOrder,
+    };
   };
 
-  const updateDomainNameservers = (domainId: string, nameservers: string[]) => {
-    setDomains(prev => prev.map(d => {
-      if (d.id === domainId) {
-        const updated = {
-          ...d,
-          nameservers,
-          updated_at: new Date().toISOString(),
-          history: [
-            ...d.history,
-            {
-              id: 'hist-' + Math.random().toString(36).substring(2, 7),
-              domain_id: d.id,
-              action: 'MODIFY' as const,
-              description: `Nameservers updated to: ${nameservers.join(', ')}`,
-              status: 'pending',
-              actor: currentUser?.email || 'customer',
-              created_at: new Date().toISOString(),
-            }
-          ]
-        };
-        // Also queue domain registry modify request
-        const req = registryService.createRequest(updated, 'M', currentUser?.email || 'customer');
-        setRegistryRequests(r => [req, ...r]);
-        return updated;
-      }
-      return d;
-    }));
-    showNotification('Nameservers updated and domain registry MODIFY request queued.', 'success');
+  const updateDomainNameservers = (
+    domainId: string,
+    nameservers: string[]
+  ) => {
+    const domain = domains.find((item) => item.id === domainId);
+
+    if (!domain) {
+      showNotification('Domain not found.', 'error');
+      return;
+    }
+
+    const now = new Date().toISOString();
+
+    const updated = {
+      ...domain,
+      nameservers,
+      updated_at: now,
+      history: [
+        ...domain.history,
+        {
+          id: 'hist-' + Math.random().toString(36).substring(2, 9),
+          domain_id: domain.id,
+          action: 'MODIFY' as const,
+          description: 'Nameserver change requested.',
+          status: 'pending',
+          actor: currentUser?.email || 'customer',
+          created_at: now,
+        },
+      ],
+    };
+
+    setDomains((prev) =>
+      prev.map((item) =>
+        item.id === domainId ? updated : item
+      )
+    );
+
+    void domainRepository
+      .updateDomain(domainId, {
+        nameservers: updated.nameservers,
+        history: updated.history,
+        updated_at: updated.updated_at,
+      })
+      .catch((error) => {
+        console.error('Failed to save nameserver update:', error);
+        showNotification(
+          'Unable to save the nameserver change.',
+          'error'
+        );
+      });
+
+    if ((domain as any).processing_type === 'zispa') {
+      const request = registryService.createRequest(
+        updated,
+        'M',
+        currentUser?.email || 'customer'
+      );
+
+      setRegistryRequests((prev) => [
+        request,
+        ...prev,
+      ]);
+    }
+
+    showNotification(
+      'Nameserver change request received.',
+      'success'
+    );
   };
 
-  const requestDomainModify = (domainId: string, updatedOwner: RegistrantDetails, nameservers: string[]) => {
-    setDomains(prev => prev.map(d => {
-      if (d.id === domainId) {
-        const updated: Domain = {
-          ...d,
-          owner_details: updatedOwner,
-          nameservers,
-          updated_at: new Date().toISOString(),
-          history: [
-            ...d.history,
-            {
-              id: 'hist-' + Math.random().toString(36).substring(2, 7),
-              domain_id: d.id,
-              action: 'MODIFY',
-              description: 'Domain details / registrant record modification requested.',
-              status: 'pending',
-              actor: currentUser?.email || 'admin',
-              created_at: new Date().toISOString(),
-            }
-          ]
-        };
-        const req = registryService.createRequest(updated, 'M', currentUser?.email || 'admin');
-        setRegistryRequests(r => [req, ...r]);
-        return updated;
-      }
-      return d;
-    }));
-    showNotification('Domain modification request created.', 'success');
+  const requestDomainModify = (
+    domainId: string,
+    updatedOwner: RegistrantDetails,
+    nameservers: string[]
+  ) => {
+    const domain = domains.find((item) => item.id === domainId);
+
+    if (!domain) {
+      showNotification('Domain not found.', 'error');
+      return;
+    }
+
+    const now = new Date().toISOString();
+
+    const updated: Domain = {
+      ...domain,
+      owner_details: updatedOwner,
+      nameservers,
+      updated_at: now,
+      history: [
+        ...domain.history,
+        {
+          id: 'hist-' + Math.random().toString(36).substring(2, 9),
+          domain_id: domain.id,
+          action: 'MODIFY',
+          description: 'Domain details update requested.',
+          status: 'pending',
+          actor: currentUser?.email || 'customer',
+          created_at: now,
+        },
+      ],
+    };
+
+    setDomains((prev) =>
+      prev.map((item) =>
+        item.id === domainId ? updated : item
+      )
+    );
+
+    void domainRepository
+      .updateDomain(domainId, {
+        owner_details: updated.owner_details,
+        nameservers: updated.nameservers,
+        history: updated.history,
+        updated_at: updated.updated_at,
+      })
+      .catch((error) => {
+        console.error('Failed to save domain modification:', error);
+        showNotification(
+          'Unable to save the domain update.',
+          'error'
+        );
+      });
+
+    if ((domain as any).processing_type === 'zispa') {
+      const request = registryService.createRequest(
+        updated,
+        'M',
+        currentUser?.email || 'customer'
+      );
+
+      setRegistryRequests((prev) => [
+        request,
+        ...prev,
+      ]);
+    }
+
+    showNotification(
+      'Domain update request received.',
+      'success'
+    );
   };
 
-  const requestDomainDelete = (domainId: string, confirmationText: string): boolean => {
-    const domain = domains.find(d => d.id === domainId);
-    if (!domain) return false;
+  const requestDomainDelete = (
+    domainId: string,
+    confirmationText: string
+  ): boolean => {
+    const domain = domains.find((item) => item.id === domainId);
 
-    if (confirmationText.trim().toLowerCase() !== domain.domain_name.toLowerCase()) {
-      showNotification(`Confirmation mismatch. You must type "${domain.domain_name}" exactly.`, 'error');
+    if (!domain) {
       return false;
     }
 
-    setDomains(prev => prev.map(d => {
-      if (d.id === domainId) {
-        const updated: Domain = {
-          ...d,
-          status: 'pending_delete',
-          updated_at: new Date().toISOString(),
-          history: [
-            ...d.history,
-            {
-              id: 'hist-' + Math.random().toString(36).substring(2, 7),
-              domain_id: d.id,
-              action: 'DELETE',
-              description: 'DELETE request issued with typed confirmation. Queued for domain registry cancellation.',
-              status: 'pending_delete',
-              actor: currentUser?.email || 'admin',
-              created_at: new Date().toISOString(),
-            }
-          ]
-        };
-        const req = registryService.createRequest(updated, 'D', currentUser?.email || 'admin');
-        setRegistryRequests(r => [req, ...r]);
-        return updated;
-      }
-      return d;
-    }));
+    if (
+      confirmationText.trim().toLowerCase() !==
+      domain.domain_name.toLowerCase()
+    ) {
+      showNotification(
+        `Confirmation mismatch. You must type "${domain.domain_name}" exactly.`,
+        'error'
+      );
 
-    showNotification(`Delete request for ${domain.domain_name} queued for domain registry dispatch.`, 'info');
+      return false;
+    }
+
+    const now = new Date().toISOString();
+
+    const updated: Domain = {
+      ...domain,
+      status: 'pending_delete',
+      updated_at: now,
+      history: [
+        ...domain.history,
+        {
+          id: 'hist-' + Math.random().toString(36).substring(2, 9),
+          domain_id: domain.id,
+          action: 'DELETE',
+          description: 'Domain cancellation request received.',
+          status: 'pending_delete',
+          actor: currentUser?.email || 'customer',
+          created_at: now,
+        },
+      ],
+    };
+
+    setDomains((prev) =>
+      prev.map((item) =>
+        item.id === domainId ? updated : item
+      )
+    );
+
+    void domainRepository
+      .updateDomain(domainId, {
+        status: updated.status,
+        history: updated.history,
+        updated_at: updated.updated_at,
+      })
+      .catch((error) => {
+        console.error('Failed to save domain cancellation:', error);
+        showNotification(
+          'Unable to save the cancellation request.',
+          'error'
+        );
+      });
+
+    if ((domain as any).processing_type === 'zispa') {
+      const request = registryService.createRequest(
+        updated,
+        'D',
+        currentUser?.email || 'customer'
+      );
+
+      setRegistryRequests((prev) => [
+        request,
+        ...prev,
+      ]);
+    }
+
+    showNotification(
+      `Cancellation request for ${domain.domain_name} has been received.`,
+      'info'
+    );
+
     return true;
   };
 
-  const requestDomainTransfer = (domainName: string, authCode: string) => {
-    const newDomain: Domain = {
-      id: 'dom-' + Math.random().toString(36).substring(2, 8),
-      domain_name: domainName,
-      tld: '.co.zw',
-      user_id: currentUser?.id || 'usr-cust',
-      user_email: currentUser?.email || 'customer@runtime.co.zw',
-      status: 'pending_transfer',
+  const requestDomainTransfer = async (
+    domainName: string,
+    authCode: string
+  ) => {
+    if (!currentUser) {
+      throw new Error('You must be signed in to transfer a domain.');
+    }
+
+    const normalizedDomain = domainService.cleanDomain(domainName);
+
+    const {
+      tld,
+      renewalPrice,
+      transferPrice,
+      processingType,
+    } = await getDomainOrderDetails(normalizedDomain);
+
+    const now = new Date().toISOString();
+
+    const newDomain = {
+      id: 'dom-' + Math.random().toString(36).substring(2, 10),
+      domain_name: normalizedDomain,
+      tld,
+      user_id: currentUser.id,
+      user_email: currentUser.email,
+      status: 'pending_transfer' as DomainStatus,
       nameservers: [...settings.default_nameservers],
       auto_renew: true,
-      renewal_price: 2.00,
+      renewal_price: renewalPrice,
       currency: 'USD',
-      registrant_type: 'myself',
+      registrant_type: 'myself' as const,
       owner_details: {
-        full_name: currentUser?.name || 'Customer',
-        org_name: currentUser?.organisation || 'Organisation',
-        physical_address: 'Harare, Zimbabwe',
-        postal_address: 'P.O. Box Harare',
-        city: 'Harare',
+        full_name: currentUser.name || 'Customer',
+        org_name: currentUser.organisation || '',
+        physical_address: '',
+        postal_address: '',
+        city: '',
         country: 'Zimbabwe',
-        phone: currentUser?.phone || '+263 77 123 4567',
-        email: currentUser?.email || 'customer@runtime.co.zw',
-        org_description: 'Domain transfer into Runtime platform',
-        proposed_usage: 'Production infrastructure and cloud routing',
+        phone: currentUser.phone || '',
+        email: currentUser.email,
+        org_description: '',
+        proposed_usage: '',
       },
+
+      processing_type: processingType,
+      registration_price: transferPrice,
+
       history: [
         {
-          id: 'hist-' + Math.random().toString(36).substring(2, 7),
-          domain_id: domainName,
-          action: 'TRANSFER',
-          description: `Domain transfer initiated with auth key. Awaiting domain registry confirmation.`,
+          id: 'hist-' + Math.random().toString(36).substring(2, 9),
+          domain_id: normalizedDomain,
+          action: 'TRANSFER' as const,
+          description: 'Domain transfer request received and is being processed.',
           status: 'pending_transfer',
-          actor: currentUser?.email || 'customer',
-          created_at: new Date().toISOString(),
-        }
+          actor: currentUser.email,
+          created_at: now,
+        },
       ],
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+
+      created_at: now,
+      updated_at: now,
+    } as Domain & {
+      processing_type: 'zispa' | 'manual';
+      registration_price: number;
     };
 
-    const req = registryService.createRequest(newDomain, 'T', currentUser?.email || 'customer');
-    setDomains(prev => [newDomain, ...prev]);
-    setRegistryRequests(prev => [req, ...prev]);
-    showNotification(`Transfer request for ${domainName} submitted.`, 'success');
+    // authCode is intentionally not written into the customer-readable
+    // domain record. A dedicated secure transfer-request store can be
+    // added later for transfer secrets.
+    void authCode;
+
+    await domainRepository.createDomain(newDomain);
+
+    if (processingType === 'zispa') {
+      const request = registryService.createRequest(
+        newDomain,
+        'T',
+        currentUser.email
+      );
+
+      setRegistryRequests((prev) => [
+        request,
+        ...prev,
+      ]);
+    }
+
+    setDomains((prev) => [
+      newDomain,
+      ...prev,
+    ]);
+
+    showNotification(
+      `Transfer request for ${normalizedDomain} has been received.`,
+      'success'
+    );
+  };
+
+  const updateDomainStatus = (domainId: string, status: DomainStatus) => {
+    const domain = domains.find((item) => item.id === domainId);
+
+    if (!domain) {
+      showNotification('Domain not found.', 'error');
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const updated: Domain = {
+      ...domain,
+      status,
+      updated_at: now,
+      history: [
+        ...domain.history,
+        {
+          id: 'hist-' + Math.random().toString(36).substring(2, 9),
+          domain_id: domain.id,
+          action: 'STATUS_CHANGE',
+          description: `Domain status changed to ${status}.`,
+          status,
+          actor: currentUser?.email || 'admin',
+          created_at: now,
+        },
+      ],
+    };
+
+    setDomains((prev) =>
+      prev.map((item) => (item.id === domainId ? updated : item))
+    );
+
+    void domainRepository.updateDomain(domainId, {
+      status: updated.status,
+      history: updated.history,
+      updated_at: updated.updated_at,
+    }).catch((error) => {
+      console.error('Failed to persist domain status:', error);
+      showNotification('Unable to save the domain status.', 'error');
+    });
   };
 
   const submitRegistryRequest = async (requestId: string) => {
@@ -738,21 +1287,31 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Also record in domain history
     setDomains(prev => prev.map(d => {
       if (d.id === target.domain_id || d.domain_name === target.domain_name) {
-        return {
+        const updatedDomain = {
           ...d,
+          updated_at: new Date().toISOString(),
           history: [
             ...d.history,
             {
-              id: 'hist-' + Math.random().toString(36).substring(2, 7),
+              id: 'hist-' + Math.random().toString(36).substring(2, 9),
               domain_id: d.id,
-              action: target.action === 'N' ? 'NEW' : target.action === 'M' ? 'MODIFY' : target.action === 'D' ? 'DELETE' : 'TRANSFER',
-              description: `Email dispatched to admin@registry.org.zw from dns@runtime.co.zw (${target.email_subject})`,
+              action: (target.action === 'N' ? 'NEW' : target.action === 'M' ? 'MODIFY' : target.action === 'D' ? 'DELETE' : 'TRANSFER') as DomainHistoryItem['action'],
+              description: 'Registrar processing step completed.',
               status: 'submitted',
-              actor: currentUser?.email || 'dns@runtime.co.zw',
+              actor: currentUser?.email || 'admin',
               created_at: new Date().toISOString(),
             }
           ]
         };
+
+        void domainRepository.updateDomain(d.id, {
+          history: updatedDomain.history,
+          updated_at: updatedDomain.updated_at,
+        }).catch((error) => {
+          console.error('Failed to persist registry history:', error);
+        });
+
+        return updatedDomain;
       }
       return d;
     }));
@@ -779,7 +1338,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const nextYear = new Date(now);
         nextYear.setFullYear(nextYear.getFullYear() + 1);
 
-        return {
+        const updatedDomain: Domain = {
           ...d,
           status: newStatus,
           registered_at: d.registered_at || now.toISOString(),
@@ -788,21 +1347,36 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           history: [
             ...d.history,
             {
-              id: 'hist-' + Math.random().toString(36).substring(2, 7),
+              id: 'hist-' + Math.random().toString(36).substring(2, 9),
               domain_id: d.id,
               action: target.action === 'N' ? 'NEW' : target.action === 'M' ? 'MODIFY' : target.action === 'D' ? 'DELETE' : 'TRANSFER',
-              description: `domain registry confirmation verified. Action ${target.action} is now active.`,
+              description:
+                target.action === 'D'
+                  ? 'Domain cancellation completed.'
+                  : 'Domain processing completed successfully.',
               status: 'confirmed',
-              actor: 'admin@registry.org.zw',
+              actor: currentUser?.email || 'admin',
               created_at: now.toISOString(),
             }
           ]
         };
+
+        void domainRepository.updateDomain(d.id, {
+          status: updatedDomain.status,
+          registered_at: updatedDomain.registered_at,
+          expires_at: updatedDomain.expires_at,
+          history: updatedDomain.history,
+          updated_at: updatedDomain.updated_at,
+        }).catch((error) => {
+          console.error('Failed to persist domain confirmation:', error);
+        });
+
+        return updatedDomain;
       }
       return d;
     }));
 
-    showNotification(`Registry action for ${target.domain_name} (${target.action}) confirmed!`, 'success');
+    showNotification(`Domain update for ${target.domain_name} completed.`, 'success');
   };
 
   const createManualRegistryRequest = (domainId: string, action: RegistryAction) => {
@@ -831,14 +1405,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const syncUpstreamPrices = async () => {
-    showNotification('Syncing upstream prices from clientzone.runtime.co.zw...', 'info');
+    showNotification('Syncing domain prices from Ngaatec...', 'info');
     await new Promise(r => setTimeout(r, 600));
     setPricing(prev => prev.map(p => ({
       ...p,
       upstream_price: 1.80,
       updated_at: new Date().toISOString(),
     })));
-    showNotification('Upstream pricing synchronized with Runtime registrar proxy.', 'success');
+    showNotification('Domain pricing synchronized.', 'success');
   };
 
   const updateSettings = (newSettings: Partial<PlatformSettings>) => {
@@ -872,11 +1446,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       resetPassword,
       logout,
       register,
+      updateCurrentUserProfile,
       registerNewDomain,
       updateDomainNameservers,
       requestDomainModify,
       requestDomainDelete,
       requestDomainTransfer,
+      updateDomainStatus,
       submitRegistryRequest,
       confirmRegistryRequest,
       createManualRegistryRequest,

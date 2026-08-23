@@ -1,706 +1,2173 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  X, 
-  Search, 
-  CheckCircle2, 
-  ArrowRight, 
-  ArrowLeft, 
-  ShieldCheck, 
-  Server, 
-  CreditCard, 
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+
+import {
   AlertCircle,
-  HelpCircle,
+  ArrowLeft,
+  ArrowRight,
   Building2,
-  User,
+  CheckCircle2,
+  CreditCard,
   Globe2,
-  Lock
+  Lock,
+  Search,
+  Server,
+  ShieldCheck,
+  User,
+  X,
 } from 'lucide-react';
-import { useStore } from '../../context/StoreContext';
-import { domainAvailabilityService, DomainAvailabilityResult } from '../../services/DomainAvailabilityService';
-import { nameserverService } from '../../services/NameserverService';
-import { RegistrantDetails, RegistrantType } from '../../types';
 
-export const DomainRegistrationModal: React.FC = () => {
-  const { 
-    registrationModalOpen, 
-    setRegistrationModalOpen, 
-    pendingRegisterDomain, 
-    setPendingRegisterDomain,
-    currentUser,
-    settings,
-    registerNewDomain,
-    setActiveView,
-    setDashboardSubView
-  } = useStore();
+import {
+  useStore,
+} from '../../context/StoreContext';
 
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1); // 1: Search, 2: Registrant Info, 3: Nameservers, 4: Checkout
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedTld, setSelectedTld] = useState('.co.zw');
-  const [isChecking, setIsChecking] = useState(false);
-  const [availabilityResult, setAvailabilityResult] = useState<DomainAvailabilityResult | null>(null);
+import {
+  domainService,
+  DomainAvailabilityResult,
+} from '../../services/DomainService';
 
-  // Registrant Type
-  const [registrantType, setRegistrantType] = useState<RegistrantType>('myself');
+import {
+  nameserverService,
+} from '../../services/NameserverService';
 
-  // Form Details
-  const [fullName, setFullName] = useState(currentUser?.name || '');
-  const [orgName, setOrgName] = useState(currentUser?.organisation || '');
-  const [physicalAddress, setPhysicalAddress] = useState('147 Samora Machel Avenue');
-  const [postalAddress, setPostalAddress] = useState('P.O. Box 1024, Harare');
-  const [city, setCity] = useState('Harare');
-  const [country, setCountry] = useState('Zimbabwe');
-  const [phone, setPhone] = useState(currentUser?.phone || '+263 77 123 4567');
-  const [email, setEmail] = useState(currentUser?.email || '');
-  const [orgDescription, setOrgDescription] = useState('Commercial technology provider and digital enterprise');
-  const [proposedUsage, setProposedUsage] = useState('Official enterprise website, web applications, and corporate email routing.');
+import {
+  RegistrantDetails,
+  RegistrantType,
+} from '../../types';
 
-  // Nameservers
-  const [nsMode, setNsMode] = useState<'default' | 'custom'>('default');
-  const [customNs, setCustomNs] = useState<string[]>([
-    'ns1.runtime.co.zw',
-    'ns2.runtime.co.zw',
-    '',
-    ''
-  ]);
-  const [nsError, setNsError] = useState<string | null>(null);
+type Step =
+  | 1
+  | 2
+  | 3
+  | 4;
 
-  // Payment method
-  const [gateway, setGateway] = useState<'paynow' | 'ecocash' | 'innbucks' | 'stripe_card'>('paynow');
-  const [isProcessing, setIsProcessing] = useState(false);
+type Gateway =
+  | 'paynow'
+  | 'ecocash'
+  | 'innbucks'
+  | 'stripe_card';
 
-  useEffect(() => {
-    if (pendingRegisterDomain) {
-      setSearchTerm(pendingRegisterDomain.replace('.co.zw', ''));
-      handleCheck(pendingRegisterDomain);
-    }
-  }, [pendingRegisterDomain]);
+const ZISPA_TLDS = [
+  '.co.zw',
+  '.org.zw',
+  '.ac.zw',
+];
 
-  useEffect(() => {
-    if (currentUser && registrantType === 'myself') {
-      setFullName(currentUser.name);
-      setEmail(currentUser.email);
-      if (currentUser.organisation) setOrgName(currentUser.organisation);
-      if (currentUser.phone) setPhone(currentUser.phone);
-    }
-  }, [currentUser, registrantType]);
+const FIXED_PRICES: Record<
+  string,
+  number
+> = {
+  '.co.zw': 2,
+  '.org.zw': 3,
+  '.ac.zw': 3,
+};
 
-  if (!registrationModalOpen) return null;
+const isZispaDomain = (
+  domain: string
+) => {
+  const normalized =
+    domain
+      .trim()
+      .toLowerCase();
 
-  const handleCheck = async (domainName: string) => {
-    setIsChecking(true);
-    const res = await domainAvailabilityService.checkAvailability(domainName);
-    setAvailabilityResult(res);
-    setIsChecking(false);
-    if (res.isAvailable) {
-      // Advance to step 2
-      setStep(2);
-    }
-  };
+  return ZISPA_TLDS.some(
+    (tld) =>
+      normalized.endsWith(
+        tld
+      )
+  );
+};
 
-  const handleManualSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!searchTerm.trim()) return;
-    const target = searchTerm.includes('.') ? searchTerm : `${searchTerm}${selectedTld}`;
-    handleCheck(target);
-  };
+const getFixedPrice = (
+  domain: string
+) => {
+  const normalized =
+    domain
+      .trim()
+      .toLowerCase();
 
-  const validateStep2 = () => {
-    if (!fullName.trim()) return 'Full Name is required';
-    if (!email.trim() || !email.includes('@')) return 'A valid email address is required';
-    if (!physicalAddress.trim()) return 'Physical address is required by domain service';
-    if (!city.trim()) return 'Town / City is required';
-    if (!phone.trim()) return 'Phone number is required';
-    if (!orgDescription.trim()) return 'Organisation description is required';
-    if (!proposedUsage.trim()) return 'Proposed domain usage is required';
-    return null;
-  };
-
-  const handleStep2Next = () => {
-    const err = validateStep2();
-    if (err) {
-      alert(err);
-      return;
-    }
-    setStep(3);
-  };
-
-  const handleStep3Next = () => {
-    if (nsMode === 'custom') {
-      const activeNs = customNs.filter(n => n.trim().length > 0);
-      const validation = nameserverService.validateNameservers(activeNs);
-      if (!validation.valid) {
-        setNsError(validation.error || 'Invalid nameservers');
-        return;
-      }
-    }
-    setNsError(null);
-    setStep(4);
-  };
-
-  const handleCompleteOrder = async () => {
-    if (!availabilityResult) return;
-    setIsProcessing(true);
-
-    const owner: RegistrantDetails = {
-      full_name: fullName,
-      org_name: orgName || (registrantType === 'myself' ? 'Personal Account' : 'Client Organisation'),
-      physical_address: physicalAddress,
-      postal_address: postalAddress,
-      city,
-      country,
-      phone,
-      email,
-      org_description: orgDescription,
-      proposed_usage: proposedUsage,
-    };
-
-    const finalNs = nsMode === 'default' 
-      ? settings.default_nameservers 
-      : customNs.filter(n => n.trim().length > 0);
-
-    await registerNewDomain(
-      availabilityResult.domain,
-      registrantType,
-      owner,
-      finalNs,
-      gateway
+  const match =
+    ZISPA_TLDS.find(
+      (tld) =>
+        normalized.endsWith(
+          tld
+        )
     );
 
-    setIsProcessing(false);
-    setRegistrationModalOpen(false);
-    setActiveView('dashboard');
-    setDashboardSubView('domains');
-  };
+  return match
+    ? FIXED_PRICES[match]
+    : undefined;
+};
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
-      <div className="relative w-full max-w-2xl rounded-2xl border border-slate-800 bg-[#0A0D15] shadow-2xl p-6 sm:p-8 my-8 text-slate-100">
-        
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-800/80 pb-4 mb-6">
-          <div className="flex items-center space-x-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-cyan-500/40 bg-cyan-950/40 text-cyan-400">
-              <Globe2 className="h-5 w-5" />
+export const DomainRegistrationModal: React.FC =
+  () => {
+    const {
+      registrationModalOpen,
+      setRegistrationModalOpen,
+
+      pendingRegisterDomain,
+      setPendingRegisterDomain,
+
+      currentUser,
+      settings,
+
+      registerNewDomain,
+
+      setActiveView,
+      setDashboardSubView,
+
+      showNotification,
+    } = useStore();
+
+    const [
+      step,
+      setStep,
+    ] =
+      useState<Step>(1);
+
+    /*
+     * ----------------------------------------------------------
+     * DOMAIN SEARCH
+     * ----------------------------------------------------------
+     */
+
+    const [
+      searchTerm,
+      setSearchTerm,
+    ] =
+      useState('');
+
+    const [
+      searchResults,
+      setSearchResults,
+    ] =
+      useState<
+        DomainAvailabilityResult[]
+      >([]);
+
+    const [
+      availabilityResult,
+      setAvailabilityResult,
+    ] =
+      useState<
+        DomainAvailabilityResult | null
+      >(null);
+
+    const [
+      isChecking,
+      setIsChecking,
+    ] =
+      useState(false);
+
+    const [
+      searchError,
+      setSearchError,
+    ] =
+      useState<
+        string | null
+      >(null);
+
+    /*
+     * ----------------------------------------------------------
+     * REGISTRANT
+     * ----------------------------------------------------------
+     */
+
+    const [
+      registrantType,
+      setRegistrantType,
+    ] =
+      useState<RegistrantType>(
+        'myself'
+      );
+
+    const [
+      fullName,
+      setFullName,
+    ] =
+      useState(
+        currentUser?.name ||
+          ''
+      );
+
+    const [
+      orgName,
+      setOrgName,
+    ] =
+      useState(
+        currentUser?.organisation ||
+          ''
+      );
+
+    const [
+      physicalAddress,
+      setPhysicalAddress,
+    ] =
+      useState('');
+
+    const [
+      postalAddress,
+      setPostalAddress,
+    ] =
+      useState('');
+
+    const [
+      city,
+      setCity,
+    ] =
+      useState('');
+
+    const [
+      country,
+      setCountry,
+    ] =
+      useState(
+        'Zimbabwe'
+      );
+
+    const [
+      phone,
+      setPhone,
+    ] =
+      useState(
+        currentUser?.phone ||
+          ''
+      );
+
+    const [
+      email,
+      setEmail,
+    ] =
+      useState(
+        currentUser?.email ||
+          ''
+      );
+
+    const [
+      orgDescription,
+      setOrgDescription,
+    ] =
+      useState('');
+
+    const [
+      proposedUsage,
+      setProposedUsage,
+    ] =
+      useState('');
+
+    /*
+     * ----------------------------------------------------------
+     * NAMESERVERS
+     * ----------------------------------------------------------
+     */
+
+    const [
+      nsMode,
+      setNsMode,
+    ] =
+      useState<
+        'default' | 'custom'
+      >('default');
+
+    const [
+      customNs,
+      setCustomNs,
+    ] =
+      useState<string[]>([
+        '',
+        '',
+        '',
+        '',
+      ]);
+
+    const [
+      nsError,
+      setNsError,
+    ] =
+      useState<
+        string | null
+      >(null);
+
+    /*
+     * ----------------------------------------------------------
+     * PAYMENT
+     * ----------------------------------------------------------
+     */
+
+    const [
+      gateway,
+      setGateway,
+    ] =
+      useState<Gateway>(
+        'paynow'
+      );
+
+    const [
+      isProcessing,
+      setIsProcessing,
+    ] =
+      useState(false);
+
+    /*
+     * ----------------------------------------------------------
+     * DERIVED VALUES
+     * ----------------------------------------------------------
+     */
+
+    const selectedDomain =
+      availabilityResult?.domain ||
+      pendingRegisterDomain ||
+      '';
+
+    const requiresOwnerDetails =
+      selectedDomain
+        ? isZispaDomain(
+            selectedDomain
+          )
+        : false;
+
+    const domainPrice =
+      useMemo(() => {
+        if (
+          !selectedDomain
+        ) {
+          return 0;
+        }
+
+        const fixed =
+          getFixedPrice(
+            selectedDomain
+          );
+
+        if (
+          fixed !==
+          undefined
+        ) {
+          return fixed;
+        }
+
+        return (
+          availabilityResult?.price ??
+          0
+        );
+      }, [
+        selectedDomain,
+        availabilityResult,
+      ]);
+
+    const formattedPrice =
+      domainPrice > 0
+        ? `$${domainPrice.toFixed(
+            2
+          )}`
+        : 'Price unavailable';
+
+    /*
+     * ----------------------------------------------------------
+     * RESET
+     * ----------------------------------------------------------
+     */
+
+    const resetRegistration =
+      () => {
+        setStep(1);
+
+        setSearchTerm(
+          ''
+        );
+
+        setSearchResults(
+          []
+        );
+
+        setAvailabilityResult(
+          null
+        );
+
+        setSearchError(
+          null
+        );
+
+        setRegistrantType(
+          'myself'
+        );
+
+        setFullName(
+          currentUser?.name ||
+            ''
+        );
+
+        setOrgName(
+          currentUser?.organisation ||
+            ''
+        );
+
+        setPhysicalAddress(
+          ''
+        );
+
+        setPostalAddress(
+          ''
+        );
+
+        setCity(
+          ''
+        );
+
+        setCountry(
+          'Zimbabwe'
+        );
+
+        setPhone(
+          currentUser?.phone ||
+            ''
+        );
+
+        setEmail(
+          currentUser?.email ||
+            ''
+        );
+
+        setOrgDescription(
+          ''
+        );
+
+        setProposedUsage(
+          ''
+        );
+
+        setNsMode(
+          'default'
+        );
+
+        setCustomNs([
+          '',
+          '',
+          '',
+          '',
+        ]);
+
+        setNsError(
+          null
+        );
+
+        setGateway(
+          'paynow'
+        );
+
+        setIsChecking(
+          false
+        );
+
+        setIsProcessing(
+          false
+        );
+      };
+
+    const closeModal =
+      () => {
+        setRegistrationModalOpen(
+          false
+        );
+
+        setPendingRegisterDomain(
+          null
+        );
+
+        resetRegistration();
+      };
+
+    /*
+     * ----------------------------------------------------------
+     * CURRENT ACCOUNT DETAILS
+     * ----------------------------------------------------------
+     */
+
+    useEffect(() => {
+      if (
+        !currentUser ||
+        registrantType !==
+          'myself'
+      ) {
+        return;
+      }
+
+      setFullName(
+        currentUser.name ||
+          ''
+      );
+
+      setOrgName(
+        currentUser.organisation ||
+          ''
+      );
+
+      setPhone(
+        currentUser.phone ||
+          ''
+      );
+
+      setEmail(
+        currentUser.email ||
+          ''
+      );
+    }, [
+      currentUser,
+      registrantType,
+    ]);
+
+    /*
+     * ----------------------------------------------------------
+     * DOMAIN SELECTED FROM HOMEPAGE
+     *
+     * Recheck silently.
+     * The customer does NOT search again.
+     * ----------------------------------------------------------
+     */
+
+    useEffect(() => {
+      if (
+        !registrationModalOpen ||
+        !pendingRegisterDomain
+      ) {
+        return;
+      }
+
+      let cancelled =
+        false;
+
+      const prepareDomain =
+        async () => {
+          setIsChecking(
+            true
+          );
+
+          setSearchError(
+            null
+          );
+
+          try {
+            const result =
+              await domainService.checkAvailability(
+                pendingRegisterDomain
+              );
+
+            if (
+              cancelled
+            ) {
+              return;
+            }
+
+            setAvailabilityResult(
+              result
+            );
+
+            if (
+              result.checkingFailed
+            ) {
+              setSearchError(
+                result.reason ||
+                  'Unable to confirm domain availability.'
+              );
+
+              setStep(1);
+
+              return;
+            }
+
+            if (
+              !result.isAvailable
+            ) {
+              setSearchError(
+                `${result.domain} is no longer available for registration.`
+              );
+
+              setStep(1);
+
+              return;
+            }
+
+            /*
+             * ZISPA:
+             * Owner Details -> Nameservers -> Payment
+             *
+             * Other TLDs:
+             * Nameservers -> Payment
+             */
+            setStep(
+              isZispaDomain(
+                result.domain
+              )
+                ? 2
+                : 3
+            );
+          } catch (
+            error
+          ) {
+            console.error(
+              'Unable to prepare selected domain:',
+              error
+            );
+
+            if (
+              !cancelled
+            ) {
+              setSearchError(
+                'Unable to confirm domain availability.'
+              );
+
+              setStep(1);
+            }
+          } finally {
+            if (
+              !cancelled
+            ) {
+              setIsChecking(
+                false
+              );
+            }
+          }
+        };
+
+      prepareDomain();
+
+      return () => {
+        cancelled =
+          true;
+      };
+    }, [
+      pendingRegisterDomain,
+      registrationModalOpen,
+    ]);
+
+    /*
+     * ----------------------------------------------------------
+     * DASHBOARD DOMAIN SEARCH
+     * ----------------------------------------------------------
+     */
+
+    const handleSearch =
+      async (
+        event:
+          React.FormEvent
+      ) => {
+        event.preventDefault();
+
+        if (
+          !searchTerm.trim()
+        ) {
+          return;
+        }
+
+        setIsChecking(
+          true
+        );
+
+        setSearchResults(
+          []
+        );
+
+        setAvailabilityResult(
+          null
+        );
+
+        setSearchError(
+          null
+        );
+
+        try {
+          const results =
+            await domainService.searchDomains(
+              searchTerm
+            );
+
+          setSearchResults(
+            results
+          );
+        } catch (
+          error
+        ) {
+          console.error(
+            'Domain search failed:',
+            error
+          );
+
+          setSearchError(
+            'We could not complete the domain search. Please try again.'
+          );
+        } finally {
+          setIsChecking(
+            false
+          );
+        }
+      };
+
+    /*
+     * ----------------------------------------------------------
+     * SELECT AVAILABLE DOMAIN
+     * ----------------------------------------------------------
+     */
+
+    const selectDomain = (
+      result:
+        DomainAvailabilityResult
+    ) => {
+      if (
+        !result.isAvailable ||
+        result.checkingFailed
+      ) {
+        return;
+      }
+
+      setAvailabilityResult(
+        result
+      );
+
+      setPendingRegisterDomain(
+        result.domain
+      );
+
+      setStep(
+        isZispaDomain(
+          result.domain
+        )
+          ? 2
+          : 3
+      );
+    };
+
+    /*
+     * ----------------------------------------------------------
+     * OWNER VALIDATION
+     * ----------------------------------------------------------
+     */
+
+    const validateOwnerDetails =
+      () => {
+        if (
+          !fullName.trim()
+        ) {
+          return 'Owner full name is required.';
+        }
+
+        if (
+          !email.trim() ||
+          !email.includes('@')
+        ) {
+          return 'A valid owner email address is required.';
+        }
+
+        if (
+          !physicalAddress.trim()
+        ) {
+          return 'Physical address is required.';
+        }
+
+        if (
+          !city.trim()
+        ) {
+          return 'Town or city is required.';
+        }
+
+        if (
+          !country.trim()
+        ) {
+          return 'Country is required.';
+        }
+
+        if (
+          !phone.trim()
+        ) {
+          return 'Phone number is required.';
+        }
+
+        if (
+          !orgDescription.trim()
+        ) {
+          return 'Organisation or activity description is required.';
+        }
+
+        if (
+          !proposedUsage.trim()
+        ) {
+          return 'Proposed domain usage is required.';
+        }
+
+        return null;
+      };
+
+    const handleOwnerNext =
+      () => {
+        const error =
+          validateOwnerDetails();
+
+        if (error) {
+          showNotification(
+            error,
+            'error'
+          );
+
+          return;
+        }
+
+        setStep(3);
+      };
+
+    /*
+     * ----------------------------------------------------------
+     * NAMESERVER VALIDATION
+     * ----------------------------------------------------------
+     */
+
+    const handleNameserverNext =
+      () => {
+        if (
+          nsMode ===
+          'custom'
+        ) {
+          const active =
+            customNs
+              .map((ns) =>
+                ns.trim()
+              )
+              .filter(Boolean);
+
+          const validation =
+            nameserverService.validateNameservers(
+              active
+            );
+
+          if (
+            !validation.valid
+          ) {
+            setNsError(
+              validation.error ||
+                'Invalid nameserver configuration.'
+            );
+
+            return;
+          }
+        }
+
+        setNsError(
+          null
+        );
+
+        setStep(4);
+      };
+
+    /*
+     * ----------------------------------------------------------
+     * COMPLETE ORDER
+     * ----------------------------------------------------------
+     */
+
+    const handleCompleteOrder =
+      async () => {
+        if (
+          !availabilityResult ||
+          !availabilityResult.isAvailable
+        ) {
+          return;
+        }
+
+        if (
+          requiresOwnerDetails
+        ) {
+          const ownerError =
+            validateOwnerDetails();
+
+          if (
+            ownerError
+          ) {
+            showNotification(
+              ownerError,
+              'error'
+            );
+
+            setStep(2);
+
+            return;
+          }
+        }
+
+        setIsProcessing(
+          true
+        );
+
+        try {
+          /*
+           * Full ZISPA owner details are required
+           * only for:
+           *
+           * .co.zw
+           * .org.zw
+           * .ac.zw
+           *
+           * Other domains still receive a basic
+           * internal owner object from the account.
+           */
+
+          const owner:
+            RegistrantDetails =
+            requiresOwnerDetails
+              ? {
+                  full_name:
+                    fullName.trim(),
+
+                  org_name:
+                    orgName.trim() ||
+                    (registrantType ===
+                    'myself'
+                      ? 'Individual'
+                      : 'Client'),
+
+                  physical_address:
+                    physicalAddress.trim(),
+
+                  postal_address:
+                    postalAddress.trim(),
+
+                  city:
+                    city.trim(),
+
+                  country:
+                    country.trim(),
+
+                  phone:
+                    phone.trim(),
+
+                  email:
+                    email.trim(),
+
+                  org_description:
+                    orgDescription.trim(),
+
+                  proposed_usage:
+                    proposedUsage.trim(),
+                }
+              : {
+                  full_name:
+                    currentUser?.name ||
+                    fullName ||
+                    'Customer',
+
+                  org_name:
+                    currentUser?.organisation ||
+                    orgName ||
+                    '',
+
+                  physical_address:
+                    '',
+
+                  postal_address:
+                    '',
+
+                  city:
+                    '',
+
+                  country:
+                    '',
+
+                  phone:
+                    currentUser?.phone ||
+                    phone ||
+                    '',
+
+                  email:
+                    currentUser?.email ||
+                    email ||
+                    '',
+
+                  org_description:
+                    '',
+
+                  proposed_usage:
+                    '',
+                };
+
+          const finalNameservers =
+            nsMode ===
+            'default'
+              ? [
+                  ...settings.default_nameservers,
+                ]
+              : customNs
+                  .map(
+                    (ns) =>
+                      ns.trim()
+                  )
+                  .filter(
+                    Boolean
+                  );
+
+          await registerNewDomain(
+            availabilityResult.domain,
+            registrantType,
+            owner,
+            finalNameservers,
+            gateway
+          );
+
+          setRegistrationModalOpen(
+            false
+          );
+
+          setPendingRegisterDomain(
+            null
+          );
+
+          setActiveView(
+            'dashboard'
+          );
+
+          setDashboardSubView(
+            'domains'
+          );
+
+          resetRegistration();
+        } catch (
+          error
+        ) {
+          console.error(
+            'Unable to complete domain order:',
+            error
+          );
+
+          showNotification(
+            error instanceof
+              Error
+              ? error.message
+              : 'Unable to complete your domain order.',
+            'error'
+          );
+        } finally {
+          setIsProcessing(
+            false
+          );
+        }
+      };
+
+    /*
+     * ----------------------------------------------------------
+     * BACK LOGIC
+     * ----------------------------------------------------------
+     */
+
+    const handleBackFromNameservers =
+      () => {
+        if (
+          requiresOwnerDetails
+        ) {
+          setStep(2);
+
+          return;
+        }
+
+        /*
+         * If domain came from homepage,
+         * do not make them search again.
+         */
+        if (
+          pendingRegisterDomain
+        ) {
+          closeModal();
+
+          return;
+        }
+
+        setStep(1);
+      };
+
+    if (
+      !registrationModalOpen
+    ) {
+      return null;
+    }
+
+    /*
+     * ----------------------------------------------------------
+     * PREPARING DOMAIN
+     * ----------------------------------------------------------
+     */
+
+    if (
+      pendingRegisterDomain &&
+      isChecking &&
+      !availabilityResult
+    ) {
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-8 text-center shadow-2xl">
+
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#3120ff]/10 text-[#3120ff]">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#3120ff]/30 border-t-[#3120ff]" />
             </div>
-            <div>
-              <h3 className="text-lg font-bold text-white tracking-tight">
-                {step === 1 && 'Search & Register Domain'}
-                {step === 2 && 'Step 2: Registrant Ownership Details'}
-                {step === 3 && 'Step 3: Nameserver Delegation'}
-                {step === 4 && 'Step 4: Review & Confirmed Payment'}
-              </h3>
-              <p className="text-xs font-mono text-slate-400">
-                Official domain service .co.zw Registration ($2.00/yr)
-              </p>
-            </div>
-          </div>
 
-          <button
-            onClick={() => setRegistrationModalOpen(false)}
-            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+            <h3 className="mt-5 text-lg font-bold text-zinc-950">
+              Preparing your domain
+            </h3>
 
-        {/* Progress Bar */}
-        <div className="grid grid-cols-4 gap-2 mb-6 text-[11px] font-mono text-center">
-          <div className={`py-1.5 rounded border ${step >= 1 ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-300' : 'border-slate-800 text-slate-600'}`}>
-            1. Domain
-          </div>
-          <div className={`py-1.5 rounded border ${step >= 2 ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-300' : 'border-slate-800 text-slate-600'}`}>
-            2. Owner Info
-          </div>
-          <div className={`py-1.5 rounded border ${step >= 3 ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-300' : 'border-slate-800 text-slate-600'}`}>
-            3. Nameservers
-          </div>
-          <div className={`py-1.5 rounded border ${step >= 4 ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-300' : 'border-slate-800 text-slate-600'}`}>
-            4. Payment
+            <p className="mt-2 font-mono text-sm text-zinc-600">
+              {
+                pendingRegisterDomain
+              }
+            </p>
+
+            <p className="mt-2 text-sm text-zinc-500">
+              Confirming availability and pricing.
+            </p>
           </div>
         </div>
+      );
+    }
 
-        {/* STEP 1: Search Domain */}
-        {step === 1 && (
-          <div className="space-y-6">
-            <form onSubmit={handleManualSearch} className="space-y-4">
-              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider font-mono">
-                Enter your desired domain name
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="e.g. acmebrand"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value.toLowerCase().replace(/[^a-z0-9-.]/g, ''))}
-                  className="flex-1 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 font-mono text-sm text-white focus:border-cyan-500 focus:outline-none"
-                />
-                <select
-                  value={selectedTld}
-                  onChange={(e) => setSelectedTld(e.target.value)}
-                  className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 font-mono text-sm text-cyan-300 focus:border-cyan-500 focus:outline-none"
-                >
-                  <option value=".co.zw">.co.zw ($2/yr)</option>
-                  <option value=".org.zw">.org.zw ($3/yr)</option>
-                  <option value=".ac.zw">.ac.zw ($3/yr)</option>
-                </select>
-                <button
-                  type="submit"
-                  disabled={isChecking || !searchTerm.trim()}
-                  className="rounded-xl bg-cyan-500 px-6 py-3 text-sm font-bold text-black hover:bg-cyan-400 transition disabled:opacity-50"
-                >
-                  {isChecking ? 'Checking...' : 'Check'}
-                </button>
-              </div>
-            </form>
+    return (
+      <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 p-4 backdrop-blur-sm">
 
-            {availabilityResult && (
-              <div className={`p-4 rounded-xl border ${availabilityResult.isAvailable ? 'border-emerald-500/30 bg-emerald-950/20' : 'border-rose-500/30 bg-rose-950/20'}`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    {availabilityResult.isAvailable ? (
-                      <CheckCircle2 className="h-5 w-5 text-emerald-400" />
-                    ) : (
-                      <AlertCircle className="h-5 w-5 text-rose-400" />
-                    )}
-                    <div>
-                      <span className="font-mono font-bold text-white text-base">
-                        {availabilityResult.domain}
-                      </span>
-                      <span className={`ml-2 text-xs font-semibold px-2 py-0.5 rounded ${availabilityResult.isAvailable ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
-                        {availabilityResult.isAvailable ? 'Available for $2.00/yr' : 'Unavailable'}
-                      </span>
-                    </div>
-                  </div>
+        <div className="flex min-h-full items-center justify-center">
 
-                  {availabilityResult.isAvailable && (
-                    <button
-                      onClick={() => setStep(2)}
-                      className="inline-flex items-center space-x-1.5 rounded-lg bg-cyan-400 px-4 py-2 text-xs font-bold text-black hover:bg-cyan-300"
-                    >
-                      <span>Continue</span>
-                      <ArrowRight className="h-3.5 w-3.5" />
-                    </button>
+          <div className="my-6 w-full max-w-2xl overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl">
+
+            {/* HEADER */}
+            <div className="flex items-start justify-between border-b border-zinc-200 px-5 py-5 sm:px-7">
+
+              <div className="flex min-w-0 items-start gap-3">
+
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#3120ff]/10 text-[#3120ff]">
+                  <Globe2 className="h-5 w-5" />
+                </div>
+
+                <div className="min-w-0">
+                  <h2 className="text-lg font-bold tracking-tight text-zinc-950">
+                    {step === 1 &&
+                      'Register a domain'}
+
+                    {step === 2 &&
+                      'Owner details'}
+
+                    {step === 3 &&
+                      'Nameservers'}
+
+                    {step === 4 &&
+                      'Review your order'}
+                  </h2>
+
+                  {selectedDomain ? (
+                    <p className="mt-1 truncate font-mono text-xs text-zinc-500">
+                      {
+                        selectedDomain
+                      }
+
+                      {domainPrice >
+                        0 &&
+                        ` · ${formattedPrice}/year`}
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-xs text-zinc-500">
+                      Search and register your next domain.
+                    </p>
                   )}
                 </div>
               </div>
+
+              <button
+                type="button"
+                onClick={
+                  closeModal
+                }
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-950"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* PROGRESS */}
+            {selectedDomain && (
+              <div className="border-b border-zinc-200 px-5 py-4 sm:px-7">
+
+                <div
+                  className={`grid gap-2 text-center text-[11px] font-semibold ${
+                    requiresOwnerDetails
+                      ? 'grid-cols-4'
+                      : 'grid-cols-3'
+                  }`}
+                >
+                  <div className="rounded-lg bg-[#3120ff]/10 px-2 py-2 text-[#3120ff]">
+                    Domain ✓
+                  </div>
+
+                  {requiresOwnerDetails && (
+                    <div
+                      className={`rounded-lg px-2 py-2 ${
+                        step >= 2
+                          ? 'bg-[#3120ff]/10 text-[#3120ff]'
+                          : 'bg-zinc-100 text-zinc-400'
+                      }`}
+                    >
+                      Owner
+                    </div>
+                  )}
+
+                  <div
+                    className={`rounded-lg px-2 py-2 ${
+                      step >= 3
+                        ? 'bg-[#3120ff]/10 text-[#3120ff]'
+                        : 'bg-zinc-100 text-zinc-400'
+                    }`}
+                  >
+                    Nameservers
+                  </div>
+
+                  <div
+                    className={`rounded-lg px-2 py-2 ${
+                      step >= 4
+                        ? 'bg-[#3120ff]/10 text-[#3120ff]'
+                        : 'bg-zinc-100 text-zinc-400'
+                    }`}
+                  >
+                    Payment
+                  </div>
+                </div>
+              </div>
             )}
-          </div>
-        )}
 
-        {/* STEP 2: Registrant Details */}
-        {step === 2 && (
-          <div className="space-y-5">
-            <div className="rounded-xl border border-cyan-500/30 bg-cyan-950/20 p-3 text-xs text-cyan-200 font-mono">
-              Registering: <strong className="text-white text-sm">{availabilityResult?.domain || searchTerm}</strong> at $2.00 USD/year
-            </div>
+            <div className="px-5 py-6 sm:px-7">
 
-            {/* Registrant Type Selection */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2 font-mono">
-                Who are you registering this domain for?
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setRegistrantType('myself')}
-                  className={`flex items-center space-x-3 p-3.5 rounded-xl border text-left transition ${
-                    registrantType === 'myself'
-                      ? 'border-cyan-500 bg-cyan-500/10 text-white'
-                      : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700'
-                  }`}
-                >
-                  <User className="h-5 w-5 text-cyan-400 shrink-0" />
-                  <div>
-                    <div className="text-sm font-semibold">Myself / My Organisation</div>
-                    <div className="text-[11px] text-slate-400">Use my account owner details</div>
-                  </div>
-                </button>
+              {/* STEP 1 */}
+              {step === 1 && (
+                <div className="space-y-5">
 
-                <button
-                  type="button"
-                  onClick={() => setRegistrantType('client')}
-                  className={`flex items-center space-x-3 p-3.5 rounded-xl border text-left transition ${
-                    registrantType === 'client'
-                      ? 'border-cyan-500 bg-cyan-500/10 text-white'
-                      : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700'
-                  }`}
-                >
-                  <Building2 className="h-5 w-5 text-cyan-400 shrink-0" />
-                  <div>
-                    <div className="text-sm font-semibold">My Client</div>
-                    <div className="text-[11px] text-slate-400">Enter custom third-party owner details</div>
-                  </div>
-                </button>
-              </div>
-            </div>
+                  <form
+                    onSubmit={
+                      handleSearch
+                    }
+                  >
+                    <label className="mb-2 block text-sm font-semibold text-zinc-950">
+                      Search for a domain
+                    </label>
 
-            {/* Registrant Form */}
-            <div className="space-y-3 pt-2 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-300 mb-1 font-medium">Owner Full Name *</label>
-                  <input
-                    type="text"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="e.g. Tendai Chikwanha"
-                    className="w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-white focus:border-cyan-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-300 mb-1 font-medium">Organisation Name</label>
-                  <input
-                    type="text"
-                    value={orgName}
-                    onChange={(e) => setOrgName(e.target.value)}
-                    placeholder="e.g. Chikwanha Holdings (Pvt) Ltd"
-                    className="w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-white focus:border-cyan-500 focus:outline-none"
-                  />
-                </div>
-              </div>
+                    <div className="flex items-center rounded-xl border border-zinc-200 bg-white p-2 shadow-sm">
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-300 mb-1 font-medium">Owner Physical Address *</label>
-                  <input
-                    type="text"
-                    value={physicalAddress}
-                    onChange={(e) => setPhysicalAddress(e.target.value)}
-                    placeholder="e.g. 100 Samora Machel Avenue"
-                    className="w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-white focus:border-cyan-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-300 mb-1 font-medium">Postal Address</label>
-                  <input
-                    type="text"
-                    value={postalAddress}
-                    onChange={(e) => setPostalAddress(e.target.value)}
-                    placeholder="e.g. P.O. Box 2441"
-                    className="w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-white focus:border-cyan-500 focus:outline-none"
-                  />
-                </div>
-              </div>
+                      <Search className="ml-2 h-5 w-5 shrink-0 text-zinc-400" />
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-300 mb-1 font-medium">Town / City *</label>
-                  <input
-                    type="text"
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-white focus:border-cyan-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-300 mb-1 font-medium">Country *</label>
-                  <input
-                    type="text"
-                    value={country}
-                    onChange={(e) => setCountry(e.target.value)}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-white focus:border-cyan-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-300 mb-1 font-medium">Owner Phone *</label>
-                  <input
-                    type="text"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+263 77 123 4567"
-                    className="w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-white focus:border-cyan-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-300 mb-1 font-medium">Owner Email *</label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="admin@example.co.zw"
-                    className="w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-white focus:border-cyan-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-slate-300 mb-1 font-medium">Organisation Description *</label>
-                <input
-                  type="text"
-                  value={orgDescription}
-                  onChange={(e) => setOrgDescription(e.target.value)}
-                  placeholder="e.g. Retail e-commerce and financial tech solutions"
-                  className="w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-white focus:border-cyan-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-300 mb-1 font-medium">Proposed Domain Usage *</label>
-                <input
-                  type="text"
-                  value={proposedUsage}
-                  onChange={(e) => setProposedUsage(e.target.value)}
-                  placeholder="e.g. Corporate portal, API endpoints, and transactional emails."
-                  className="w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-white focus:border-cyan-500 focus:outline-none"
-                />
-              </div>
-            </div>
-
-            {/* Navigation buttons */}
-            <div className="flex justify-between items-center pt-4 border-t border-slate-800">
-              <button
-                type="button"
-                onClick={() => setStep(1)}
-                className="inline-flex items-center space-x-1.5 text-xs text-slate-400 hover:text-white"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                <span>Back to Search</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleStep2Next}
-                className="inline-flex items-center space-x-1.5 rounded-lg bg-cyan-400 px-5 py-2 text-xs font-bold text-black hover:bg-cyan-300"
-              >
-                <span>Continue to Nameservers</span>
-                <ArrowRight className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* STEP 3: Nameservers */}
-        {step === 3 && (
-          <div className="space-y-6">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-3 font-mono">
-                Nameserver Configuration
-              </label>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                <button
-                  type="button"
-                  onClick={() => setNsMode('default')}
-                  className={`p-4 rounded-xl border text-left transition ${
-                    nsMode === 'default'
-                      ? 'border-cyan-500 bg-cyan-500/10 text-white'
-                      : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700'
-                  }`}
-                >
-                  <div className="font-semibold text-sm mb-1 text-cyan-300">Use Runtime Default Nameservers</div>
-                  <div className="text-[11px] text-slate-400 leading-relaxed">
-                    Recommended. Automatically binds to Runtime high-availability DNS cluster with instant delegation.
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setNsMode('custom')}
-                  className={`p-4 rounded-xl border text-left transition ${
-                    nsMode === 'custom'
-                      ? 'border-cyan-500 bg-cyan-500/10 text-white'
-                      : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700'
-                  }`}
-                >
-                  <div className="font-semibold text-sm mb-1">Use Custom Nameservers</div>
-                  <div className="text-[11px] text-slate-400 leading-relaxed">
-                    Specify your own external DNS providers (e.g. Cloudflare, AWS Route 53, or private DNS).
-                  </div>
-                </button>
-              </div>
-
-              {nsMode === 'default' ? (
-                <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 font-mono text-xs text-slate-300 space-y-2">
-                  <div className="text-slate-400 font-semibold mb-2">Default Delegation:</div>
-                  {settings.default_nameservers.map((ns, idx) => (
-                    <div key={idx} className="flex items-center space-x-2">
-                      <span className="text-cyan-400">ns{idx + 1}:</span>
-                      <span className="text-white">{ns}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="text-xs text-slate-400">
-                    Enter between 2 and 4 authoritative nameservers for your domain:
-                  </div>
-
-                  {customNs.map((ns, index) => (
-                    <div key={index}>
-                      <label className="block text-[11px] font-mono text-slate-400 mb-1">
-                        Nameserver {index + 1} {index < 2 ? '*' : '(Optional)'}
-                      </label>
                       <input
-                        type="text"
-                        placeholder={`ns${index + 1}.example.com`}
-                        value={ns}
-                        onChange={(e) => {
-                          const copy = [...customNs];
-                          copy[index] = e.target.value;
-                          setCustomNs(copy);
-                        }}
-                        className="w-full rounded-lg border border-slate-700 bg-slate-900 p-2 font-mono text-xs text-white focus:border-cyan-500 focus:outline-none"
+                        value={
+                          searchTerm
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          setSearchTerm(
+                            event.target.value
+                              .toLowerCase()
+                              .replace(
+                                /\s/g,
+                                ''
+                              )
+                          )
+                        }
+                        placeholder="yourdomain or yourdomain.com"
+                        autoComplete="off"
+                        spellCheck={
+                          false
+                        }
+                        className="min-w-0 flex-1 bg-transparent px-3 py-3 text-sm text-zinc-950 outline-none placeholder:text-zinc-400"
                       />
-                    </div>
-                  ))}
 
-                  {nsError && (
-                    <div className="p-2.5 rounded-lg bg-rose-950/30 border border-rose-500/30 text-rose-300 text-xs">
-                      {nsError}
+                      <button
+                        type="submit"
+                        disabled={
+                          isChecking ||
+                          !searchTerm.trim()
+                        }
+                        className="flex h-11 items-center gap-2 rounded-lg bg-[#3120ff] px-4 text-sm font-semibold text-white transition hover:bg-[#2819d9] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {isChecking ? (
+                          <>
+                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+
+                            <span className="hidden sm:inline">
+                              Checking
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <Search className="h-4 w-4" />
+
+                            <span className="hidden sm:inline">
+                              Search
+                            </span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </form>
+
+                  {searchError && (
+                    <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+
+                      <span>
+                        {
+                          searchError
+                        }
+                      </span>
+                    </div>
+                  )}
+
+                  {searchResults.length >
+                    0 && (
+                    <div className="overflow-hidden rounded-xl border border-zinc-200">
+
+                      {searchResults.map(
+                        (
+                          result,
+                          index
+                        ) => (
+                          <div
+                            key={
+                              result.domain
+                            }
+                            className={`flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between ${
+                              index !==
+                              searchResults.length -
+                                1
+                                ? 'border-b border-zinc-200'
+                                : ''
+                            }`}
+                          >
+                            <div className="flex min-w-0 items-center gap-3">
+
+                              {result.checkingFailed ? (
+                                <AlertCircle className="h-5 w-5 shrink-0 text-amber-500" />
+                              ) : result.isAvailable ? (
+                                <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
+                              ) : (
+                                <AlertCircle className="h-5 w-5 shrink-0 text-zinc-400" />
+                              )}
+
+                              <div className="min-w-0">
+                                <p className="truncate font-mono text-sm font-semibold text-zinc-950">
+                                  {
+                                    result.domain
+                                  }
+                                </p>
+
+                                <p className="mt-0.5 text-xs text-zinc-500">
+                                  {result.checkingFailed
+                                    ? result.reason ||
+                                      'Unable to check'
+                                    : result.isAvailable
+                                      ? `${getFixedPrice(
+                                          result.domain
+                                        ) !==
+                                        undefined
+                                          ? `$${getFixedPrice(
+                                              result.domain
+                                            )!.toFixed(
+                                              2
+                                            )}`
+                                          : result.price !==
+                                              undefined
+                                            ? `$${result.price.toFixed(
+                                                2
+                                              )}`
+                                            : 'Available'} / year`
+                                      : 'Already registered'}
+                                </p>
+                              </div>
+                            </div>
+
+                            {result.isAvailable &&
+                              !result.checkingFailed && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    selectDomain(
+                                      result
+                                    )
+                                  }
+                                  className="rounded-lg bg-[#3120ff] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#2819d9]"
+                                >
+                                  Register
+                                </button>
+                              )}
+                          </div>
+                        )
+                      )}
                     </div>
                   )}
                 </div>
               )}
-            </div>
 
-            <div className="flex justify-between items-center pt-4 border-t border-slate-800">
-              <button
-                type="button"
-                onClick={() => setStep(2)}
-                className="inline-flex items-center space-x-1.5 text-xs text-slate-400 hover:text-white"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                <span>Back to Owner Info</span>
-              </button>
+              {/* STEP 2 */}
+              {step === 2 &&
+                requiresOwnerDetails && (
+                  <div className="space-y-5">
 
-              <button
-                type="button"
-                onClick={handleStep3Next}
-                className="inline-flex items-center space-x-1.5 rounded-lg bg-cyan-400 px-5 py-2 text-xs font-bold text-black hover:bg-cyan-300"
-              >
-                <span>Continue to Checkout</span>
-                <ArrowRight className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
-        )}
+                    <div className="rounded-xl border border-[#3120ff]/20 bg-[#3120ff]/5 p-3">
+                      <p className="text-xs text-zinc-600">
+                        Registrant information is required for this Zimbabwean domain extension.
+                      </p>
 
-        {/* STEP 4: Review & Payment */}
-        {step === 4 && (
-          <div className="space-y-6">
-            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-3 font-mono text-xs">
-              <div className="flex justify-between border-b border-slate-800 pb-2">
-                <span className="text-slate-400">Target Domain:</span>
-                <span className="text-white font-bold">{availabilityResult?.domain}</span>
-              </div>
-              <div className="flex justify-between border-b border-slate-800 pb-2">
-                <span className="text-slate-400">Registration Period:</span>
-                <span className="text-white">1 Year (domain service ccTLD)</span>
-              </div>
-              <div className="flex justify-between border-b border-slate-800 pb-2">
-                <span className="text-slate-400">Registrant Owner:</span>
-                <span className="text-white">{fullName} ({orgName || 'Personal'})</span>
-              </div>
-              <div className="flex justify-between border-b border-slate-800 pb-2">
-                <span className="text-slate-400">Assigned Nameservers:</span>
-                <span className="text-cyan-300">{nsMode === 'default' ? 'Runtime Default Nameservers' : 'Custom Nameservers'}</span>
-              </div>
-              <div className="flex justify-between pt-1 text-sm font-bold">
-                <span className="text-slate-200">Total Due Today:</span>
-                <span className="text-cyan-400">$2.00 USD</span>
-              </div>
-            </div>
+                      <p className="mt-1 font-mono text-sm font-semibold text-zinc-950">
+                        {
+                          selectedDomain
+                        }{' '}
+                        ·{' '}
+                        {
+                          formattedPrice
+                        }
+                        /year
+                      </p>
+                    </div>
 
-            {/* Payment Method Selector */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2 font-mono">
-                Select Zimbabwean or International Gateway
-              </label>
-              <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                <button
-                  type="button"
-                  onClick={() => setGateway('paynow')}
-                  className={`p-3 rounded-lg border text-left transition ${
-                    gateway === 'paynow'
-                      ? 'border-cyan-500 bg-cyan-500/10 text-cyan-300 font-bold'
-                      : 'border-slate-800 bg-slate-900 text-slate-400'
-                  }`}
-                >
-                  Paynow Zimbabwe (EcoCash, OneMoney, Visa/Mastercard)
-                </button>
+                    <div>
+                      <p className="mb-2 text-sm font-semibold text-zinc-950">
+                        Who are you registering for?
+                      </p>
 
-                <button
-                  type="button"
-                  onClick={() => setGateway('ecocash')}
-                  className={`p-3 rounded-lg border text-left transition ${
-                    gateway === 'ecocash'
-                      ? 'border-cyan-500 bg-cyan-500/10 text-cyan-300 font-bold'
-                      : 'border-slate-800 bg-slate-900 text-slate-400'
-                  }`}
-                >
-                  EcoCash Direct Mobile PIN Prompt
-                </button>
+                      <div className="grid gap-3 sm:grid-cols-2">
 
-                <button
-                  type="button"
-                  onClick={() => setGateway('innbucks')}
-                  className={`p-3 rounded-lg border text-left transition ${
-                    gateway === 'innbucks'
-                      ? 'border-cyan-500 bg-cyan-500/10 text-cyan-300 font-bold'
-                      : 'border-slate-800 bg-slate-900 text-slate-400'
-                  }`}
-                >
-                  InnBucks USD QR Payment
-                </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setRegistrantType(
+                              'myself'
+                            )
+                          }
+                          className={`flex items-start gap-3 rounded-xl border p-4 text-left transition ${
+                            registrantType ===
+                            'myself'
+                              ? 'border-[#3120ff] bg-[#3120ff]/5'
+                              : 'border-zinc-200 hover:bg-zinc-50'
+                          }`}
+                        >
+                          <User className="mt-0.5 h-5 w-5 shrink-0 text-[#3120ff]" />
 
-                <button
-                  type="button"
-                  onClick={() => setGateway('stripe_card')}
-                  className={`p-3 rounded-lg border text-left transition ${
-                    gateway === 'stripe_card'
-                      ? 'border-cyan-500 bg-cyan-500/10 text-cyan-300 font-bold'
-                      : 'border-slate-800 bg-slate-900 text-slate-400'
-                  }`}
-                >
-                  International Card / Stripe
-                </button>
-              </div>
-            </div>
+                          <div>
+                            <p className="text-sm font-semibold text-zinc-950">
+                              Myself / Organisation
+                            </p>
 
-            {/* Registration Rule Notice */}
-            <div className="flex items-start space-x-2.5 rounded-lg bg-cyan-950/30 p-3 border border-cyan-500/20 text-xs text-cyan-200">
-              <ShieldCheck className="h-4 w-4 text-cyan-400 shrink-0 mt-0.5" />
-              <div className="leading-relaxed">
-                <strong>Registration status:</strong> Once payment is confirmed, your order is added to your account for processing.
-              </div>
-            </div>
+                            <p className="mt-1 text-xs text-zinc-500">
+                              Register using my details.
+                            </p>
+                          </div>
+                        </button>
 
-            <div className="flex justify-between items-center pt-4 border-t border-slate-800">
-              <button
-                type="button"
-                onClick={() => setStep(3)}
-                className="inline-flex items-center space-x-1.5 text-xs text-slate-400 hover:text-white"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                <span>Back</span>
-              </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRegistrantType(
+                              'client'
+                            );
 
-              <button
-                type="button"
-                onClick={handleCompleteOrder}
-                disabled={isProcessing}
-                className="inline-flex items-center space-x-2 rounded-xl bg-cyan-400 px-6 py-3 text-sm font-bold text-black hover:bg-cyan-300 transition active:scale-95 disabled:opacity-50"
-              >
-                {isProcessing ? (
-                  <>
-                    <div className="h-4 w-4 rounded-full border-2 border-black border-t-transparent animate-spin"></div>
-                    <span>Processing Payment &amp; domain service Queue...</span>
-                  </>
-                ) : (
-                  <>
-                    <Lock className="h-4 w-4" />
-                    <span>Pay $2.00 &amp; Submit Registration</span>
-                  </>
+                            setFullName(
+                              ''
+                            );
+
+                            setOrgName(
+                              ''
+                            );
+
+                            setPhysicalAddress(
+                              ''
+                            );
+
+                            setPostalAddress(
+                              ''
+                            );
+
+                            setCity(
+                              ''
+                            );
+
+                            setPhone(
+                              ''
+                            );
+
+                            setEmail(
+                              ''
+                            );
+
+                            setOrgDescription(
+                              ''
+                            );
+
+                            setProposedUsage(
+                              ''
+                            );
+                          }}
+                          className={`flex items-start gap-3 rounded-xl border p-4 text-left transition ${
+                            registrantType ===
+                            'client'
+                              ? 'border-[#3120ff] bg-[#3120ff]/5'
+                              : 'border-zinc-200 hover:bg-zinc-50'
+                          }`}
+                        >
+                          <Building2 className="mt-0.5 h-5 w-5 shrink-0 text-[#3120ff]" />
+
+                          <div>
+                            <p className="text-sm font-semibold text-zinc-950">
+                              My Client
+                            </p>
+
+                            <p className="mt-1 text-xs text-zinc-500">
+                              Enter the actual owner's details.
+                            </p>
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+
+                      <div>
+                        <label className="mb-1.5 block text-xs font-medium text-zinc-700">
+                          Owner Full Name *
+                        </label>
+
+                        <input
+                          value={
+                            fullName
+                          }
+                          onChange={(
+                            event
+                          ) =>
+                            setFullName(
+                              event.target.value
+                            )
+                          }
+                          className="w-full rounded-lg border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-[#3120ff]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1.5 block text-xs font-medium text-zinc-700">
+                          Organisation Name
+                        </label>
+
+                        <input
+                          value={
+                            orgName
+                          }
+                          onChange={(
+                            event
+                          ) =>
+                            setOrgName(
+                              event.target.value
+                            )
+                          }
+                          className="w-full rounded-lg border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-[#3120ff]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1.5 block text-xs font-medium text-zinc-700">
+                          Physical Address *
+                        </label>
+
+                        <input
+                          value={
+                            physicalAddress
+                          }
+                          onChange={(
+                            event
+                          ) =>
+                            setPhysicalAddress(
+                              event.target.value
+                            )
+                          }
+                          className="w-full rounded-lg border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-[#3120ff]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1.5 block text-xs font-medium text-zinc-700">
+                          Postal Address
+                        </label>
+
+                        <input
+                          value={
+                            postalAddress
+                          }
+                          onChange={(
+                            event
+                          ) =>
+                            setPostalAddress(
+                              event.target.value
+                            )
+                          }
+                          className="w-full rounded-lg border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-[#3120ff]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1.5 block text-xs font-medium text-zinc-700">
+                          Town / City *
+                        </label>
+
+                        <input
+                          value={
+                            city
+                          }
+                          onChange={(
+                            event
+                          ) =>
+                            setCity(
+                              event.target.value
+                            )
+                          }
+                          className="w-full rounded-lg border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-[#3120ff]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1.5 block text-xs font-medium text-zinc-700">
+                          Country *
+                        </label>
+
+                        <input
+                          value={
+                            country
+                          }
+                          onChange={(
+                            event
+                          ) =>
+                            setCountry(
+                              event.target.value
+                            )
+                          }
+                          className="w-full rounded-lg border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-[#3120ff]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1.5 block text-xs font-medium text-zinc-700">
+                          Phone *
+                        </label>
+
+                        <input
+                          value={
+                            phone
+                          }
+                          onChange={(
+                            event
+                          ) =>
+                            setPhone(
+                              event.target.value
+                            )
+                          }
+                          className="w-full rounded-lg border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-[#3120ff]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1.5 block text-xs font-medium text-zinc-700">
+                          Email *
+                        </label>
+
+                        <input
+                          type="email"
+                          value={
+                            email
+                          }
+                          onChange={(
+                            event
+                          ) =>
+                            setEmail(
+                              event.target.value
+                            )
+                          }
+                          className="w-full rounded-lg border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-[#3120ff]"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-zinc-700">
+                        Organisation / Activity Description *
+                      </label>
+
+                      <input
+                        value={
+                          orgDescription
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          setOrgDescription(
+                            event.target.value
+                          )
+                        }
+                        placeholder="Briefly describe the organisation or activity"
+                        className="w-full rounded-lg border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-[#3120ff]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-zinc-700">
+                        Proposed Domain Usage *
+                      </label>
+
+                      <input
+                        value={
+                          proposedUsage
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          setProposedUsage(
+                            event.target.value
+                          )
+                        }
+                        placeholder="Website, email, online services..."
+                        className="w-full rounded-lg border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-[#3120ff]"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between border-t border-zinc-200 pt-5">
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (
+                            pendingRegisterDomain
+                          ) {
+                            closeModal();
+                          } else {
+                            setStep(
+                              1
+                            );
+                          }
+                        }}
+                        className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-500 hover:text-zinc-950"
+                      >
+                        <ArrowLeft className="h-4 w-4" />
+
+                        <span>
+                          Back
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={
+                          handleOwnerNext
+                        }
+                        className="inline-flex items-center gap-2 rounded-lg bg-[#3120ff] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#2819d9]"
+                      >
+                        Continue
+
+                        <ArrowRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
                 )}
-              </button>
+
+              {/* STEP 3 */}
+              {step === 3 && (
+                <div className="space-y-6">
+
+                  <div>
+                    <h3 className="text-sm font-semibold text-zinc-950">
+                      Nameserver configuration
+                    </h3>
+
+                    <p className="mt-1 text-xs text-zinc-500">
+                      Choose where DNS for your domain will be managed.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setNsMode(
+                          'default'
+                        )
+                      }
+                      className={`rounded-xl border p-4 text-left transition ${
+                        nsMode ===
+                        'default'
+                          ? 'border-[#3120ff] bg-[#3120ff]/5'
+                          : 'border-zinc-200 hover:bg-zinc-50'
+                      }`}
+                    >
+                      <Server className="h-5 w-5 text-[#3120ff]" />
+
+                      <p className="mt-3 text-sm font-semibold text-zinc-950">
+                        Default Nameservers
+                      </p>
+
+                      <p className="mt-1 text-xs leading-5 text-zinc-500">
+                        Use Runtime's default DNS configuration.
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setNsMode(
+                          'custom'
+                        )
+                      }
+                      className={`rounded-xl border p-4 text-left transition ${
+                        nsMode ===
+                        'custom'
+                          ? 'border-[#3120ff] bg-[#3120ff]/5'
+                          : 'border-zinc-200 hover:bg-zinc-50'
+                      }`}
+                    >
+                      <Globe2 className="h-5 w-5 text-[#3120ff]" />
+
+                      <p className="mt-3 text-sm font-semibold text-zinc-950">
+                        Custom Nameservers
+                      </p>
+
+                      <p className="mt-1 text-xs leading-5 text-zinc-500">
+                        Use Cloudflare, another host, or your own DNS.
+                      </p>
+                    </button>
+                  </div>
+
+                  {nsMode ===
+                  'default' ? (
+                    <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+
+                      <p className="mb-3 text-xs font-semibold text-zinc-500">
+                        Default Nameservers
+                      </p>
+
+                      <div className="space-y-2">
+                        {settings.default_nameservers.map(
+                          (
+                            nameserver,
+                            index
+                          ) => (
+                            <div
+                              key={
+                                nameserver
+                              }
+                              className="font-mono text-sm text-zinc-800"
+                            >
+                              ns
+                              {
+                                index +
+                                  1
+                              }
+                              :{' '}
+                              {
+                                nameserver
+                              }
+                            </div>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+
+                      {customNs.map(
+                        (
+                          value,
+                          index
+                        ) => (
+                          <div
+                            key={
+                              index
+                            }
+                          >
+                            <label className="mb-1.5 block text-xs font-medium text-zinc-600">
+                              Nameserver{' '}
+                              {index +
+                                1}{' '}
+                              {index <
+                              2
+                                ? '*'
+                                : '(optional)'}
+                            </label>
+
+                            <input
+                              value={
+                                value
+                              }
+                              onChange={(
+                                event
+                              ) => {
+                                const copy =
+                                  [
+                                    ...customNs,
+                                  ];
+
+                                copy[
+                                  index
+                                ] =
+                                  event.target.value
+                                    .trim()
+                                    .toLowerCase();
+
+                                setCustomNs(
+                                  copy
+                                );
+                              }}
+                              placeholder={`ns${index + 1}.example.com`}
+                              className="w-full rounded-lg border border-zinc-200 px-3 py-2.5 font-mono text-sm outline-none focus:border-[#3120ff]"
+                            />
+                          </div>
+                        )
+                      )}
+
+                      {nsError && (
+                        <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+                          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+
+                          {
+                            nsError
+                          }
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between border-t border-zinc-200 pt-5">
+
+                    <button
+                      type="button"
+                      onClick={
+                        handleBackFromNameservers
+                      }
+                      className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-500 hover:text-zinc-950"
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+
+                      Back
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={
+                        handleNameserverNext
+                      }
+                      className="inline-flex items-center gap-2 rounded-lg bg-[#3120ff] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#2819d9]"
+                    >
+                      Continue
+
+                      <ArrowRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 4 */}
+              {step === 4 && (
+                <div className="space-y-6">
+
+                  <div className="overflow-hidden rounded-xl border border-zinc-200">
+
+                    <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+                      <span className="text-sm text-zinc-500">
+                        Domain
+                      </span>
+
+                      <span className="font-mono text-sm font-semibold text-zinc-950">
+                        {
+                          selectedDomain
+                        }
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+                      <span className="text-sm text-zinc-500">
+                        Registration
+                      </span>
+
+                      <span className="text-sm font-medium text-zinc-950">
+                        1 Year
+                      </span>
+                    </div>
+
+                    {requiresOwnerDetails && (
+                      <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+                        <span className="text-sm text-zinc-500">
+                          Registrant
+                        </span>
+
+                        <span className="max-w-[60%] text-right text-sm font-medium text-zinc-950">
+                          {
+                            fullName
+                          }
+                          {orgName &&
+                            ` · ${orgName}`}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+                      <span className="text-sm text-zinc-500">
+                        Nameservers
+                      </span>
+
+                      <span className="text-sm font-medium text-zinc-950">
+                        {nsMode ===
+                        'default'
+                          ? 'Default'
+                          : 'Custom'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between bg-zinc-50 px-4 py-4">
+                      <span className="font-semibold text-zinc-950">
+                        Total
+                      </span>
+
+                      <span className="text-lg font-bold text-[#3120ff]">
+                        {
+                          formattedPrice
+                        }{' '}
+                        USD
+                      </span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="mb-3 flex items-center gap-2">
+                      <CreditCard className="h-4 w-4 text-[#3120ff]" />
+
+                      <h3 className="text-sm font-semibold text-zinc-950">
+                        Payment method
+                      </h3>
+                    </div>
+
+                    <div className="grid gap-2 sm:grid-cols-2">
+
+                      {[
+                        [
+                          'paynow',
+                          'Paynow',
+                          'EcoCash, OneMoney & Cards',
+                        ],
+                        [
+                          'ecocash',
+                          'EcoCash',
+                          'Mobile payment',
+                        ],
+                        [
+                          'innbucks',
+                          'InnBucks',
+                          'USD payment',
+                        ],
+                        [
+                          'stripe_card',
+                          'International Card',
+                          'Visa / Mastercard',
+                        ],
+                      ].map(
+                        ([
+                          value,
+                          title,
+                          description,
+                        ]) => (
+                          <button
+                            key={
+                              value
+                            }
+                            type="button"
+                            onClick={() =>
+                              setGateway(
+                                value as Gateway
+                              )
+                            }
+                            className={`rounded-xl border p-3 text-left transition ${
+                              gateway ===
+                              value
+                                ? 'border-[#3120ff] bg-[#3120ff]/5'
+                                : 'border-zinc-200 hover:bg-zinc-50'
+                            }`}
+                          >
+                            <p className="text-sm font-semibold text-zinc-950">
+                              {
+                                title
+                              }
+                            </p>
+
+                            <p className="mt-1 text-xs text-zinc-500">
+                              {
+                                description
+                              }
+                            </p>
+                          </button>
+                        )
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 rounded-xl border border-[#3120ff]/20 bg-[#3120ff]/5 p-4">
+
+                    <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[#3120ff]" />
+
+                    <p className="text-xs leading-5 text-zinc-600">
+                      After payment is confirmed, your domain order will be added to your account and processed.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between border-t border-zinc-200 pt-5">
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setStep(
+                          3
+                        )
+                      }
+                      className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-500 hover:text-zinc-950"
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+
+                      Back
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={
+                        handleCompleteOrder
+                      }
+                      disabled={
+                        isProcessing ||
+                        domainPrice <=
+                          0
+                      }
+                      className="inline-flex items-center gap-2 rounded-lg bg-[#3120ff] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#2819d9] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isProcessing ? (
+                        <>
+                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <Lock className="h-4 w-4" />
+
+                          Pay{' '}
+                          {
+                            formattedPrice
+                          }
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-        )}
-
+        </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
