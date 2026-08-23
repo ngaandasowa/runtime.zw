@@ -56,7 +56,7 @@ export const AdminPricing: React.FC = () => {
       </div>
 
       {/* Pricing Rule Info Box */}
-      <div className="rounded-2xl border border-red-200 bg-red-50/50 p-4 text-xs text-zinc-700 flex items-start space-x-3">
+      <div className="rounded-2xl border border-[#3120ff]/15 bg-[#3120ff]/5/50 p-4 text-xs text-zinc-700 flex items-start space-x-3">
         <ShieldCheck className="h-5 w-5 text-[#3120ff] shrink-0 mt-0.5" />
         <div className="space-y-1">
           <div className="font-bold text-zinc-950">Runtime Fixed $2.00 Rule Enforced:</div>

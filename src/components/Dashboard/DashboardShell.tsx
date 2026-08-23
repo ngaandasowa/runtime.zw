@@ -1,339 +1,574 @@
-import React from 'react';
-import { 
-  LayoutDashboard, 
-  Globe, 
-  Layers, 
-  Cpu, 
-  Database, 
-  Terminal, 
-  Key, 
-  Webhook, 
-  FileText, 
-  Receipt, 
-  User, 
-  Plus, 
+import React, {
+  useMemo,
+  useState,
+} from 'react';
+
+import {
+  ChevronRight,
+  FileText,
+  Globe2,
+  Key,
+  LayoutDashboard,
+  Layers,
   LogOut,
-  ChevronRight
+  Menu,
+  Plus,
+  Receipt,
+  User,
+  Webhook,
+  X,
 } from 'lucide-react';
-import { useStore } from '../../context/StoreContext';
-import { DashboardOverview } from './DashboardOverview';
-import { DashboardDomains } from './DashboardDomains';
-import { DashboardBilling } from './DashboardBilling';
-import { DashboardAccount } from './DashboardAccount';
-import { ComingSoonView } from './ComingSoonView';
 
-export const DashboardShell: React.FC = () => {
-  const { 
-    currentUser, 
-    dashboardSubView, 
-    setDashboardSubView, 
-    setRegistrationModalOpen,
-    setActiveView,
-    logout 
-  } = useStore();
+import {
+  useStore,
+} from '../../context/StoreContext';
 
-  return (
-    <div className="min-h-screen bg-[#FAFAFA] text-zinc-900 flex flex-col md:flex-row">
-      
-      {/* Sidebar */}
-      <aside className="w-full md:w-64 border-r border-zinc-200 bg-white p-4 flex flex-col justify-between shrink-0 shadow-2xs">
-        <div className="space-y-6">
-          
-          {/* User Brief */}
-          <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
-            <div className="flex items-center space-x-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-[#3120ff] font-bold border border-red-200">
-                {currentUser?.name.charAt(0)}
-              </div>
-              <div className="overflow-hidden">
-                <div className="text-xs font-bold text-zinc-950 truncate">{currentUser?.name}</div>
-                <div className="text-[10px] font-mono text-zinc-500 truncate">{currentUser?.email}</div>
-              </div>
-            </div>
-          </div>
+import {
+  DashboardOverview,
+} from './DashboardOverview';
 
-          {/* Nav Group: Overview */}
-          <div className="space-y-1">
-            <button
-              onClick={() => setDashboardSubView('overview')}
-              className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl text-xs font-bold transition ${
-                dashboardSubView === 'overview'
-                  ? 'bg-[#3120ff] text-white shadow-xs'
-                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-              }`}
-            >
-              <LayoutDashboard className="h-4 w-4" />
-              <span>Overview</span>
-            </button>
-          </div>
+import {
+  DashboardDomains,
+} from './DashboardDomains';
 
-          {/* Nav Group: Build (Coming Soon) */}
-          <div className="space-y-1">
-            <div className="px-3 text-[10px] font-bold uppercase tracking-wider text-zinc-400 flex items-center justify-between">
-              <span>Build</span>
-              <span className="text-[9px] bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded font-semibold">Soon</span>
-            </div>
-            
-            <button
-              onClick={() => setDashboardSubView('build_projects')}
-              className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
-                dashboardSubView === 'build_projects'
-                  ? 'bg-[#3120ff] text-white shadow-xs'
-                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-              }`}
-            >
-              <div className="flex items-center space-x-2">
-                <Layers className="h-3.5 w-3.5" />
-                <span>Projects</span>
-              </div>
-            </button>
+import {
+  DashboardBilling,
+} from './DashboardBilling';
 
-            <button
-              onClick={() => setDashboardSubView('build_deployments')}
-              className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
-                dashboardSubView === 'build_deployments'
-                  ? 'bg-[#3120ff] text-white shadow-xs'
-                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-              }`}
-            >
-              <div className="flex items-center space-x-2">
-                <Cpu className="h-3.5 w-3.5" />
-                <span>Deployments</span>
-              </div>
-            </button>
+import {
+  DashboardAccount,
+} from './DashboardAccount';
 
-            <button
-              onClick={() => setDashboardSubView('build_databases')}
-              className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
-                dashboardSubView === 'build_databases'
-                  ? 'bg-[#3120ff] text-white shadow-xs'
-                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-              }`}
-            >
-              <div className="flex items-center space-x-2">
-                <Database className="h-3.5 w-3.5" />
-                <span>Databases</span>
-              </div>
-            </button>
-          </div>
+import {
+  ComingSoonView,
+} from './ComingSoonView';
 
-          {/* Nav Group: Domains (Active Live Product) */}
-          <div className="space-y-1">
-            <div className="px-3 text-[10px] font-bold uppercase tracking-wider text-[#3120ff] flex items-center justify-between">
-              <span>Domains</span>
-              <span className="text-[9px] bg-red-50 text-[#3120ff] px-1.5 py-0.5 rounded font-bold border border-red-200">Active</span>
-            </div>
+type MainView =
+  | 'overview'
+  | 'domains'
+  | 'billing'
+  | 'account'
+  | 'build_projects'
+  | 'build_deployments'
+  | 'build_databases'
+  | 'develop_keys'
+  | 'develop_webhooks'
+  | 'develop_logs';
 
-            <button
-              onClick={() => setDashboardSubView('domains')}
-              className={`w-full flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
-                dashboardSubView === 'domains'
-                  ? 'bg-[#3120ff] text-white shadow-xs'
-                  : 'text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950'
-              }`}
-            >
-              <Globe className="h-3.5 w-3.5" />
-              <span>My Domains (.co.zw)</span>
-            </button>
-
-            <button
-              onClick={() => setRegistrationModalOpen(true)}
-              className="w-full flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-semibold text-zinc-700 hover:bg-red-50 hover:text-[#3120ff] transition"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span>Register Domain</span>
-            </button>
-          </div>
-
-          {/* Nav Group: Develop (Coming Soon) */}
-          <div className="space-y-1">
-            <div className="px-3 text-[10px] font-bold uppercase tracking-wider text-zinc-400 flex items-center justify-between">
-              <span>Develop</span>
-              <span className="text-[9px] bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded font-semibold">Soon</span>
-            </div>
-
-            <button
-              onClick={() => setDashboardSubView('develop_keys')}
-              className={`w-full flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
-                dashboardSubView === 'develop_keys'
-                  ? 'bg-[#3120ff] text-white shadow-xs'
-                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-              }`}
-            >
-              <Key className="h-3.5 w-3.5" />
-              <span>API Keys</span>
-            </button>
-
-            <button
-              onClick={() => setDashboardSubView('develop_webhooks')}
-              className={`w-full flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
-                dashboardSubView === 'develop_webhooks'
-                  ? 'bg-[#3120ff] text-white shadow-xs'
-                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-              }`}
-            >
-              <Webhook className="h-3.5 w-3.5" />
-              <span>Webhooks</span>
-            </button>
-
-            <button
-              onClick={() => setDashboardSubView('develop_logs')}
-              className={`w-full flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
-                dashboardSubView === 'develop_logs'
-                  ? 'bg-[#3120ff] text-white shadow-xs'
-                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-              }`}
-            >
-              <FileText className="h-3.5 w-3.5" />
-              <span>Logs</span>
-            </button>
-          </div>
-
-          {/* Nav Group: Billing */}
-          <div className="space-y-1">
-            <div className="px-3 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-              Billing
-            </div>
-
-            <button
-              onClick={() => setDashboardSubView('billing')}
-              className={`w-full flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
-                dashboardSubView === 'billing'
-                  ? 'bg-[#3120ff] text-white shadow-xs'
-                  : 'text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950'
-              }`}
-            >
-              <Receipt className="h-3.5 w-3.5" />
-              <span>Orders &amp; Receipts</span>
-            </button>
-          </div>
-
-          {/* Nav Group: Account */}
-          <div className="space-y-1">
-            <div className="px-3 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-              Account
-            </div>
-
-            <button
-              onClick={() => setDashboardSubView('account')}
-              className={`w-full flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
-                dashboardSubView === 'account'
-                  ? 'bg-[#3120ff] text-white shadow-xs'
-                  : 'text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950'
-              }`}
-            >
-              <User className="h-3.5 w-3.5" />
-              <span>Profile &amp; Security</span>
-            </button>
-          </div>
-
-        </div>
-
-        {/* Sidebar Footer */}
-        <div className="pt-4 border-t border-zinc-200">
-          <button
-            onClick={logout}
-            className="w-full flex items-center justify-center space-x-2 py-2 text-xs font-semibold text-zinc-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition"
-          >
-            <LogOut className="h-3.5 w-3.5" />
-            <span>Sign Out</span>
-          </button>
-        </div>
-      </aside>
-
-      {/* Main Content Area */}
-      <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-        {dashboardSubView === 'overview' && <DashboardOverview />}
-        {dashboardSubView === 'domains' && <DashboardDomains />}
-        {dashboardSubView === 'billing' && <DashboardBilling />}
-        {dashboardSubView === 'account' && <DashboardAccount />}
-        
-        {/* Placeholder Coming Soon Views */}
-        {dashboardSubView === 'build_projects' && (
-          <ComingSoonView
-            category="Build"
-            moduleName="Projects &amp; Workspaces"
-            description="Manage multi-tenant software projects, environments (production, staging, preview), and shared team resources."
-            architectureSpecs={[
-              'Unified environment variables & secret vaulting',
-              'Git repository webhooks (GitHub, GitLab, Self-hosted Git)',
-              'Domain routing bindings to specific build branches',
-              'Collaborator role-based permissions (Super Admin, Developer, Viewer)'
-            ]}
-          />
-        )}
-
-        {dashboardSubView === 'build_deployments' && (
-          <ComingSoonView
-            category="Build"
-            moduleName="Application Deployments"
-            description="Zero-config containerized deployments for Laravel, Node.js, Python, and Go microservices."
-            architectureSpecs={[
-              'Instant build pipeline execution via isolated container runners',
-              'Live terminal streaming for stdout/stderr build logs',
-              'Automated SSL wildcard certificate generation',
-              'Rolling zero-downtime traffic switches'
-            ]}
-          />
-        )}
-
-        {dashboardSubView === 'build_databases' && (
-          <ComingSoonView
-            category="Build"
-            moduleName="Managed Cloud Databases"
-            description="Dedicated and serverless PostgreSQL, Redis, and MySQL clusters with automated backup snapshots."
-            architectureSpecs={[
-              'Point-in-time recovery and snapshot replication',
-              'Sub-millisecond query caching layer',
-              'Private VPC connection pooling',
-              'Database metrics: active connections, I/O latency, storage allocation'
-            ]}
-          />
-        )}
-
-        {dashboardSubView === 'develop_keys' && (
-          <ComingSoonView
-            category="Develop"
-            moduleName="Developer API Keys"
-            description="Generate scoped tokens to interact with Runtime's REST APIs for domain registration and cloud automation."
-            architectureSpecs={[
-              'Granular permission scopes (domains:read, domains:write, dns:manage, compute:deploy)',
-              'IP whitelist restrictions for programmatic tokens',
-              'Token rotation & automated expiry policies',
-              'Real-time token request rate-limiting'
-            ]}
-          />
-        )}
-
-        {dashboardSubView === 'develop_webhooks' && (
-          <ComingSoonView
-            category="Develop"
-            moduleName="Event Webhooks"
-            description="Receive real-time HTTP callbacks when domains are delegated by domain service, DNS records update, or bills renew."
-            architectureSpecs={[
-              'HMAC-SHA256 request payload verification',
-              'Automatic exponential backoff retry policy',
-              'Webhook event log inspection and manual payload redelivery',
-              'Events: domain.registered, domain.confirmed, payment.verified, invoice.created'
-            ]}
-          />
-        )}
-
-        {dashboardSubView === 'develop_logs' && (
-          <ComingSoonView
-            category="Develop"
-            moduleName="Platform Telemetry &amp; Logs"
-            description="Unified queryable observability logs for all API requests, domain updates, and infrastructure events."
-            architectureSpecs={[
-              'Structured JSON log streaming',
-              'Filter by actor, domain, HTTP status, and response latency',
-              'Export audit logs for compliance & regulatory auditing',
-              'Integration with Grafana / Prometheus / OpenTelemetry'
-            ]}
-          />
-        )}
-      </main>
-
-    </div>
-  );
+type NavItem = {
+  id: MainView;
+  label: string;
+  icon: React.ComponentType<{
+    className?: string;
+  }>;
+  soon?: boolean;
 };
+
+export const DashboardShell:
+  React.FC = () => {
+    const {
+      currentUser,
+      dashboardSubView,
+      setDashboardSubView,
+      setRegistrationModalOpen,
+      logout,
+    } = useStore();
+
+    const [
+      mobileOpen,
+      setMobileOpen,
+    ] = useState(false);
+
+    const primaryNav: NavItem[] = [
+      {
+        id: 'overview',
+        label: 'Overview',
+        icon: LayoutDashboard,
+      },
+      {
+        id: 'domains',
+        label: 'My Domains',
+        icon: Globe2,
+      },
+      {
+        id: 'billing',
+        label: 'Orders & Payments',
+        icon: Receipt,
+      },
+      {
+        id: 'account',
+        label: 'Account',
+        icon: User,
+      },
+    ];
+
+    const futureNav: NavItem[] = [
+      {
+        id: 'build_projects',
+        label: 'Projects',
+        icon: Layers,
+        soon: true,
+      },
+      {
+        id: 'build_deployments',
+        label: 'Deployments',
+        icon: ChevronRight,
+        soon: true,
+      },
+      {
+        id: 'build_databases',
+        label: 'Databases',
+        icon: ChevronRight,
+        soon: true,
+      },
+      {
+        id: 'develop_keys',
+        label: 'API Keys',
+        icon: Key,
+        soon: true,
+      },
+      {
+        id: 'develop_webhooks',
+        label: 'Webhooks',
+        icon: Webhook,
+        soon: true,
+      },
+      {
+        id: 'develop_logs',
+        label: 'Logs',
+        icon: FileText,
+        soon: true,
+      },
+    ];
+
+    const allNav =
+      useMemo(
+        () => [
+          ...primaryNav,
+          ...futureNav,
+        ],
+        []
+      );
+
+    const currentLabel =
+      allNav.find(
+        (item) =>
+          item.id ===
+          dashboardSubView
+      )?.label || 'Overview';
+
+    const goTo = (
+      id: MainView
+    ) => {
+      setDashboardSubView(id);
+      setMobileOpen(false);
+
+      requestAnimationFrame(
+        () => {
+          window.scrollTo({
+            top: 0,
+            left: 0,
+            behavior: 'auto',
+          });
+        }
+      );
+    };
+
+    const openRegistration =
+      () => {
+        setMobileOpen(false);
+        setRegistrationModalOpen(
+          true
+        );
+      };
+
+    return (
+      <div className="min-h-screen bg-[#FAFAFA] text-zinc-900">
+
+        {/* MOBILE HEADER */}
+        <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-zinc-200 bg-white px-4 md:hidden">
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#3120ff]">
+              Runtime
+            </p>
+
+            <p className="truncate text-sm font-bold text-zinc-950">
+              {currentLabel}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={
+                openRegistration
+              }
+              aria-label="Register domain"
+              className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#3120ff] text-white"
+            >
+              <Plus className="h-5 w-5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setMobileOpen(true)
+              }
+              aria-label="Open dashboard menu"
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-700"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+          </div>
+        </header>
+
+        {/* MOBILE DRAWER */}
+        {mobileOpen && (
+          <div className="fixed inset-0 z-50 md:hidden">
+            <button
+              type="button"
+              aria-label="Close menu"
+              onClick={() =>
+                setMobileOpen(false)
+              }
+              className="absolute inset-0 bg-black/35 backdrop-blur-[1px]"
+            />
+
+            <aside className="absolute inset-y-0 left-0 flex w-[86%] max-w-xs flex-col border-r border-zinc-200 bg-white shadow-2xl">
+              <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-4">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-zinc-950">
+                    {currentUser?.name ||
+                      'Runtime Account'}
+                  </p>
+
+                  <p className="mt-0.5 truncate text-[11px] text-zinc-500">
+                    {currentUser?.email}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setMobileOpen(false)
+                  }
+                  aria-label="Close dashboard menu"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-3">
+                <button
+                  type="button"
+                  onClick={
+                    openRegistration
+                  }
+                  className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#3120ff] px-4 py-3 text-xs font-bold text-white"
+                >
+                  <Plus className="h-4 w-4" />
+                  Register Domain
+                </button>
+
+                <NavGroup
+                  title="Account"
+                  items={
+                    primaryNav
+                  }
+                  active={
+                    dashboardSubView
+                  }
+                  onSelect={
+                    goTo
+                  }
+                />
+
+                <div className="mt-5">
+                  <NavGroup
+                    title="Coming Soon"
+                    items={
+                      futureNav
+                    }
+                    active={
+                      dashboardSubView
+                    }
+                    onSelect={
+                      goTo
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="border-t border-zinc-200 p-3">
+                <button
+                  type="button"
+                  onClick={logout}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-xs font-semibold text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-950"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign Out
+                </button>
+              </div>
+            </aside>
+          </div>
+        )}
+
+        <div className="md:flex">
+
+          {/* DESKTOP SIDEBAR */}
+          <aside className="hidden w-64 shrink-0 border-r border-zinc-200 bg-white md:sticky md:top-0 md:flex md:h-screen md:flex-col">
+            <div className="border-b border-zinc-200 p-4">
+              <div className="flex items-center gap-3 rounded-xl bg-zinc-50 p-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#3120ff]/10 text-sm font-bold text-[#3120ff]">
+                  {currentUser?.name
+                    ?.charAt(0)
+                    .toUpperCase() ||
+                    'R'}
+                </div>
+
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-bold text-zinc-950">
+                    {currentUser?.name}
+                  </p>
+
+                  <p className="mt-0.5 truncate text-[10px] text-zinc-500">
+                    {currentUser?.email}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-3">
+              <button
+                type="button"
+                onClick={
+                  openRegistration
+                }
+                className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#3120ff] px-4 py-3 text-xs font-bold text-white transition hover:bg-[#2819d9]"
+              >
+                <Plus className="h-4 w-4" />
+                Register Domain
+              </button>
+
+              <NavGroup
+                title="Account"
+                items={
+                  primaryNav
+                }
+                active={
+                  dashboardSubView
+                }
+                onSelect={
+                  goTo
+                }
+              />
+
+              <div className="mt-5">
+                <NavGroup
+                  title="Coming Soon"
+                  items={
+                    futureNav
+                  }
+                  active={
+                    dashboardSubView
+                  }
+                  onSelect={
+                    goTo
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="border-t border-zinc-200 p-3">
+              <button
+                type="button"
+                onClick={logout}
+                className="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-xs font-semibold text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-950"
+              >
+                <LogOut className="h-4 w-4" />
+                Sign Out
+              </button>
+            </div>
+          </aside>
+
+          {/* CONTENT */}
+          <main className="min-w-0 flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
+            <div className="mx-auto w-full max-w-7xl">
+              {dashboardSubView ===
+                'overview' && (
+                <DashboardOverview />
+              )}
+
+              {dashboardSubView ===
+                'domains' && (
+                <DashboardDomains />
+              )}
+
+              {dashboardSubView ===
+                'billing' && (
+                <DashboardBilling />
+              )}
+
+              {dashboardSubView ===
+                'account' && (
+                <DashboardAccount />
+              )}
+
+              {dashboardSubView ===
+                'build_projects' && (
+                <ComingSoonView
+                  category="Build"
+                  moduleName="Projects & Workspaces"
+                  description="Project and deployment tools are coming to Runtime."
+                  architectureSpecs={[
+                    'Project workspaces',
+                    'Environment management',
+                    'Team access',
+                  ]}
+                />
+              )}
+
+              {dashboardSubView ===
+                'build_deployments' && (
+                <ComingSoonView
+                  category="Build"
+                  moduleName="Deployments"
+                  description="Application deployment tools are coming to Runtime."
+                  architectureSpecs={[
+                    'Application deployments',
+                    'Build logs',
+                    'SSL and routing',
+                  ]}
+                />
+              )}
+
+              {dashboardSubView ===
+                'build_databases' && (
+                <ComingSoonView
+                  category="Build"
+                  moduleName="Databases"
+                  description="Managed database services are coming to Runtime."
+                  architectureSpecs={[
+                    'Managed databases',
+                    'Backups',
+                    'Usage visibility',
+                  ]}
+                />
+              )}
+
+              {dashboardSubView ===
+                'develop_keys' && (
+                <ComingSoonView
+                  category="Develop"
+                  moduleName="API Keys"
+                  description="Developer API access is coming to Runtime."
+                  architectureSpecs={[
+                    'Scoped API keys',
+                    'Access controls',
+                    'Token management',
+                  ]}
+                />
+              )}
+
+              {dashboardSubView ===
+                'develop_webhooks' && (
+                <ComingSoonView
+                  category="Develop"
+                  moduleName="Webhooks"
+                  description="Event notifications and webhooks are coming to Runtime."
+                  architectureSpecs={[
+                    'Event notifications',
+                    'Delivery history',
+                    'Webhook management',
+                  ]}
+                />
+              )}
+
+              {dashboardSubView ===
+                'develop_logs' && (
+                <ComingSoonView
+                  category="Develop"
+                  moduleName="Logs"
+                  description="Platform logs and activity history are coming to Runtime."
+                  architectureSpecs={[
+                    'Activity logs',
+                    'Event filters',
+                    'Export options',
+                  ]}
+                />
+              )}
+            </div>
+          </main>
+        </div>
+      </div>
+    );
+  };
+
+const NavGroup: React.FC<{
+  title: string;
+  items: NavItem[];
+  active: string;
+  onSelect: (
+    id: MainView
+  ) => void;
+}> = ({
+  title,
+  items,
+  active,
+  onSelect,
+}) => (
+  <div>
+    <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-400">
+      {title}
+    </p>
+
+    <div className="space-y-1">
+      {items.map(
+        (item) => {
+          const Icon =
+            item.icon;
+
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() =>
+                onSelect(
+                  item.id
+                )
+              }
+              className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left text-xs font-semibold transition ${
+                active ===
+                item.id
+                  ? 'bg-[#3120ff] text-white'
+                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950'
+              }`}
+            >
+              <span className="flex min-w-0 items-center gap-2.5">
+                <Icon className="h-4 w-4 shrink-0" />
+
+                <span className="truncate">
+                  {item.label}
+                </span>
+              </span>
+
+              {item.soon && (
+                <span
+                  className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${
+                    active ===
+                    item.id
+                      ? 'bg-white/20 text-white'
+                      : 'bg-zinc-100 text-zinc-500'
+                  }`}
+                >
+                  Soon
+                </span>
+              )}
+            </button>
+          );
+        }
+      )}
+    </div>
+  </div>
+);

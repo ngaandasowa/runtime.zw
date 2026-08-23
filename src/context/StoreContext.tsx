@@ -27,6 +27,14 @@ import {
   domainService,
 } from '../services/DomainService';
 
+import {
+  orderRepository,
+} from '../services/OrderRepository';
+
+import {
+  paymentRepository,
+} from '../services/PaymentRepository';
+
 interface StoreContextType {
   currentUser: User | null;
   authReady: boolean;
@@ -78,12 +86,26 @@ interface StoreContextType {
     ownerDetails: RegistrantDetails, 
     nameservers: string[],
     paymentGateway?: any
-  ) => Promise<{ success: boolean; domain: Domain; order: Order }>;
+  ) => Promise<{
+    success: boolean;
+    domain: Domain;
+    order: Order;
+    payment: Payment;
+  }>;
   updateDomainNameservers: (domainId: string, nameservers: string[]) => void;
   requestDomainModify: (domainId: string, updatedOwner: RegistrantDetails, nameservers: string[]) => void;
   requestDomainDelete: (domainId: string, confirmationText: string) => boolean;
   requestDomainTransfer: (domainName: string, authCode: string) => Promise<void>;
   updateDomainStatus: (domainId: string, status: DomainStatus) => void;
+  renewDomain: (domainId: string, years: number, paymentGateway?: any) => Promise<void>;
+
+  // Admin payment actions
+  approveManualPayment: (paymentId: string) => Promise<void>;
+  rejectManualPayment: (
+    paymentId: string,
+    reason?: string
+  ) => Promise<void>;
+
   // Admin Registry actions
   submitRegistryRequest: (requestId: string) => Promise<void>;
   confirmRegistryRequest: (requestId: string) => void;
@@ -100,192 +122,17 @@ interface StoreContextType {
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
-const SEED_USERS: User[] = [
-  {
-    id: 'usr-customer-1',
-    name: 'Ngaa Ndasowa',
-    email: 'ngaandasowa@gmail.com',
-    role: 'customer',
-    organisation: 'Runtime Digital Ventures',
-    phone: '+263 77 192 3844',
-    email_verified_at: '2026-01-10T08:00:00Z',
-    created_at: '2026-01-10T08:00:00Z',
-  },
-  {
-    id: 'usr-admin-1',
-    name: 'Root Administrator',
-    email: 'admin@runtime.co.zw',
-    role: 'super_admin',
-    organisation: 'Runtime Cloud Infrastructure',
-    phone: '+263 242 700000',
-    email_verified_at: '2025-12-01T00:00:00Z',
-    created_at: '2025-12-01T00:00:00Z',
-  },
-  {
-    id: 'usr-reg-admin',
-    name: 'domain registry Desk Officer',
-    email: 'registry-ops@runtime.co.zw',
-    role: 'registry_admin',
-    organisation: 'Runtime Registrar Ops',
-    phone: '+263 77 444 5555',
-    email_verified_at: '2026-01-01T00:00:00Z',
-    created_at: '2026-01-01T00:00:00Z',
-  },
-  {
-    id: 'usr-bill-admin',
-    name: 'Finance & Billing',
-    email: 'billing@runtime.co.zw',
-    role: 'billing_admin',
-    organisation: 'Runtime Finance',
-    phone: '+263 242 700001',
-    email_verified_at: '2026-01-01T00:00:00Z',
-    created_at: '2026-01-01T00:00:00Z',
-  }
-];
-
-const SEED_DOMAINS: Domain[] = [
-  {
-    id: 'dom-1',
-    domain_name: 'innovate.co.zw',
-    tld: '.co.zw',
-    user_id: 'usr-customer-1',
-    user_email: 'ngaandasowa@gmail.com',
-    status: 'active',
-    nameservers: ['ns1.runtime.co.zw', 'ns2.runtime.co.zw'],
-    auto_renew: true,
-    registered_at: '2026-01-15T10:00:00Z',
-    expires_at: '2027-01-15T10:00:00Z',
-    renewal_price: 2.00,
-    currency: 'USD',
-    registrant_type: 'myself',
-    owner_details: {
-      full_name: 'Ngaa Ndasowa',
-      org_name: 'Innovate Labs Zimbabwe',
-      physical_address: '100 Samora Machel Avenue, Harare',
-      postal_address: 'P.O. Box 4492, Harare',
-      city: 'Harare',
-      country: 'Zimbabwe',
-      phone: '+263 77 192 3844',
-      email: 'ngaandasowa@gmail.com',
-      org_description: 'Software development & artificial intelligence research',
-      proposed_usage: 'Core product website, developer APIs, and corporate email.',
-    },
-    history: [
-      {
-        id: 'hist-1',
-        domain_id: 'dom-1',
-        action: 'NEW',
-        description: 'Submitted to domain registry by Runtime registrar',
-        status: 'submitted',
-        actor: 'dns@runtime.co.zw',
-        created_at: '2026-01-15T10:15:00Z',
-      },
-      {
-        id: 'hist-2',
-        domain_id: 'dom-1',
-        action: 'NEW',
-        description: 'Confirmed and zone delegated by domain registry',
-        status: 'confirmed',
-        actor: 'admin@registry.org.zw',
-        created_at: '2026-01-15T14:30:00Z',
-      }
-    ],
-    created_at: '2026-01-15T10:00:00Z',
-    updated_at: '2026-01-15T14:30:00Z',
-  },
-  {
-    id: 'dom-2',
-    domain_name: 'payflow.co.zw',
-    tld: '.co.zw',
-    user_id: 'usr-customer-1',
-    user_email: 'ngaandasowa@gmail.com',
-    status: 'pending_registration',
-    nameservers: ['ns1.runtime.co.zw', 'ns2.runtime.co.zw'],
-    auto_renew: true,
-    renewal_price: 2.00,
-    currency: 'USD',
-    registrant_type: 'client',
-    owner_details: {
-      full_name: 'Tendai Mutasa',
-      org_name: 'Payflow Fintech Zimbabwe Ltd',
-      physical_address: '14 Baines Avenue, Harare',
-      postal_address: 'P.O. Box CY 129, Causeway, Harare',
-      city: 'Harare',
-      country: 'Zimbabwe',
-      phone: '+263 71 888 9999',
-      email: 'finance@payflow.co.zw',
-      org_description: 'Mobile payment integration and merchant acquiring',
-      proposed_usage: 'Fintech merchant portal and payment checkout endpoints.',
-    },
-    history: [
-      {
-        id: 'hist-3',
-        domain_id: 'dom-2',
-        action: 'NEW',
-        description: 'Order paid ($2.00). domain application generated and awaiting registrar submission.',
-        status: 'ready',
-        actor: 'system',
-        created_at: '2026-08-19T09:00:00Z',
-      }
-    ],
-    created_at: '2026-08-19T09:00:00Z',
-    updated_at: '2026-08-19T09:00:00Z',
-  },
-  {
-    id: 'dom-3',
-    domain_name: 'cloudscale.co.zw',
-    tld: '.co.zw',
-    user_id: 'usr-customer-1',
-    user_email: 'ngaandasowa@gmail.com',
-    status: 'active',
-    nameservers: ['ns1.runtime.co.zw', 'ns2.runtime.co.zw', 'ns3.runtime.co.zw'],
-    auto_renew: false,
-    registered_at: '2025-09-10T12:00:00Z',
-    expires_at: '2026-09-10T12:00:00Z', // Expiring in 21 days
-    renewal_price: 2.00,
-    currency: 'USD',
-    registrant_type: 'myself',
-    owner_details: {
-      full_name: 'Ngaa Ndasowa',
-      org_name: 'CloudScale Infrastructure',
-      physical_address: '7th Floor, Joina City, Harare',
-      postal_address: 'P.O. Box 550, Harare',
-      city: 'Harare',
-      country: 'Zimbabwe',
-      phone: '+263 77 192 3844',
-      email: 'ngaandasowa@gmail.com',
-      org_description: 'Cloud computing and serverless platform',
-      proposed_usage: 'Production cluster DNS endpoints and application delivery.',
-    },
-    history: [
-      {
-        id: 'hist-4',
-        domain_id: 'dom-3',
-        action: 'NEW',
-        description: 'domain application confirmed.',
-        status: 'confirmed',
-        actor: 'admin@registry.org.zw',
-        created_at: '2025-09-10T15:00:00Z',
-      }
-    ],
-    created_at: '2025-09-10T12:00:00Z',
-    updated_at: '2025-09-10T15:00:00Z',
-  }
-];
-
 const SEED_SETTINGS: PlatformSettings = {
   default_nameservers: [
-    'ns1.runtime.co.zw',
-    'ns2.runtime.co.zw',
-    'ns3.runtime.co.zw',
-    'ns4.runtime.co.zw',
+    'ns1.ngaatec.com',
+    'ns2.ngaatec.com',
   ],
-  registry_email_from: 'dns@runtime.co.zw',
-  registry_email_to: 'admin@registry.org.zw',
+  registry_email_from: 'dns@ngaatec.com',
+  registry_email_to: 'admin@zispa.org.zw',
   auto_submit_registry: false,
   platform_name: 'Runtime',
-  operator_name: 'Runtime Private Limited',
-  operator_phone: '+263 242 700000',
+  operator_name: 'Ngaatec Private Limited',
+  operator_phone: '+263783827570',
   support_email: 'support@runtime.co.zw',
 };
 
@@ -296,141 +143,44 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [domains, setDomains] =
   useState<Domain[]>([]);
   
-  const [orders, setOrders] = useState<Order[]>(() => {
-    const saved = localStorage.getItem('runtime_orders');
-    if (saved) return JSON.parse(saved);
-    return [
-      {
-        id: 'ord-101',
-        user_id: 'usr-customer-1',
-        user_email: 'ngaandasowa@gmail.com',
-        reference: 'RT-ORD-882190',
-        subtotal: 2.00,
-        discount: 0,
-        total: 2.00,
-        currency: 'USD',
-        status: 'paid',
-        paid_at: '2026-01-15T10:05:00Z',
-        created_at: '2026-01-15T10:00:00Z',
-        updated_at: '2026-01-15T10:05:00Z',
-        items: [
-          {
-            id: 'item-1',
-            order_id: 'ord-101',
-            item_type: 'domain_registration',
-            reference_id: 'innovate.co.zw',
-            description: 'Domain Registration: innovate.co.zw (1 Year)',
-            quantity: 1,
-            unit_price: 2.00,
-            total: 2.00,
-          }
-        ]
-      },
-      {
-        id: 'ord-102',
-        user_id: 'usr-customer-1',
-        user_email: 'ngaandasowa@gmail.com',
-        reference: 'RT-ORD-449120',
-        subtotal: 2.00,
-        discount: 0,
-        total: 2.00,
-        currency: 'USD',
-        status: 'paid',
-        paid_at: '2026-08-19T09:02:00Z',
-        created_at: '2026-08-19T09:00:00Z',
-        updated_at: '2026-08-19T09:02:00Z',
-        items: [
-          {
-            id: 'item-2',
-            order_id: 'ord-102',
-            item_type: 'domain_registration',
-            reference_id: 'payflow.co.zw',
-            description: 'Domain Registration: payflow.co.zw (1 Year)',
-            quantity: 1,
-            unit_price: 2.00,
-            total: 2.00,
-          }
-        ]
-      }
-    ];
-  });
+  const [orders, setOrders] = useState<Order[]>([]);
 
-  const [payments, setPayments] = useState<Payment[]>(() => {
-    const saved = localStorage.getItem('runtime_payments');
-    if (saved) return JSON.parse(saved);
-    return [
-      {
-        id: 'pay-1',
-        order_id: 'ord-101',
-        user_id: 'ngaandasowa@gmail.com',
-        reference: 'PAY-ZW889102',
-        amount: 2.00,
-        currency: 'USD',
-        gateway: 'paynow',
-        status: 'verified',
-        verified_at: '2026-01-15T10:05:00Z',
-        created_at: '2026-01-15T10:00:00Z',
-      },
-      {
-        id: 'pay-2',
-        order_id: 'ord-102',
-        user_id: 'ngaandasowa@gmail.com',
-        reference: 'PAY-ZW441299',
-        amount: 2.00,
-        currency: 'USD',
-        gateway: 'ecocash',
-        status: 'verified',
-        verified_at: '2026-08-19T09:02:00Z',
-        created_at: '2026-08-19T09:00:00Z',
-      }
-    ];
-  });
+  const [payments, setPayments] = useState<Payment[]>([]);
 
   const [pricing, setPricing] = useState<TldPricing[]>(() => {
     const saved = localStorage.getItem('runtime_pricing');
     return saved ? JSON.parse(saved) : runtimePricingService.getInitialPricing();
   });
 
-  const [registryRequests, setRegistryRequests] = useState<RegistryRequest[]>(() => {
-    const saved = localStorage.getItem('runtime_registry_requests');
-    if (saved) return JSON.parse(saved);
-    return [
-      {
-        id: 'reg-001',
-        domain_id: 'dom-2',
-        domain_name: 'payflow.co.zw',
-        action: 'N',
-        generated_template: registryTemplateService.generateTemplate(SEED_DOMAINS[1], 'N'),
-        status: 'ready',
-        email_subject: 'NEW: payflow.co.zw',
-        customer_email: 'ngaandasowa@gmail.com',
-        payment_reference: 'PAY-ZW441299',
-        created_at: '2026-08-19T09:02:00Z',
-        updated_at: '2026-08-19T09:02:00Z',
-      },
-      {
-        id: 'reg-002',
-        domain_id: 'dom-1',
-        domain_name: 'innovate.co.zw',
-        action: 'N',
-        generated_template: registryTemplateService.generateTemplate(SEED_DOMAINS[0], 'N'),
-        status: 'confirmed',
-        submitted_at: '2026-01-15T10:15:00Z',
-        confirmed_at: '2026-01-15T14:30:00Z',
-        submitted_by: 'dns@runtime.co.zw',
-        email_subject: 'NEW: innovate.co.zw',
-        registry_response_notes: 'domain registry confirmation received. Delegation completed.',
-        customer_email: 'ngaandasowa@gmail.com',
-        payment_reference: 'PAY-ZW889102',
-        created_at: '2026-01-15T10:05:00Z',
-        updated_at: '2026-01-15T14:30:00Z',
-      }
-    ];
-  });
+  const [registryRequests, setRegistryRequests] = useState<RegistryRequest[]>([]);
 
   const [settings, setSettings] = useState<PlatformSettings>(() => {
     const saved = localStorage.getItem('runtime_settings');
-    return saved ? JSON.parse(saved) : SEED_SETTINGS;
+
+    if (!saved) {
+      return SEED_SETTINGS;
+    }
+
+    try {
+      const parsed = JSON.parse(saved);
+
+      return {
+        ...SEED_SETTINGS,
+        ...parsed,
+
+        // Runtime's current authoritative DNS defaults.
+        default_nameservers: [
+          'ns1.ngaatec.com',
+          'ns2.ngaatec.com',
+        ],
+
+        // Current registrar dispatch details.
+        registry_email_from: 'dns@ngaatec.com',
+        registry_email_to: 'admin@zispa.org.zw',
+      };
+    } catch {
+      return SEED_SETTINGS;
+    }
   });
 
   const [activeView, setActiveViewState] = useState<string>(() => {
@@ -595,24 +345,69 @@ useEffect(() => {
   loadDomains();
 }, [currentUser]);
 
+useEffect(() => {
+  const loadOrders = async () => {
+    if (!currentUser) {
+      setOrders([]);
+      return;
+    }
+
+    try {
+      const loadedOrders =
+        currentUser.role === 'super_admin'
+          ? await orderRepository.getAllOrders()
+          : await orderRepository.getOrdersForUser(
+              currentUser.id
+            );
+
+      setOrders(loadedOrders);
+    } catch (error) {
+      console.error(
+        'Failed to load orders:',
+        error
+      );
+
+      setOrders([]);
+    }
+  };
+
+  void loadOrders();
+}, [currentUser]);
+
+useEffect(() => {
+  const loadPayments = async () => {
+    if (!currentUser) {
+      setPayments([]);
+      return;
+    }
+
+    try {
+      const loadedPayments =
+        currentUser.role === 'super_admin'
+          ? await paymentRepository.getAllPayments()
+          : await paymentRepository.getPaymentsForUser(
+              currentUser.id
+            );
+
+      setPayments(loadedPayments);
+    } catch (error) {
+      console.error(
+        'Failed to load payments:',
+        error
+      );
+
+      setPayments([]);
+    }
+  };
+
+  void loadPayments();
+}, [currentUser]);
+
   // Sync to local storage
-  useEffect(() => {
-    localStorage.setItem('runtime_orders', JSON.stringify(orders));
-  }, [orders]);
-
-  useEffect(() => {
-    localStorage.setItem('runtime_payments', JSON.stringify(payments));
-  }, [payments]);
-
-  useEffect(() => {
+useEffect(() => {
     localStorage.setItem('runtime_pricing', JSON.stringify(pricing));
   }, [pricing]);
-
-  useEffect(() => {
-    localStorage.setItem('runtime_registry_requests', JSON.stringify(registryRequests));
-  }, [registryRequests]);
-
-  useEffect(() => {
+useEffect(() => {
     localStorage.setItem('runtime_settings', JSON.stringify(settings));
   }, [settings]);
 
@@ -797,119 +592,211 @@ const getDomainOrderDetails = async (
     registrantType: 'myself' | 'client',
     ownerDetails: RegistrantDetails,
     nameservers: string[],
-    gateway: any = 'paynow'
+    gateway: any = 'ecocash_usd'
   ) => {
     if (!currentUser) {
-      throw new Error('You must be signed in to register a domain.');
+      throw new Error(
+        'You must be signed in to register a domain.'
+      );
     }
 
-    const normalizedDomain = domainService.cleanDomain(domainName);
+    const normalizedDomain =
+      domainService.cleanDomain(
+        domainName
+      );
 
     const {
       tld,
       registrationPrice,
       renewalPrice,
       processingType,
-    } = await getDomainOrderDetails(normalizedDomain);
+    } =
+      await getDomainOrderDetails(
+        normalizedDomain
+      );
 
-    // 1. Create order
-    const order = orderService.createDomainRegistrationOrder(
-      currentUser.id,
-      currentUser.email,
-      normalizedDomain,
-      registrationPrice,
-      'USD'
-    );
+    /*
+     * The order exists before payment.
+     * It remains pending until an admin
+     * verifies the money received.
+     */
+    const order =
+      orderService.createDomainRegistrationOrder(
+        currentUser.id,
+        currentUser.email,
+        normalizedDomain,
+        registrationPrice,
+        'USD'
+      );
 
-    // 2. Prototype payment flow.
-    // Replace this with real gateway verification before production.
-    const payment = await paymentService.processCheckout(
-      order.id,
-      registrationPrice,
-      'USD',
-      currentUser.email,
-      gateway
-    );
+    /*
+     * Creating a payment is NOT payment verification.
+     */
+    const payment =
+      await paymentService.processCheckout(
+        order.id,
+        registrationPrice,
+        'USD',
+        currentUser.id,
+        gateway
+      );
 
-    const paidOrder = orderService.markPaid(order);
+    const now =
+      new Date().toISOString();
 
-    const now = new Date().toISOString();
+    /*
+     * The domain is created immediately so the customer
+     * can see the order in My Domains.
+     *
+     * pending_payment means Runtime has NOT started
+     * registration processing yet.
+     */
+    const pendingDomain = {
+      id:
+        'dom-' +
+        Math.random()
+          .toString(36)
+          .substring(2, 10),
 
-    // 3. Create one unified domain record for every TLD.
-    const newDomain = {
-      id: 'dom-' + Math.random().toString(36).substring(2, 10),
-      domain_name: normalizedDomain,
+      domain_name:
+        normalizedDomain,
+
       tld,
-      user_id: currentUser.id,
-      user_email: currentUser.email,
-      status: 'pending_registration' as DomainStatus,
+
+      user_id:
+        currentUser.id,
+
+      user_email:
+        currentUser.email,
+
+      status:
+        'pending_payment',
+
       nameservers:
         nameservers.length > 0
           ? nameservers
-          : [...settings.default_nameservers],
-      auto_renew: true,
-      renewal_price: renewalPrice,
-      currency: 'USD',
-      registrant_type: registrantType,
-      owner_details: ownerDetails,
+          : [
+              ...settings.default_nameservers,
+            ],
 
-      // Internal operational fields.
-      // Keep these out of customer-facing components.
-      processing_type: processingType,
-      registration_price: registrationPrice,
+      auto_renew:
+        true,
+
+      renewal_price:
+        renewalPrice,
+
+      currency:
+        'USD',
+
+      registrant_type:
+        registrantType,
+
+      owner_details:
+        ownerDetails,
+
+      processing_type:
+        processingType,
+
+      registration_price:
+        registrationPrice,
+
+      order_id:
+        order.id,
+
+      payment_id:
+        payment.id,
 
       history: [
         {
-          id: 'hist-' + Math.random().toString(36).substring(2, 9),
-          domain_id: normalizedDomain,
-          action: 'NEW' as const,
-          description: `Order ${order.reference} received. Domain registration is being processed.`,
-          status: 'ready',
-          actor: currentUser.email,
-          created_at: now,
+          id:
+            'hist-' +
+            Math.random()
+              .toString(36)
+              .substring(2, 9),
+
+          domain_id:
+            normalizedDomain,
+
+          action:
+            'NEW' as const,
+
+          description:
+            `Order ${order.reference} created. Awaiting payment verification.`,
+
+          status:
+            'pending_payment',
+
+          actor:
+            currentUser.email,
+
+          created_at:
+            now,
         },
       ],
 
-      created_at: now,
-      updated_at: now,
+      created_at:
+        now,
+
+      updated_at:
+        now,
     } as Domain & {
-      processing_type: 'zispa' | 'manual';
-      registration_price: number;
+      processing_type:
+        'zispa' | 'manual';
+
+      registration_price:
+        number;
+
+      order_id:
+        string;
+
+      payment_id:
+        string;
     };
 
-    // 4. Save the domain to Firestore first.
-    await domainRepository.createDomain(newDomain);
+    /*
+     * Persist all three records.
+     *
+     * No registry request is created here.
+     * No order is marked paid here.
+     */
+    await orderRepository.createOrder(
+      order
+    );
 
-    // 5. Only Zimbabwe registry TLDs create an internal registry request.
-    if (processingType === 'zispa') {
-      const registryRequest = registryService.createRequest(
-        newDomain,
-        'N',
-        'system'
-      );
+    await paymentRepository.createPayment(
+      payment
+    );
 
-      registryRequest.payment_reference = payment.reference;
+    await domainRepository.createDomain(
+      pendingDomain
+    );
 
-      setRegistryRequests((prev) => [
-        registryRequest,
-        ...prev,
-      ]);
-    }
+    setOrders((prev) => [
+      order,
+      ...prev,
+    ]);
 
-    // 6. Keep the current prototype order/payment state for now.
-    setOrders((prev) => [paidOrder, ...prev]);
-    setPayments((prev) => [payment, ...prev]);
-    setDomains((prev) => [newDomain, ...prev]);
+    setPayments((prev) => [
+      payment,
+      ...prev,
+    ]);
+
+    setDomains((prev) => [
+      pendingDomain,
+      ...prev,
+    ]);
 
     showNotification(
-      `Your domain order for ${normalizedDomain} has been received and is being processed.`,
+      `Order ${order.reference} created. Complete your payment to start registration.`,
       'success'
     );
 
     return {
       success: true,
-      domain: newDomain,
-      order: paidOrder,
+      domain:
+        pendingDomain,
+      order,
+      payment,
     };
   };
 
@@ -1236,46 +1123,790 @@ const getDomainOrderDetails = async (
     );
   };
 
-  const updateDomainStatus = (domainId: string, status: DomainStatus) => {
-    const domain = domains.find((item) => item.id === domainId);
+  const updateDomainStatus = (
+    domainId: string,
+    status: DomainStatus
+  ) => {
+    const domain = domains.find(
+      (item) => item.id === domainId
+    );
 
     if (!domain) {
-      showNotification('Domain not found.', 'error');
+      showNotification(
+        'Domain not found.',
+        'error'
+      );
       return;
     }
 
-    const now = new Date().toISOString();
+    const now = new Date();
+    const nowIso = now.toISOString();
+
+    let registeredAt =
+      domain.registered_at;
+
+    let expiresAt =
+      domain.expires_at;
+
+    /*
+     * A purchase date is not treated as the registration date.
+     * The registration/renewal cycle begins when an admin marks
+     * the domain active for the first time.
+     */
+    if (
+      status === 'active' &&
+      !registeredAt
+    ) {
+      registeredAt =
+        nowIso;
+
+      const firstExpiry =
+        new Date(now);
+
+      firstExpiry.setFullYear(
+        firstExpiry.getFullYear() +
+          1
+      );
+
+      expiresAt =
+        firstExpiry.toISOString();
+    }
+
     const updated: Domain = {
       ...domain,
       status,
-      updated_at: now,
+      registered_at:
+        registeredAt,
+      expires_at:
+        expiresAt,
+      updated_at:
+        nowIso,
       history: [
         ...domain.history,
         {
-          id: 'hist-' + Math.random().toString(36).substring(2, 9),
-          domain_id: domain.id,
-          action: 'STATUS_CHANGE',
-          description: `Domain status changed to ${status}.`,
+          id:
+            'hist-' +
+            Math.random()
+              .toString(36)
+              .substring(2, 9),
+          domain_id:
+            domain.id,
+          action:
+            'STATUS_CHANGE',
+          description:
+            status === 'active'
+              ? 'Domain registration completed and the domain is now active.'
+              : `Domain status changed to ${status.replace(/_/g, ' ')}.`,
           status,
-          actor: currentUser?.email || 'admin',
-          created_at: now,
+          actor:
+            currentUser?.email ||
+            'admin',
+          created_at:
+            nowIso,
         },
       ],
     };
 
     setDomains((prev) =>
-      prev.map((item) => (item.id === domainId ? updated : item))
+      prev.map((item) =>
+        item.id === domainId
+          ? updated
+          : item
+      )
     );
 
-    void domainRepository.updateDomain(domainId, {
-      status: updated.status,
-      history: updated.history,
-      updated_at: updated.updated_at,
-    }).catch((error) => {
-      console.error('Failed to persist domain status:', error);
-      showNotification('Unable to save the domain status.', 'error');
-    });
+    void domainRepository
+      .updateDomain(
+        domainId,
+        {
+          status:
+            updated.status,
+          registered_at:
+            updated.registered_at,
+          expires_at:
+            updated.expires_at,
+          history:
+            updated.history,
+          updated_at:
+            updated.updated_at,
+        }
+      )
+      .catch((error) => {
+        console.error(
+          'Failed to persist domain status:',
+          error
+        );
+
+        showNotification(
+          'Unable to save the domain status.',
+          'error'
+        );
+      });
+
+    showNotification(
+      status === 'active'
+        ? `${domain.domain_name} is now active.`
+        : `Domain status updated to ${status.replace(/_/g, ' ')}.`,
+      'success'
+    );
   };
+
+  const renewDomain = async (
+  domainId: string,
+  years: number,
+  gateway: any = 'ecocash_usd'
+) => {
+  if (!currentUser) {
+    throw new Error(
+      'You must be signed in to renew a domain.'
+    );
+  }
+
+  if (
+    !Number.isInteger(years) ||
+    years < 1 ||
+    years > 10
+  ) {
+    throw new Error(
+      'Choose between 1 and 10 renewal years.'
+    );
+  }
+
+  if (
+    gateway !== 'ecocash_usd'
+  ) {
+    throw new Error(
+      'This payment method is not available yet.'
+    );
+  }
+
+  const domain =
+    domains.find(
+      (item) =>
+        item.id === domainId
+    );
+
+  if (!domain) {
+    throw new Error(
+      'Domain not found.'
+    );
+  }
+
+  if (
+    domain.user_id !==
+      currentUser.id &&
+    currentUser.role !==
+      'super_admin'
+  ) {
+    throw new Error(
+      'You cannot renew this domain.'
+    );
+  }
+
+  if (
+    domain.status !==
+      'active' &&
+    domain.status !==
+      'expired'
+  ) {
+    throw new Error(
+      'This domain cannot be renewed yet.'
+    );
+  }
+
+  const yearlyRate =
+    domain.renewal_price;
+
+  if (
+    typeof yearlyRate !==
+      'number' ||
+    yearlyRate <= 0
+  ) {
+    throw new Error(
+      'Renewal pricing is unavailable for this domain.'
+    );
+  }
+
+  const total =
+    yearlyRate * years;
+
+  /*
+   * Create pending order.
+   */
+  const order =
+    orderService.createDomainRegistrationOrder(
+      currentUser.id,
+      currentUser.email,
+      domain.domain_name,
+      total,
+      domain.currency || 'USD'
+    );
+
+  /*
+   * Convert the generic domain order
+   * into a renewal order.
+   */
+  order.items = order.items.map(
+    (item) => ({
+      ...item,
+
+      description:
+        `Domain Renewal: ${domain.domain_name} (${years} ${
+          years === 1
+            ? 'Year'
+            : 'Years'
+        } @ $${yearlyRate.toFixed(
+          2
+        )}/yr)`,
+
+      quantity:
+        years,
+
+      unit_price:
+        yearlyRate,
+
+      total,
+    })
+  );
+
+  order.subtotal =
+    total;
+
+  order.total =
+    total;
+
+  /*
+   * Internal renewal metadata.
+   *
+   * Admin uses this after payment
+   * verification.
+   */
+  (
+    order as Order & {
+      purpose?: string;
+      domain_id?: string;
+      renewal_years?: number;
+    }
+  ).purpose =
+    'domain_renewal';
+
+  (
+    order as Order & {
+      domain_id?: string;
+    }
+  ).domain_id =
+    domain.id;
+
+  (
+    order as Order & {
+      renewal_years?: number;
+    }
+  ).renewal_years =
+    years;
+
+  /*
+   * Create pending EcoCash payment.
+   *
+   * DO NOT verify here.
+   */
+  const payment =
+    await paymentService.processCheckout(
+      order.id,
+      total,
+      domain.currency ||
+        'USD',
+      currentUser.id,
+      'ecocash_usd'
+    );
+
+  /*
+   * Save only order + payment.
+   *
+   * DO NOT:
+   * - mark order paid
+   * - extend expiry
+   * - change domain status
+   */
+  await orderRepository.createOrder(
+    order
+  );
+
+  await paymentRepository.createPayment(
+    payment
+  );
+
+  setOrders((prev) => [
+    order,
+    ...prev,
+  ]);
+
+  setPayments((prev) => [
+    payment,
+    ...prev,
+  ]);
+
+  showNotification(
+    `Renewal order ${order.reference} created. Pay $${total.toFixed(
+      2
+    )} USD using EcoCash and send your screenshot to Runtime.`,
+    'success'
+  );
+};
+
+  const approveManualPayment =
+    async (
+      paymentId: string
+    ) => {
+      if (
+        !currentUser ||
+        currentUser.role !==
+          'super_admin'
+      ) {
+        throw new Error(
+          'Only a super admin can approve payments.'
+        );
+      }
+
+      const payment =
+        payments.find(
+          (item) =>
+            item.id ===
+            paymentId
+        );
+
+      if (!payment) {
+        throw new Error(
+          'Payment not found.'
+        );
+      }
+
+      if (
+        payment.status ===
+        'verified'
+      ) {
+        showNotification(
+          'This payment is already verified.',
+          'info'
+        );
+        return;
+      }
+
+      const order =
+        orders.find(
+          (item) =>
+            item.id ===
+            payment.order_id
+        );
+
+      if (!order) {
+        throw new Error(
+          'The order linked to this payment was not found.'
+        );
+      }
+
+      /*
+       * ----------------------------------------------------------
+       * DOMAIN RENEWAL PAYMENT
+       * ----------------------------------------------------------
+       */
+      if (
+        (order as any).purpose ===
+        'domain_renewal'
+      ) {
+        const domainId =
+          (order as any).domain_id;
+
+        const years =
+          Number(
+            (order as any)
+              .renewal_years || 1
+          );
+
+        const domain =
+          domains.find(
+            (item) =>
+              item.id === domainId
+          );
+
+        if (!domain) {
+          throw new Error(
+            'Renewal domain not found.'
+          );
+        }
+
+        const approvedPayment =
+          paymentService
+            .approveManualPayment(
+              payment,
+              currentUser.id
+            );
+
+        const paidOrder =
+          orderService.markPaid(
+            order
+          );
+
+        const now =
+          new Date();
+
+        const existingExpiry =
+          domain.expires_at
+            ? new Date(
+                domain.expires_at
+              )
+            : null;
+
+        /*
+         * Early renewal:
+         * extend current expiry.
+         *
+         * Expired domain:
+         * start from today.
+         */
+        const baseDate =
+          existingExpiry &&
+          existingExpiry.getTime() >
+            now.getTime()
+            ? new Date(
+                existingExpiry
+              )
+            : new Date(now);
+
+        const newExpiry =
+          new Date(baseDate);
+
+        newExpiry.setFullYear(
+          newExpiry.getFullYear() +
+            years
+        );
+
+        const nowIso =
+          now.toISOString();
+
+        const updatedDomain: Domain =
+          {
+            ...domain,
+
+            status:
+              'active',
+
+            expires_at:
+              newExpiry.toISOString(),
+
+            updated_at:
+              nowIso,
+
+            history: [
+              ...domain.history,
+
+              {
+                id:
+                  'hist-' +
+                  Math.random()
+                    .toString(36)
+                    .substring(2, 9),
+
+                domain_id:
+                  domain.id,
+
+                action:
+                  'RENEWAL',
+
+                description:
+                  `Renewal payment confirmed. Domain renewed for ${years} ${
+                    years === 1
+                      ? 'year'
+                      : 'years'
+                  }.`,
+
+                status:
+                  'confirmed',
+
+                actor:
+                  currentUser.email,
+
+                created_at:
+                  nowIso,
+              },
+            ],
+          };
+
+        await paymentRepository.updatePayment(
+          payment.id,
+          approvedPayment
+        );
+
+        await orderRepository.updateOrder(
+          order.id,
+          paidOrder
+        );
+
+        await domainRepository.updateDomain(
+          domain.id,
+          {
+            status:
+              updatedDomain.status,
+
+            expires_at:
+              updatedDomain.expires_at,
+
+            history:
+              updatedDomain.history,
+
+            updated_at:
+              updatedDomain.updated_at,
+          }
+        );
+
+        setPayments((prev) =>
+          prev.map((item) =>
+            item.id ===
+            payment.id
+              ? approvedPayment
+              : item
+          )
+        );
+
+        setOrders((prev) =>
+          prev.map((item) =>
+            item.id ===
+            order.id
+              ? paidOrder
+              : item
+          )
+        );
+
+        setDomains((prev) =>
+          prev.map((item) =>
+            item.id ===
+            domain.id
+              ? updatedDomain
+              : item
+          )
+        );
+
+        showNotification(
+          `${domain.domain_name} renewed until ${newExpiry.toLocaleDateString()}.`,
+          'success'
+        );
+
+        return;
+      }
+
+      const domain =
+        domains.find(
+          (item) =>
+            (item as any)
+              .order_id ===
+              order.id
+        );
+
+      if (!domain) {
+        throw new Error(
+          'The domain linked to this order was not found.'
+        );
+      }
+
+      const approvedPayment =
+        paymentService.approveManualPayment(
+          payment,
+          currentUser.id
+        );
+
+      const paidOrder =
+        orderService.markPaid(
+          order
+        );
+
+      const now =
+        new Date().toISOString();
+
+      const updatedDomain: Domain = {
+        ...domain,
+
+        status:
+          'pending_registration',
+
+        updated_at:
+          now,
+
+        history: [
+          ...domain.history,
+          {
+            id:
+              'hist-' +
+              Math.random()
+                .toString(36)
+                .substring(2, 9),
+
+            domain_id:
+              domain.id,
+
+            action:
+              'STATUS_CHANGE',
+
+            description:
+              'Payment verified. Domain registration is now being processed.',
+
+            status:
+              'pending_registration',
+
+            actor:
+              currentUser.email,
+
+            created_at:
+              now,
+          },
+        ],
+      };
+
+      await paymentRepository.updatePayment(
+        payment.id,
+        approvedPayment
+      );
+
+      await orderRepository.updateOrder(
+        order.id,
+        paidOrder
+      );
+
+      await domainRepository.updateDomain(
+        domain.id,
+        {
+          status:
+            updatedDomain.status,
+          history:
+            updatedDomain.history,
+          updated_at:
+            updatedDomain.updated_at,
+        }
+      );
+
+      setPayments((prev) =>
+        prev.map((item) =>
+          item.id ===
+          payment.id
+            ? approvedPayment
+            : item
+        )
+      );
+
+      setOrders((prev) =>
+        prev.map((item) =>
+          item.id ===
+          order.id
+            ? paidOrder
+            : item
+        )
+      );
+
+      setDomains((prev) =>
+        prev.map((item) =>
+          item.id ===
+          domain.id
+            ? updatedDomain
+            : item
+        )
+      );
+
+      /*
+       * Only after payment approval do Zimbabwe
+       * registry domains enter the registry queue.
+       */
+      if (
+        (domain as any)
+          .processing_type ===
+        'zispa'
+      ) {
+        const existing =
+          registryRequests.some(
+            (request) =>
+              request.domain_id ===
+                domain.id &&
+              request.action ===
+                'N'
+          );
+
+        if (!existing) {
+          const registryRequest =
+            registryService.createRequest(
+              updatedDomain,
+              'N',
+              currentUser.email
+            );
+
+          registryRequest.payment_reference =
+            approvedPayment.reference;
+
+          setRegistryRequests(
+            (prev) => [
+              registryRequest,
+              ...prev,
+            ]
+          );
+        }
+      }
+
+      showNotification(
+        `Payment approved for ${domain.domain_name}. Registration can now be processed.`,
+        'success'
+      );
+    };
+
+  const rejectManualPayment =
+    async (
+      paymentId: string,
+      reason?: string
+    ) => {
+      if (
+        !currentUser ||
+        currentUser.role !==
+          'super_admin'
+      ) {
+        throw new Error(
+          'Only a super admin can reject payments.'
+        );
+      }
+
+      const payment =
+        payments.find(
+          (item) =>
+            item.id ===
+            paymentId
+        );
+
+      if (!payment) {
+        throw new Error(
+          'Payment not found.'
+        );
+      }
+
+      const rejected =
+        paymentService.rejectManualPayment(
+          payment,
+          currentUser.id,
+          reason
+        );
+
+      await paymentRepository.updatePayment(
+        payment.id,
+        rejected
+      );
+
+      setPayments((prev) =>
+        prev.map((item) =>
+          item.id ===
+          payment.id
+            ? rejected
+            : item
+        )
+      );
+
+      showNotification(
+        'Payment marked as not verified.',
+        'info'
+      );
+    };
 
   const submitRegistryRequest = async (requestId: string) => {
     const target = registryRequests.find(r => r.id === requestId);
@@ -1453,6 +2084,9 @@ const getDomainOrderDetails = async (
       requestDomainDelete,
       requestDomainTransfer,
       updateDomainStatus,
+      renewDomain,
+      approveManualPayment,
+      rejectManualPayment,
       submitRegistryRequest,
       confirmRegistryRequest,
       createManualRegistryRequest,

@@ -1,187 +1,417 @@
-import React from 'react';
-import { 
-  ShieldAlert, 
-  LayoutDashboard, 
-  Globe, 
-  FileText, 
-  DollarSign, 
-  CreditCard, 
-  Server, 
-  Settings, 
-  ArrowLeft,
-  LogOut
+import React, { useState } from 'react';
+
+import {
+  CreditCard,
+  DollarSign,
+  FileText,
+  Globe2,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  Server,
+  Settings,
+  ShieldAlert,
+  X,
 } from 'lucide-react';
-import { useStore } from '../../context/StoreContext';
-import { AdminDashboard } from './AdminDashboard';
-import { AdminRegistryManager } from './AdminRegistryManager';
-import { AdminDomains } from './AdminDomains';
-import { AdminPricing } from './AdminPricing';
-import { AdminOrdersPayments } from './AdminOrdersPayments';
-import { AdminNameservers } from './AdminNameservers';
-import { AdminSettings } from './AdminSettings';
 
-export const AdminShell: React.FC = () => {
-  const { 
-    adminSubView, 
-    setAdminSubView, 
-    setActiveView, 
-    registryRequests,
-    logout 
-  } = useStore();
+import {
+  useStore,
+} from '../../context/StoreContext';
 
-  const pendingRegistryCount = registryRequests.filter(r => r.status === 'ready' || r.status === 'draft').length;
+import {
+  AdminDashboard,
+} from './AdminDashboard';
 
-  return (
-    <div className="min-h-screen bg-[#FAFAFA] text-zinc-900 flex flex-col md:flex-row">
-      
-      {/* Admin Sidebar */}
-      <aside className="w-full md:w-64 border-r border-zinc-200 bg-white p-4 flex flex-col justify-between shrink-0 shadow-2xs">
-        <div className="space-y-6">
-          
-          {/* Admin Header Badge */}
-          <div className="rounded-xl border border-red-200 bg-red-50/50 p-3">
-            <div className="flex items-center space-x-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-100 text-[#3120ff] font-bold border border-red-200">
-                <ShieldAlert className="h-4 w-4" />
+import {
+  AdminRegistryManager,
+} from './AdminRegistryManager';
+
+import {
+  AdminDomains,
+} from './AdminDomains';
+
+import {
+  AdminPricing,
+} from './AdminPricing';
+
+import {
+  AdminOrdersPayments,
+} from './AdminOrdersPayments';
+
+import {
+  AdminNameservers,
+} from './AdminNameservers';
+
+import {
+  AdminSettings,
+} from './AdminSettings';
+
+type NavItem = {
+  id:
+    | 'dashboard'
+    | 'orders'
+    | 'domains'
+    | 'registry'
+    | 'pricing'
+    | 'nameservers'
+    | 'settings';
+  label: string;
+  icon: React.ComponentType<{
+    className?: string;
+  }>;
+  badge?: number;
+};
+
+export const AdminShell:
+  React.FC = () => {
+    const {
+      adminSubView,
+      setAdminSubView,
+      registryRequests,
+      payments,
+      logout,
+    } = useStore();
+
+    const [
+      mobileOpen,
+      setMobileOpen,
+    ] = useState(false);
+
+    const registryCount =
+      registryRequests.filter(
+        (request) =>
+          request.status ===
+            'ready' ||
+          request.status ===
+            'draft'
+      ).length;
+
+    const paymentCount =
+      payments.filter(
+        (payment) =>
+          payment.status ===
+            'pending' ||
+          payment.status ===
+            'pending_verification'
+      ).length;
+
+    const navItems: NavItem[] = [
+      {
+        id: 'dashboard',
+        label: 'Overview',
+        icon: LayoutDashboard,
+      },
+      {
+        id: 'orders',
+        label: 'Payments',
+        icon: CreditCard,
+        badge: paymentCount,
+      },
+      {
+        id: 'domains',
+        label: 'Domains',
+        icon: Globe2,
+      },
+      {
+        id: 'registry',
+        label: 'ZISPA Registry',
+        icon: FileText,
+        badge: registryCount,
+      },
+      {
+        id: 'pricing',
+        label: 'Pricing',
+        icon: DollarSign,
+      },
+      {
+        id: 'nameservers',
+        label: 'Nameservers',
+        icon: Server,
+      },
+      {
+        id: 'settings',
+        label: 'Settings',
+        icon: Settings,
+      },
+    ];
+
+    const currentLabel =
+      navItems.find(
+        (item) =>
+          item.id ===
+          adminSubView
+      )?.label || 'Overview';
+
+    const goTo = (
+      id: NavItem['id']
+    ) => {
+      setAdminSubView(id);
+      setMobileOpen(false);
+
+      requestAnimationFrame(
+        () => {
+          window.scrollTo({
+            top: 0,
+            left: 0,
+            behavior: 'auto',
+          });
+        }
+      );
+    };
+
+    return (
+      <div className="min-h-screen bg-[#FAFAFA] text-zinc-900">
+
+        {/* MOBILE HEADER */}
+        <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-zinc-200 bg-white px-4 md:hidden">
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#3120ff]">
+              Runtime Admin
+            </p>
+
+            <p className="truncate text-sm font-bold text-zinc-950">
+              {currentLabel}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              setMobileOpen(true)
+            }
+            aria-label="Open admin menu"
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-700"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+        </header>
+
+        {/* MOBILE OVERLAY */}
+        {mobileOpen && (
+          <div className="fixed inset-0 z-50 md:hidden">
+            <button
+              type="button"
+              aria-label="Close menu"
+              onClick={() =>
+                setMobileOpen(false)
+              }
+              className="absolute inset-0 bg-black/35 backdrop-blur-[1px]"
+            />
+
+            <aside className="absolute inset-y-0 left-0 flex w-[86%] max-w-xs flex-col border-r border-zinc-200 bg-white shadow-2xl">
+              <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#3120ff]/10 text-[#3120ff]">
+                    <ShieldAlert className="h-4 w-4" />
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-bold text-zinc-950">
+                      Runtime Admin
+                    </p>
+
+                    <p className="text-[11px] text-zinc-500">
+                      Administration
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setMobileOpen(false)
+                  }
+                  aria-label="Close admin menu"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100"
+                >
+                  <X className="h-5 w-5" />
+                </button>
               </div>
-              <div>
-                <div className="text-xs font-bold text-zinc-950">Runtime Admin</div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-[#3120ff]">REGISTRAR CONSOLE</div>
+
+              <nav className="flex-1 overflow-y-auto p-3">
+                <div className="space-y-1">
+                  {navItems.map(
+                    (item) => (
+                      <NavButton
+                        key={item.id}
+                        active={
+                          adminSubView ===
+                          item.id
+                        }
+                        icon={item.icon}
+                        label={item.label}
+                        badge={item.badge}
+                        onClick={() =>
+                          goTo(
+                            item.id
+                          )
+                        }
+                      />
+                    )
+                  )}
+                </div>
+              </nav>
+
+              <div className="border-t border-zinc-200 p-3">
+                <button
+                  type="button"
+                  onClick={logout}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-xs font-semibold text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-950"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign Out
+                </button>
+              </div>
+            </aside>
+          </div>
+        )}
+
+        <div className="md:flex">
+
+          {/* DESKTOP SIDEBAR */}
+          <aside className="hidden w-64 shrink-0 border-r border-zinc-200 bg-white md:sticky md:top-0 md:flex md:h-screen md:flex-col">
+            <div className="p-4">
+              <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#3120ff]/10 text-[#3120ff]">
+                    <ShieldAlert className="h-4 w-4" />
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-bold text-zinc-950">
+                      Runtime Admin
+                    </p>
+
+                    <p className="text-[10px] text-zinc-500">
+                      Administration
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Nav Items */}
-          <div className="space-y-1 text-xs">
-            
-            <button
-              onClick={() => setAdminSubView('dashboard')}
-              className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl font-bold transition ${
-                adminSubView === 'dashboard'
-                  ? 'bg-[#3120ff] text-white shadow-xs'
-                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-              }`}
-            >
-              <LayoutDashboard className="h-4 w-4" />
-              <span>Overview</span>
-            </button>
-
-            <button
-              onClick={() => setAdminSubView('registry')}
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-bold transition ${
-                adminSubView === 'registry'
-                  ? 'bg-[#3120ff] text-white shadow-xs'
-                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-              }`}
-            >
-              <div className="flex items-center space-x-2.5">
-                <FileText className="h-4 w-4" />
-                <span>ZISPA Registry</span>
+            <nav className="flex-1 overflow-y-auto px-3 pb-3">
+              <div className="space-y-1">
+                {navItems.map(
+                  (item) => (
+                    <NavButton
+                      key={item.id}
+                      active={
+                        adminSubView ===
+                        item.id
+                      }
+                      icon={item.icon}
+                      label={item.label}
+                      badge={item.badge}
+                      onClick={() =>
+                        goTo(
+                          item.id
+                        )
+                      }
+                    />
+                  )
+                )}
               </div>
-              {pendingRegistryCount > 0 && (
-                <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
-                  adminSubView === 'registry' ? 'bg-white/20 text-white' : 'bg-red-100 text-[#3120ff]'
-                }`}>
-                  {pendingRegistryCount}
-                </span>
+            </nav>
+
+            <div className="border-t border-zinc-200 p-3">
+              <button
+                type="button"
+                onClick={logout}
+                className="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-xs font-semibold text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-950"
+              >
+                <LogOut className="h-4 w-4" />
+                Sign Out
+              </button>
+            </div>
+          </aside>
+
+          {/* CONTENT */}
+          <main className="min-w-0 flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
+            <div className="mx-auto w-full max-w-7xl">
+              {adminSubView ===
+                'dashboard' && (
+                <AdminDashboard />
               )}
-            </button>
 
-            <button
-              onClick={() => setAdminSubView('domains')}
-              className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl font-bold transition ${
-                adminSubView === 'domains'
-                  ? 'bg-[#3120ff] text-white shadow-xs'
-                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-              }`}
-            >
-              <Globe className="h-4 w-4" />
-              <span>All Domains</span>
-            </button>
+              {adminSubView ===
+                'orders' && (
+                <AdminOrdersPayments />
+              )}
 
-            <button
-              onClick={() => setAdminSubView('pricing')}
-              className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl font-bold transition ${
-                adminSubView === 'pricing'
-                  ? 'bg-[#3120ff] text-white shadow-xs'
-                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-              }`}
-            >
-              <DollarSign className="h-4 w-4" />
-              <span>Pricing Manager</span>
-            </button>
+              {adminSubView ===
+                'domains' && (
+                <AdminDomains />
+              )}
 
-            <button
-              onClick={() => setAdminSubView('orders')}
-              className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl font-bold transition ${
-                adminSubView === 'orders'
-                  ? 'bg-[#3120ff] text-white shadow-xs'
-                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-              }`}
-            >
-              <CreditCard className="h-4 w-4" />
-              <span>Orders &amp; Payments</span>
-            </button>
+              {adminSubView ===
+                'registry' && (
+                <AdminRegistryManager />
+              )}
 
-            <button
-              onClick={() => setAdminSubView('nameservers')}
-              className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl font-bold transition ${
-                adminSubView === 'nameservers'
-                  ? 'bg-[#3120ff] text-white shadow-xs'
-                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-              }`}
-            >
-              <Server className="h-4 w-4" />
-              <span>Platform Nameservers</span>
-            </button>
+              {adminSubView ===
+                'pricing' && (
+                <AdminPricing />
+              )}
 
-            <button
-              onClick={() => setAdminSubView('settings')}
-              className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl font-bold transition ${
-                adminSubView === 'settings'
-                  ? 'bg-[#3120ff] text-white shadow-xs'
-                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-              }`}
-            >
-              <Settings className="h-4 w-4" />
-              <span>Settings</span>
-            </button>
+              {adminSubView ===
+                'nameservers' && (
+                <AdminNameservers />
+              )}
 
-          </div>
-
+              {adminSubView ===
+                'settings' && (
+                <AdminSettings />
+              )}
+            </div>
+          </main>
         </div>
+      </div>
+    );
+  };
 
-        {/* Bottom actions */}
-        <div className="pt-4 border-t border-zinc-200 space-y-2">
-          <button
-            onClick={() => setActiveView('dashboard')}
-            className="w-full flex items-center justify-center space-x-2 py-2 text-xs font-bold text-zinc-700 hover:bg-zinc-100 rounded-xl transition border border-zinc-200"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            <span>Exit to Customer App</span>
-          </button>
+const NavButton: React.FC<{
+  active: boolean;
+  icon: React.ComponentType<{
+    className?: string;
+  }>;
+  label: string;
+  badge?: number;
+  onClick: () => void;
+}> = ({
+  active,
+  icon: Icon,
+  label,
+  badge = 0,
+  onClick,
+}) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left text-xs font-semibold transition ${
+      active
+        ? 'bg-[#3120ff] text-white'
+        : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950'
+    }`}
+  >
+    <span className="flex min-w-0 items-center gap-2.5">
+      <Icon className="h-4 w-4 shrink-0" />
 
-          <button
-            onClick={logout}
-            className="w-full flex items-center justify-center space-x-2 py-1.5 text-xs font-semibold text-zinc-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition"
-          >
-            <LogOut className="h-3.5 w-3.5" />
-            <span>Sign Out</span>
-          </button>
-        </div>
-      </aside>
+      <span className="truncate">
+        {label}
+      </span>
+    </span>
 
-      {/* Main Admin Content */}
-      <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-        {adminSubView === 'dashboard' && <AdminDashboard />}
-        {adminSubView === 'registry' && <AdminRegistryManager />}
-        {adminSubView === 'domains' && <AdminDomains />}
-        {adminSubView === 'pricing' && <AdminPricing />}
-        {adminSubView === 'orders' && <AdminOrdersPayments />}
-        {adminSubView === 'nameservers' && <AdminNameservers />}
-        {adminSubView === 'settings' && <AdminSettings />}
-      </main>
-
-    </div>
-  );
-};
+    {badge > 0 && (
+      <span
+        className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+          active
+            ? 'bg-white/20 text-white'
+            : 'bg-[#3120ff]/10 text-[#3120ff]'
+        }`}
+      >
+        {badge}
+      </span>
+    )}
+  </button>
+);

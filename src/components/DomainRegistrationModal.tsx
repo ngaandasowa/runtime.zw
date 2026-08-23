@@ -22,13 +22,16 @@ import {
 import { nameserverService } from '../services/NameserverService';
 import { RegistrantDetails, RegistrantType } from '../types';
 
-type Step = 'search' | 'owner' | 'nameservers' | 'payment';
+type Step =
+  | 'search'
+  | 'owner'
+  | 'nameservers'
+  | 'payment'
+  | 'instructions';
 
 type Gateway =
-  | 'paynow'
-  | 'ecocash'
-  | 'innbucks'
-  | 'stripe_card';
+  | 'ecocash_usd'
+  | 'pesepay';
 
 const ZISPA_PRICES: Record<string, number> = {
   '.co.zw': 2,
@@ -126,7 +129,7 @@ export const DomainRegistrationModal: React.FC = () => {
   >(null);
 
 const [gateway, setGateway] =
-  useState<Gateway>('paynow');
+  useState<Gateway>('ecocash_usd');
 
 const [renewPrice, setRenewPrice] =
   useState<number | undefined>(
@@ -135,6 +138,14 @@ const [renewPrice, setRenewPrice] =
 
 const [isProcessing, setIsProcessing] =
   useState(false);
+
+const [placedOrder, setPlacedOrder] =
+  useState<{
+    orderReference: string;
+    paymentReference: string;
+    amount: number;
+    domain: string;
+  } | null>(null);
 
   const selectedDomain = availabilityResult?.domain || '';
   const zispaRequired = selectedDomain
@@ -222,9 +233,10 @@ const [isProcessing, setIsProcessing] =
     setUseDefaultNameservers(true);
     setCustomNameservers(['', '', '', '']);
     setNameserverError(null);
-    setGateway('paynow');
+    setGateway('ecocash_usd');
     setRenewPrice(undefined);
     setIsProcessing(false);
+    setPlacedOrder(null);
   };
 
   const closeModal = () => {
@@ -607,10 +619,14 @@ const [isProcessing, setIsProcessing] =
     }
 
     if (zispaRequired) {
-      const ownerError = validateRegistrant();
+      const ownerError =
+        validateRegistrant();
 
       if (ownerError) {
-        showNotification(ownerError, 'error');
+        showNotification(
+          ownerError,
+          'error'
+        );
         setStep('owner');
         return;
       }
@@ -620,7 +636,8 @@ const [isProcessing, setIsProcessing] =
       sessionStorage.setItem(
         REGISTRATION_DRAFT_KEY,
         JSON.stringify({
-          domain: availabilityResult.domain,
+          domain:
+            availabilityResult.domain,
           registrantType,
           registrantDetails,
           useDefaultNameservers,
@@ -628,31 +645,62 @@ const [isProcessing, setIsProcessing] =
           gateway,
         })
       );
-      setRegistrationModalOpen(false);
-      showNotification('Please sign in to continue to payment.', 'info');
+
+      setRegistrationModalOpen(
+        false
+      );
+
+      showNotification(
+        'Please sign in to continue.',
+        'info'
+      );
+
       navigate('/login');
+      return;
+    }
+
+    if (
+      gateway === 'pesepay'
+    ) {
+      showNotification(
+        'PesePay will be available once the secure server integration is connected.',
+        'info'
+      );
       return;
     }
 
     setIsProcessing(true);
 
     try {
-      await registerNewDomain(
-        availabilityResult.domain,
-        zispaRequired ? registrantType : 'myself',
-        zispaRequired
-          ? registrantDetails
-          : basicOwnerDetails(),
-        finalNameservers(),
-        gateway
+      const result =
+        await registerNewDomain(
+          availabilityResult.domain,
+          zispaRequired
+            ? registrantType
+            : 'myself',
+          zispaRequired
+            ? registrantDetails
+            : basicOwnerDetails(),
+          finalNameservers(),
+          'ecocash_usd'
+        );
+
+      setPlacedOrder({
+        orderReference:
+          result.order.reference,
+        paymentReference:
+          result.payment.reference,
+        amount:
+          result.payment.amount,
+        domain:
+          result.domain.domain_name,
+      });
+
+      sessionStorage.removeItem(
+        REGISTRATION_DRAFT_KEY
       );
 
-      setRegistrationModalOpen(false);
-      setPendingRegisterDomain(null);
-      sessionStorage.removeItem(REGISTRATION_DRAFT_KEY);
-      setActiveView('dashboard');
-      setDashboardSubView('domains');
-      resetState();
+      setStep('instructions');
     } catch (error) {
       console.error(
         'Domain registration order failed:',
@@ -669,6 +717,52 @@ const [isProcessing, setIsProcessing] =
       setIsProcessing(false);
     }
   };
+
+  const openPaymentWhatsApp = () => {
+    if (!placedOrder) {
+      return;
+    }
+
+    const message =
+      encodeURIComponent(
+        [
+          'Hi Runtime, I have paid for my domain order using EcoCash USD.',
+          '',
+          `Order: ${placedOrder.orderReference}`,
+          `Domain: ${placedOrder.domain}`,
+          `Amount: $${placedOrder.amount.toFixed(2)} USD`,
+          '',
+          'I am attaching my payment screenshot for verification.',
+        ].join('\n')
+      );
+
+    window.open(
+      `https://wa.me/263788350229?text=${message}`,
+      '_blank',
+      'noopener,noreferrer'
+    );
+  };
+
+  const finishPaymentInstructions =
+    () => {
+      setRegistrationModalOpen(
+        false
+      );
+
+      setPendingRegisterDomain(
+        null
+      );
+
+      setActiveView(
+        'dashboard'
+      );
+
+      setDashboardSubView(
+        'domains'
+      );
+
+      resetState();
+    };
 
   const goBack = () => {
     if (step === 'owner') {
@@ -695,10 +789,17 @@ const [isProcessing, setIsProcessing] =
 
     if (step === 'payment') {
       setStep('nameservers');
+      return;
+    }
+
+    if (step === 'instructions') {
+      return;
     }
   };
 
-  const canGoBack = step !== 'search';
+  const canGoBack =
+    step !== 'search' &&
+    step !== 'instructions';
 
   const headerTitle =
     step === 'search'
@@ -707,7 +808,9 @@ const [isProcessing, setIsProcessing] =
         ? 'Registrant details'
         : step === 'nameservers'
           ? 'Nameservers'
-          : 'Review and payment';
+          : step === 'payment'
+            ? 'Review and payment'
+            : 'EcoCash USD payment';
 
   if (!registrationModalOpen) {
     return null;
@@ -784,7 +887,8 @@ const [isProcessing, setIsProcessing] =
                     className={`rounded-lg px-1 py-2 ${
                       step === 'owner' ||
                       step === 'nameservers' ||
-                      step === 'payment'
+                      step === 'payment' ||
+                      step === 'instructions'
                         ? 'bg-[#3120ff]/10 text-[#3120ff]'
                         : 'bg-zinc-100 text-zinc-400'
                     }`}
@@ -796,7 +900,7 @@ const [isProcessing, setIsProcessing] =
                 <div
                   className={`rounded-lg px-1 py-2 ${
                     step === 'nameservers' ||
-                    step === 'payment'
+                    (step === 'payment' || step === 'instructions')
                       ? 'bg-[#3120ff]/10 text-[#3120ff]'
                       : 'bg-zinc-100 text-zinc-400'
                   }`}
@@ -1353,59 +1457,154 @@ const [isProcessing, setIsProcessing] =
                     <div className="grid gap-2 sm:grid-cols-2">
                       <GatewayButton
                         active={
-                          gateway === 'paynow'
+                          gateway ===
+                          'ecocash_usd'
                         }
-                        title="Paynow"
+                        title="EcoCash USD"
+                        description="Manual payment. Admin verifies your screenshot before processing."
                         onClick={() =>
-                          setGateway('paynow')
-                        }
-                      />
-
-                      <GatewayButton
-                        active={
-                          gateway === 'ecocash'
-                        }
-                        title="EcoCash"
-                        onClick={() =>
-                          setGateway('ecocash')
-                        }
-                      />
-
-                      <GatewayButton
-                        active={
-                          gateway === 'innbucks'
-                        }
-                        title="InnBucks"
-                        onClick={() =>
-                          setGateway('innbucks')
+                          setGateway(
+                            'ecocash_usd'
+                          )
                         }
                       />
 
                       <GatewayButton
                         active={
                           gateway ===
-                          'stripe_card'
+                          'pesepay'
                         }
-                        title="International card"
+                        title="PesePay"
+                        description="Online payment coming shortly."
+                        disabled
                         onClick={() =>
                           setGateway(
-                            'stripe_card'
+                            'pesepay'
                           )
                         }
                       />
                     </div>
                   </div>
 
-                  <p className="text-xs leading-5 text-zinc-500">
-                    Your order will be added to your account for processing after payment is confirmed.
-                  </p>
+                  {gateway ===
+                    'ecocash_usd' && (
+                    <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                      <p className="text-sm font-semibold text-zinc-950">
+                        How EcoCash USD works
+                      </p>
+
+                      <p className="mt-2 text-xs leading-5 text-zinc-500">
+                        Place the order first. Runtime will then show the exact EcoCash USD payment details and your order reference. Your domain will appear in My Domains as awaiting payment until an admin confirms receipt.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
+
+            {!preparingSelectedDomain &&
+              step ===
+                'instructions' &&
+              placedOrder && (
+                <div className="space-y-5">
+                  <div className="rounded-2xl border border-zinc-200 bg-white p-5">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#3120ff]/10 text-[#3120ff]">
+                        <CheckCircle2 className="h-5 w-5" />
+                      </div>
+
+                      <div>
+                        <h3 className="text-base font-bold text-zinc-950">
+                          Order created
+                        </h3>
+
+                        <p className="mt-1 text-xs leading-5 text-zinc-500">
+                          Your domain is now visible in My Domains as awaiting payment. Registration will only start after the payment is verified.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="overflow-hidden rounded-xl border border-zinc-200">
+                    <SummaryRow
+                      label="Order"
+                      value={
+                        placedOrder.orderReference
+                      }
+                      mono
+                    />
+
+                    <SummaryRow
+                      label="Domain"
+                      value={
+                        placedOrder.domain
+                      }
+                      mono
+                    />
+
+                    <SummaryRow
+                      label="Send Money to"
+                      value="0783827570"
+                      mono
+                    />
+
+                    <SummaryRow
+                      label="EcoCash name"
+                      value="Ngaavongwe Ndasowampange"
+                    />
+
+                    <div className="flex items-center justify-between gap-4 bg-zinc-50 px-4 py-4">
+                      <span className="text-sm font-semibold text-zinc-950">
+                        Amount
+                      </span>
+
+                      <span className="text-lg font-bold text-[#3120ff]">
+                        $
+                        {placedOrder.amount.toFixed(
+                          2
+                        )}{' '}
+                        USD
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                    <p className="text-sm font-semibold text-zinc-950">
+                      After you pay
+                    </p>
+
+                    <p className="mt-2 text-xs leading-5 text-zinc-500">
+                      Send the EcoCash payment screenshot to Runtime on WhatsApp. An admin will confirm the payment after checking that the money was received.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={
+                      openPaymentWhatsApp
+                    }
+                    className="flex w-full items-center justify-center rounded-xl bg-[#3120ff] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#2819d9]"
+                  >
+                    Send Screenshot on WhatsApp
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={
+                      finishPaymentInstructions
+                    }
+                    className="flex w-full items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50"
+                  >
+                    Go to My Domains
+                  </button>
+                </div>
+              )}
+
           </div>
 
           {/* Fixed footer - always visible on mobile */}
           {!preparingSelectedDomain &&
-            step !== 'search' && (
+            step !== 'search' &&
+            step !== 'instructions' && (
               <div className="shrink-0 border-t border-zinc-200 bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-4">
                 <div className="flex items-center justify-between gap-3">
                   <button
@@ -1463,7 +1662,7 @@ const [isProcessing, setIsProcessing] =
                       ) : (
                         <>
                           <Lock className="h-4 w-4" />
-                          Pay {priceLabel}
+                          Place Order
                         </>
                       )}
                     </button>
@@ -1545,23 +1744,34 @@ const SummaryRow: React.FC<SummaryRowProps> = ({
 type GatewayButtonProps = {
   active: boolean;
   title: string;
+  description: string;
+  disabled?: boolean;
   onClick: () => void;
 };
 
 const GatewayButton: React.FC<GatewayButtonProps> = ({
   active,
   title,
+  description,
+  disabled = false,
   onClick,
 }) => (
   <button
     type="button"
     onClick={onClick}
-    className={`rounded-xl border p-3 text-left text-sm font-semibold transition ${
+    disabled={disabled}
+    className={`rounded-xl border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
       active
         ? 'border-[#3120ff] bg-[#3120ff]/5 text-zinc-950'
         : 'border-zinc-200 text-zinc-700 hover:bg-zinc-50'
     }`}
   >
-    {title}
+    <p className="text-sm font-semibold">
+      {title}
+    </p>
+
+    <p className="mt-1 text-xs font-normal leading-5 text-zinc-500">
+      {description}
+    </p>
   </button>
 );

@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 
 import {
   Menu,
-  Server,
   UserCircle2,
   X,
 } from 'lucide-react';
@@ -10,7 +9,7 @@ import {
 import {
   useNavigate,
 } from 'react-router-dom';
-
+import runtimeLogo from '../assets/runtime-logo.svg';
 import {
   useStore,
 } from '../context/StoreContext';
@@ -96,16 +95,16 @@ export const Navbar: React.FC = () => {
 
           {/* LOGO */}
           <button
+            type="button"
             onClick={goHome}
-            className="flex items-center gap-2 font-bold text-zinc-950"
+            aria-label="Runtime home"
+            className="flex shrink-0 items-center"
           >
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#3120ff] text-white">
-              <Server className="h-4 w-4" />
-            </span>
-
-            <span>
-              Runtime
-            </span>
+            <img
+              src={runtimeLogo}
+              alt="Runtime"
+              className="h-8 w-auto sm:h-9"
+            />
           </button>
 
           {/* DESKTOP NAVIGATION */}

@@ -1,232 +1,656 @@
-import React, { useState } from 'react';
-import { 
-  CreditCard, 
-  Receipt, 
-  Calendar, 
-  CheckCircle2, 
-  FileText
+import React, {
+  useMemo,
+  useState,
+} from 'react';
+
+import {
+  CalendarDays,
+  CheckCircle2,
+  Clock3,
+  FileText,
+  Receipt,
+  X,
 } from 'lucide-react';
-import { useStore } from '../../context/StoreContext';
-import { Order } from '../../types';
 
-export const DashboardBilling: React.FC = () => {
-  const { currentUser, orders, domains, showNotification } = useStore();
-  const [selectedReceipt, setSelectedReceipt] = useState<Order | null>(null);
+import {
+  useStore,
+} from '../../context/StoreContext';
 
-  const userOrders = orders.filter(o => o.user_email === currentUser?.email || o.user_id === currentUser?.id);
-  const userDomains = domains.filter(d => d.user_email === currentUser?.email || d.user_id === currentUser?.id);
+import {
+  Order,
+} from '../../types';
 
-  // Renewal alerts
-  const now = new Date();
-  const domainRenewals = userDomains.map(d => {
-    const expires = d.expires_at ? new Date(d.expires_at) : null;
-    let daysLeft = null;
-    let reminder = 'Active';
+export const DashboardBilling:
+  React.FC = () => {
+    const {
+      currentUser,
+      orders,
+      payments,
+      domains,
+      renewDomain,
+      showNotification,
+    } = useStore();
 
-    if (expires) {
-      daysLeft = Math.ceil((expires.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-      if (daysLeft < 0) reminder = 'Expired';
-      else if (daysLeft <= 1) reminder = '1 Day Left (Urgent)';
-      else if (daysLeft <= 7) reminder = '7 Days Left';
-      else if (daysLeft <= 14) reminder = '14 Days Left';
-      else if (daysLeft <= 30) reminder = '30 Days Left';
-    }
+    const [
+      selectedReceipt,
+      setSelectedReceipt,
+    ] = useState<Order | null>(
+      null
+    );
 
-    return {
-      ...d,
-      daysLeft,
-      reminder,
-    };
-  });
+    const [
+      renewingDomainId,
+      setRenewingDomainId,
+    ] = useState<
+      string | null
+    >(null);
 
-  return (
-    <div className="space-y-6">
-      
-      {/* Top Heading */}
-      <div className="border-b border-zinc-200 pb-4">
-        <h1 className="text-xl sm:text-2xl font-extrabold text-zinc-950 tracking-tight flex items-center space-x-2">
-          <CreditCard className="h-6 w-6 text-[#3120ff]" />
-          <span>Billing &amp; Financial Invoices</span>
-        </h1>
-        <p className="text-xs text-zinc-500 mt-1">
-          Server-side verified transaction receipts, orders, and domain lifecycle renewals.
-        </p>
-      </div>
+    const userOrders =
+      useMemo(
+        () =>
+          orders
+            .filter(
+              (order) =>
+                order.user_id ===
+                  currentUser?.id ||
+                order.user_email ===
+                  currentUser?.email
+            )
+            .sort(
+              (a, b) =>
+                new Date(
+                  b.created_at
+                ).getTime() -
+                new Date(
+                  a.created_at
+                ).getTime()
+            ),
+        [
+          orders,
+          currentUser,
+        ]
+      );
 
-      {/* Renewals Tracking Section */}
-      <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-        <h2 className="text-base font-bold text-zinc-950 mb-3 flex items-center space-x-2">
-          <Calendar className="h-4 w-4 text-[#3120ff]" />
-          <span>Domain Renewal &amp; Expiry Monitor</span>
-        </h2>
+    const userDomains =
+      useMemo(
+        () =>
+          domains.filter(
+            (domain) =>
+              domain.user_id ===
+                currentUser?.id ||
+              domain.user_email ===
+                currentUser?.email
+          ),
+        [
+          domains,
+          currentUser,
+        ]
+      );
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-zinc-200 text-zinc-500 font-semibold uppercase tracking-wider">
-                <th className="pb-3">Domain</th>
-                <th className="pb-3">Renewal Price</th>
-                <th className="pb-3">Expiration Date</th>
-                <th className="pb-3">Status / Alert</th>
-                <th className="pb-3 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100 text-zinc-700">
-              {domainRenewals.map(d => (
-                <tr key={d.id} className="hover:bg-zinc-50 transition">
-                  <td className="py-3.5 font-bold font-mono text-zinc-950">
-                    {d.domain_name}
-                  </td>
-                  <td className="py-3.5 text-[#3120ff] font-bold">
-                    ${d.renewal_price.toFixed(2)}/yr
-                  </td>
-                  <td className="py-3.5 text-zinc-500">
-                    {d.expires_at ? new Date(d.expires_at).toLocaleDateString() : 'Awaiting Confirmation'}
-                  </td>
-                  <td className="py-3.5">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                      d.daysLeft !== null && d.daysLeft <= 30
-                        ? 'border-amber-200 bg-amber-50 text-amber-700'
-                        : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                    }`}>
-                      {d.reminder}
-                    </span>
-                  </td>
-                  <td className="py-3.5 text-right">
-                    <button
-                      onClick={() => showNotification(`Domain ${d.domain_name} renewal reminder dispatched.`, 'info')}
-                      className="rounded-lg bg-zinc-100 px-2.5 py-1 text-zinc-700 font-semibold hover:bg-[#3120ff] hover:text-white transition"
-                    >
-                      Renew ($2)
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    const paymentForOrder = (
+      orderId: string
+    ) =>
+      payments.find(
+        (payment) =>
+          payment.order_id ===
+          orderId
+      );
+
+    const now =
+      new Date();
+
+    const domainRenewals =
+      userDomains
+        .filter(
+          (domain) =>
+            domain.status ===
+              'active' ||
+            domain.status ===
+              'expired'
+        )
+        .map((domain) => {
+          const expiry =
+            domain.expires_at
+              ? new Date(
+                  domain.expires_at
+                )
+              : null;
+
+          const daysLeft =
+            expiry
+              ? Math.ceil(
+                  (expiry.getTime() -
+                    now.getTime()) /
+                    86400000
+                )
+              : null;
+
+          return {
+            ...domain,
+            daysLeft,
+          };
+        })
+        .sort(
+          (a, b) => {
+            if (
+              a.daysLeft ===
+              null
+            ) {
+              return 1;
+            }
+
+            if (
+              b.daysLeft ===
+              null
+            ) {
+              return -1;
+            }
+
+            return (
+              a.daysLeft -
+              b.daysLeft
+            );
+          }
+        );
+
+    const startRenewal =
+      async (
+        domainId: string
+      ) => {
+        setRenewingDomainId(
+          domainId
+        );
+
+        try {
+          await renewDomain(
+            domainId,
+            1,
+            'ecocash_usd'
+          );
+        } catch (error) {
+          showNotification(
+            error instanceof Error
+              ? error.message
+              : 'Unable to create renewal order.',
+            'error'
+          );
+        } finally {
+          setRenewingDomainId(
+            null
+          );
+        }
+      };
+
+    return (
+      <div className="space-y-8">
+
+        {/* HEADER */}
+        <div>
+          <h1 className="text-xl font-bold tracking-tight text-zinc-950 sm:text-2xl">
+            Orders & Payments
+          </h1>
+
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-500">
+            View your orders, payment status and domain renewal dates.
+          </p>
         </div>
-      </div>
 
-      {/* Orders & Invoices Table */}
-      <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-        <h2 className="text-base font-bold text-zinc-950 mb-3 flex items-center space-x-2">
-          <Receipt className="h-4 w-4 text-[#3120ff]" />
-          <span>Orders &amp; Receipts</span>
-        </h2>
+        {/* RENEWALS */}
+        <section>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-bold text-zinc-950">
+                Domain renewals
+              </h2>
 
-        {userOrders.length === 0 ? (
-          <p className="text-xs text-zinc-500 py-4">No order records yet.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-zinc-200 text-zinc-500 font-semibold uppercase tracking-wider">
-                  <th className="pb-3">Reference</th>
-                  <th className="pb-3">Date</th>
-                  <th className="pb-3">Description</th>
-                  <th className="pb-3">Total</th>
-                  <th className="pb-3">Payment Status</th>
-                  <th className="pb-3 text-right">Invoice</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100 text-zinc-700">
-                {userOrders.map(order => (
-                  <tr key={order.id} className="hover:bg-zinc-50 transition">
-                    <td className="py-3.5 font-bold font-mono text-[#3120ff]">
-                      {order.reference}
-                    </td>
-                    <td className="py-3.5 text-zinc-500">
-                      {new Date(order.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="py-3.5 text-zinc-800 font-medium">
-                      {order.items.map(i => i.description).join(', ')}
-                    </td>
-                    <td className="py-3.5 font-extrabold text-zinc-950">
-                      ${order.total.toFixed(2)} {order.currency}
-                    </td>
-                    <td className="py-3.5">
-                      <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        <CheckCircle2 className="h-3 w-3" />
-                        <span>PAID (Server Verified)</span>
-                      </span>
-                    </td>
-                    <td className="py-3.5 text-right">
-                      <button
-                        onClick={() => setSelectedReceipt(order)}
-                        className="inline-flex items-center space-x-1 rounded-xl bg-zinc-100 px-2.5 py-1 text-zinc-700 font-semibold hover:bg-zinc-200 transition"
+              <p className="mt-0.5 text-xs text-zinc-500">
+                Active domains and upcoming renewal dates.
+              </p>
+            </div>
+
+            <CalendarDays className="h-4 w-4 text-[#3120ff]" />
+          </div>
+
+          <div className="border-y border-zinc-200 bg-white sm:rounded-xl sm:border">
+            {domainRenewals.length ===
+            0 ? (
+              <p className="px-4 py-8 text-sm text-zinc-500">
+                No active domain renewals yet.
+              </p>
+            ) : (
+              <div className="divide-y divide-zinc-100">
+                {domainRenewals.map(
+                  (domain) => {
+                    const urgency =
+                      domain.daysLeft !==
+                        null &&
+                      domain.daysLeft <=
+                        30;
+
+                    const expired =
+                      domain.daysLeft !==
+                        null &&
+                      domain.daysLeft <
+                        0;
+
+                    return (
+                      <div
+                        key={
+                          domain.id
+                        }
+                        className="px-4 py-4 sm:px-5"
                       >
-                        <FileText className="h-3 w-3 text-[#3120ff]" />
-                        <span>View Receipt</span>
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <p className="truncate font-mono text-sm font-bold text-zinc-950">
+                              {
+                                domain.domain_name
+                              }
+                            </p>
+
+                            <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2 text-xs text-zinc-500">
+                              <span>
+                                Renewal{' '}
+                                <strong className="font-semibold text-zinc-800">
+                                  $
+                                  {domain.renewal_price.toFixed(
+                                    2
+                                  )}
+                                  /yr
+                                </strong>
+                              </span>
+
+                              <span>
+                                Due{' '}
+                                <strong className="font-semibold text-zinc-800">
+                                  {domain.expires_at
+                                    ? new Date(
+                                        domain.expires_at
+                                      ).toLocaleDateString()
+                                    : 'Not set'}
+                                </strong>
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="shrink-0 text-right">
+                            <StatusText
+                              label={
+                                expired
+                                  ? 'Expired'
+                                  : urgency
+                                    ? `${Math.max(
+                                        domain.daysLeft ||
+                                          0,
+                                        0
+                                      )} days left`
+                                    : 'Active'
+                              }
+                              tone={
+                                expired
+                                  ? 'danger'
+                                  : urgency
+                                    ? 'info'
+                                    : 'success'
+                              }
+                            />
+                          </div>
+                        </div>
+
+                        <div className="mt-3 flex justify-end">
+                          <button
+                            type="button"
+                            disabled={
+                              renewingDomainId ===
+                              domain.id
+                            }
+                            onClick={() =>
+                              startRenewal(
+                                domain.id
+                              )
+                            }
+                            className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold text-zinc-700 disabled:opacity-50"
+                          >
+                            {renewingDomainId ===
+                            domain.id
+                              ? 'Creating order...'
+                              : 'Renew 1 year'}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  }
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* ORDERS */}
+        <section>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-bold text-zinc-950">
+                Order history
+              </h2>
+
+              <p className="mt-0.5 text-xs text-zinc-500">
+                Registration and renewal orders.
+              </p>
+            </div>
+
+            <Receipt className="h-4 w-4 text-[#3120ff]" />
+          </div>
+
+          <div className="border-y border-zinc-200 bg-white sm:rounded-xl sm:border">
+            {userOrders.length ===
+            0 ? (
+              <p className="px-4 py-8 text-sm text-zinc-500">
+                No orders yet.
+              </p>
+            ) : (
+              <div className="divide-y divide-zinc-100">
+                {userOrders.map(
+                  (order) => {
+                    const payment =
+                      paymentForOrder(
+                        order.id
+                      );
+
+                    return (
+                      <div
+                        key={
+                          order.id
+                        }
+                        className="px-4 py-4 sm:px-5"
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <p className="font-mono text-xs font-bold text-[#3120ff]">
+                              {
+                                order.reference
+                              }
+                            </p>
+
+                            <p className="mt-1 line-clamp-2 text-sm font-medium leading-5 text-zinc-900">
+                              {order.items
+                                .map(
+                                  (
+                                    item
+                                  ) =>
+                                    item.description
+                                )
+                                .join(
+                                  ', '
+                                )}
+                            </p>
+
+                            <p className="mt-1 text-xs text-zinc-500">
+                              {new Date(
+                                order.created_at
+                              ).toLocaleDateString()}
+                            </p>
+                          </div>
+
+                          <div className="shrink-0 text-right">
+                            <p className="text-sm font-bold text-zinc-950">
+                              $
+                              {order.total.toFixed(
+                                2
+                              )}
+                            </p>
+
+                            <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">
+                              {
+                                order.currency
+                              }
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 flex items-center justify-between gap-3">
+                          <PaymentStatus
+                            status={
+                              payment?.status ||
+                              order.status
+                            }
+                          />
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSelectedReceipt(
+                                order
+                              )
+                            }
+                            className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-700"
+                          >
+                            <FileText className="h-3.5 w-3.5 text-[#3120ff]" />
+                            View
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  }
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* RECEIPT / ORDER DETAILS */}
+        {selectedReceipt && (
+          <div className="fixed inset-0 z-50 flex items-end bg-black/35 sm:items-center sm:justify-center sm:p-4">
+            <div className="max-h-[90dvh] w-full overflow-y-auto rounded-t-2xl bg-white p-5 sm:max-w-lg sm:rounded-2xl sm:border sm:border-zinc-200 sm:p-6">
+              <div className="flex items-start justify-between gap-4 border-b border-zinc-200 pb-4">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#3120ff]">
+                    Order details
+                  </p>
+
+                  <p className="mt-1 font-mono text-base font-bold text-zinc-950">
+                    {
+                      selectedReceipt.reference
+                    }
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSelectedReceipt(
+                      null
+                    )
+                  }
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-500"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="divide-y divide-zinc-100">
+                <Detail
+                  label="Customer"
+                  value={
+                    currentUser?.name ||
+                    selectedReceipt.user_email
+                  }
+                />
+
+                <Detail
+                  label="Date"
+                  value={new Date(
+                    selectedReceipt.created_at
+                  ).toLocaleString()}
+                />
+
+                <Detail
+                  label="Status"
+                  value={
+                    paymentForOrder(
+                      selectedReceipt.id
+                    )?.status ||
+                    selectedReceipt.status
+                  }
+                />
+              </div>
+
+              <div className="mt-4 border-t border-zinc-200 pt-4">
+                <p className="mb-3 text-xs font-semibold text-zinc-500">
+                  Items
+                </p>
+
+                <div className="space-y-3">
+                  {selectedReceipt.items.map(
+                    (
+                      item,
+                      index
+                    ) => (
+                      <div
+                        key={
+                          index
+                        }
+                        className="flex items-start justify-between gap-4 text-sm"
+                      >
+                        <span className="text-zinc-700">
+                          {
+                            item.description
+                          }
+                        </span>
+
+                        <span className="shrink-0 font-semibold text-zinc-950">
+                          $
+                          {item.total.toFixed(
+                            2
+                          )}
+                        </span>
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-5 flex items-center justify-between border-t border-zinc-200 pt-4">
+                <span className="text-sm font-semibold text-zinc-700">
+                  Total
+                </span>
+
+                <span className="text-lg font-bold text-zinc-950">
+                  $
+                  {selectedReceipt.total.toFixed(
+                    2
+                  )}{' '}
+                  {
+                    selectedReceipt.currency
+                  }
+                </span>
+              </div>
+            </div>
           </div>
         )}
       </div>
+    );
+  };
 
-      {/* Invoice / Receipt Modal */}
-      {selectedReceipt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
-          <div className="relative w-full max-w-lg rounded-2xl border border-zinc-200 bg-white p-6 text-zinc-900 shadow-2xl ring-1 ring-black/5">
-            
-            <div className="flex justify-between items-start border-b border-zinc-200 pb-4 mb-4">
-              <div>
-                <div className="text-xs font-bold text-[#3120ff]">OFFICIAL INVOICE &amp; RECEIPT</div>
-                <div className="text-lg font-bold font-mono text-zinc-950">{selectedReceipt.reference}</div>
-              </div>
-              <div className="text-right text-xs text-zinc-500">
-                <div className="font-bold text-zinc-800">Runtime Private Limited</div>
-                <div>Harare, Zimbabwe</div>
-              </div>
-            </div>
+const PaymentStatus: React.FC<{
+  status: string;
+}> = ({
+  status,
+}) => {
+  if (
+    status === 'verified' ||
+    status === 'paid'
+  ) {
+    return (
+      <StatusText
+        label="Paid"
+        tone="success"
+      />
+    );
+  }
 
-            <div className="space-y-3 text-xs mb-6">
-              <div className="flex justify-between py-1 border-b border-zinc-100">
-                <span className="text-zinc-500">Billed To:</span>
-                <span className="text-zinc-900 font-semibold">{currentUser?.name} ({selectedReceipt.user_email})</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-zinc-100">
-                <span className="text-zinc-500">Issued Date:</span>
-                <span className="text-zinc-900">{new Date(selectedReceipt.created_at).toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-zinc-100">
-                <span className="text-zinc-500">Paid Timestamp:</span>
-                <span className="text-emerald-700 font-semibold">{selectedReceipt.paid_at ? new Date(selectedReceipt.paid_at).toLocaleString() : 'Confirmed'}</span>
-              </div>
+  if (
+    status === 'rejected' ||
+    status === 'failed'
+  ) {
+    return (
+      <StatusText
+        label="Payment issue"
+        tone="danger"
+      />
+    );
+  }
 
-              <div className="mt-4 border-t border-zinc-200 pt-3">
-                <div className="text-zinc-500 mb-2 font-semibold">Items:</div>
-                {selectedReceipt.items.map((item, idx) => (
-                  <div key={idx} className="flex justify-between py-1 text-zinc-800">
-                    <span>{item.description}</span>
-                    <span className="font-bold">${item.total.toFixed(2)}</span>
-                  </div>
-                ))}
-              </div>
+  if (
+    status ===
+    'pending_verification'
+  ) {
+    return (
+      <StatusText
+        label="Awaiting verification"
+        tone="info"
+      />
+    );
+  }
 
-              <div className="flex justify-between pt-3 border-t border-zinc-200 text-sm font-bold text-zinc-950">
-                <span>Total Amount Paid:</span>
-                <span className="text-[#3120ff] font-extrabold">${selectedReceipt.total.toFixed(2)} USD</span>
-              </div>
-            </div>
-
-            <div className="flex justify-between items-center pt-4 border-t border-zinc-200 text-xs">
-              <span className="text-zinc-500">Status: Tax Paid &amp; Registration Submitted</span>
-              <button
-                onClick={() => setSelectedReceipt(null)}
-                className="rounded-xl bg-[#3120ff] px-4 py-2 text-xs font-bold text-white hover:bg-[#2819d9] shadow-xs"
-              >
-                Close Receipt
-              </button>
-            </div>
-
-          </div>
-        </div>
-      )}
-
-    </div>
+  return (
+    <StatusText
+      label="Awaiting payment"
+      tone="neutral"
+    />
   );
 };
+
+const StatusText: React.FC<{
+  label: string;
+  tone:
+    | 'success'
+    | 'info'
+    | 'danger'
+    | 'neutral';
+}> = ({
+  label,
+  tone,
+}) => {
+  const classes =
+    tone === 'success'
+      ? 'text-emerald-700'
+      : tone === 'info'
+        ? 'text-[#3120ff]'
+        : tone === 'danger'
+          ? 'text-rose-600'
+          : 'text-zinc-500';
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 text-xs font-semibold ${classes}`}
+    >
+      {tone ===
+      'success' ? (
+        <CheckCircle2 className="h-3.5 w-3.5" />
+      ) : (
+        <Clock3 className="h-3.5 w-3.5" />
+      )}
+
+      {label}
+    </span>
+  );
+};
+
+const Detail: React.FC<{
+  label: string;
+  value: string;
+}> = ({
+  label,
+  value,
+}) => (
+  <div className="flex items-start justify-between gap-4 py-3 text-sm">
+    <span className="text-zinc-500">
+      {label}
+    </span>
+
+    <span className="max-w-[65%] text-right font-medium text-zinc-900">
+      {value}
+    </span>
+  </div>
+);

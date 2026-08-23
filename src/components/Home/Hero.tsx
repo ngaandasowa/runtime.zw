@@ -10,6 +10,9 @@ import {
   Search,
   XCircle,
 } from 'lucide-react';
+import {
+  FaWhatsapp,
+} from 'react-icons/fa';
 
 import { useStore } from '../../context/StoreContext';
 
@@ -224,6 +227,40 @@ export const Hero: React.FC = () => {
   };
 
   /*
+ * Assisted Zimbabwe registrations
+ *
+ * .org.zw and .ac.zw require additional
+ * supporting documents, so these are
+ * handled directly with Runtime.
+ */
+const requiresAssistedRegistration = (
+  domain: string
+) => {
+  const value =
+    domain.toLowerCase();
+
+  return (
+    value.endsWith('.org.zw') ||
+    value.endsWith('.ac.zw')
+  );
+};
+
+const whatsappRegistration = (
+  domain: string
+) => {
+  const message =
+    encodeURIComponent(
+      `Hi Runtime, I would like to register ${domain}. Please assist me with the registration requirements and supporting documents.`
+    );
+
+  window.open(
+    `https://wa.me/263788350229?text=${message}`,
+    '_blank',
+    'noopener,noreferrer'
+  );
+};
+
+  /*
    * Transfer
    */
   const transfer = (
@@ -278,6 +315,12 @@ export const Hero: React.FC = () => {
         <h1 className="max-w-3xl text-5xl font-bold tracking-tight text-zinc-950 sm:text-6xl lg:text-7xl">
           Find your place online.
         </h1>
+
+        <p className="mt-5 max-w-2xl text-base leading-7 text-zinc-600 sm:text-lg">
+          Runtime is a technology platform for domains, cloud infrastructure
+          and developer services. Register and manage domains today, with more
+          tools launching soon.
+        </p>
 
         <div className="mt-8 flex items-center rounded-full border border-zinc-200 bg-white p-1 shadow-sm">
           <button
@@ -458,6 +501,17 @@ export const Hero: React.FC = () => {
                             ? 'Available for registration'
                             : 'Already registered. If you own this domain, you can transfer it to us.'}
                       </p>
+                      {result.isAvailable &&
+                        requiresAssistedRegistration(
+                          result.domain
+                        ) && (
+                          <p className="mt-1.5 max-w-md text-xs leading-5 text-zinc-500">
+                            Additional documents are required,
+                            including a stamped domain registration
+                            request letter from the organisation.
+                            Contact us and we’ll assist you.
+                          </p>
+                        )}
                     </div>
                   </div>
 
@@ -481,18 +535,35 @@ export const Hero: React.FC = () => {
                         )}
 
                       {result.isAvailable ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            register(
-                              result.domain
-                            )
-                          }
-                          className="flex items-center gap-2 rounded-xl bg-[#3120ff] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#2819d9]"
-                        >
-                          Register
-                          <ArrowRight className="h-4 w-4" />
-                        </button>
+                        requiresAssistedRegistration(
+                          result.domain
+                        ) ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              whatsappRegistration(
+                                result.domain
+                              )
+                            }
+                            className="flex items-center gap-2 rounded-xl bg-[#3120ff] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#2819d9]"
+                          >
+                            <FaWhatsapp className="h-4 w-4" />
+                            WhatsApp Us
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              register(
+                                result.domain
+                              )
+                            }
+                            className="flex items-center gap-2 rounded-xl bg-[#3120ff] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#2819d9]"
+                          >
+                            Register
+                            <ArrowRight className="h-4 w-4" />
+                          </button>
+                        )
                       ) : (
                         <button
                           type="button"

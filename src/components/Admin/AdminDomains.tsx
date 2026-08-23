@@ -1,124 +1,385 @@
-import React, { useState } from 'react';
-import { Globe, Search } from 'lucide-react';
-import { useStore } from '../../context/StoreContext';
-import { DomainStatus } from '../../types';
+import React, {
+  useMemo,
+  useState,
+} from 'react';
 
-export const AdminDomains: React.FC = () => {
-  const { domains, updateDomainStatus, showNotification } = useStore();
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+import {
+  Clock3,
+  Globe2,
+  Search,
+} from 'lucide-react';
 
-  const filteredDomains = domains.filter(d => {
-    if (statusFilter !== 'ALL' && d.status !== statusFilter) return false;
-    if (search && !d.domain_name.toLowerCase().includes(search.toLowerCase()) && !d.user_email.toLowerCase().includes(search.toLowerCase())) {
-      return false;
-    }
-    return true;
-  });
+import {
+  useStore,
+} from '../../context/StoreContext';
 
-  return (
-    <div className="space-y-6">
-      
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-200 pb-4">
+import {
+  DomainStatus,
+} from '../../types';
+
+const STATUS_LABELS:
+  Record<string, string> = {
+    pending_payment:
+      'Awaiting payment',
+    pending_registration:
+      'Registration processing',
+    pending_transfer:
+      'Transfer processing',
+    pending_delete:
+      'Cancellation processing',
+    active:
+      'Active',
+    cancelled:
+      'Cancelled',
+    expired:
+      'Expired',
+  };
+
+export const AdminDomains:
+  React.FC = () => {
+    const {
+      domains,
+      updateDomainStatus,
+      showNotification,
+      setAdminSubView,
+    } = useStore();
+
+    const [
+      search,
+      setSearch,
+    ] = useState('');
+
+    const [
+      statusFilter,
+      setStatusFilter,
+    ] = useState('ALL');
+
+    const filtered =
+      useMemo(
+        () =>
+          domains.filter(
+            (domain) => {
+              if (
+                statusFilter !==
+                  'ALL' &&
+                domain.status !==
+                  statusFilter
+              ) {
+                return false;
+              }
+
+              const value =
+                search
+                  .trim()
+                  .toLowerCase();
+
+              if (!value) {
+                return true;
+              }
+
+              return (
+                domain.domain_name
+                  .toLowerCase()
+                  .includes(value) ||
+                domain.user_email
+                  .toLowerCase()
+                  .includes(value)
+              );
+            }
+          ),
+        [
+          domains,
+          search,
+          statusFilter,
+        ]
+      );
+
+    return (
+      <div className="space-y-6">
         <div>
-          <h1 className="text-xl sm:text-2xl font-extrabold text-zinc-950 tracking-tight flex items-center space-x-2">
-            <Globe className="h-6 w-6 text-[#3120ff]" />
-            <span>All System Domains ({domains.length})</span>
+          <h1 className="text-xl font-extrabold tracking-tight text-zinc-950 sm:text-2xl">
+            Domains
           </h1>
-          <p className="text-xs text-zinc-500 mt-1">
-            Global administrative directory of all provisioned and delegated domain records.
+
+          <p className="mt-1 text-xs text-zinc-500">
+            All customer domains and their current processing state.
           </p>
         </div>
-      </div>
 
-      {/* Filter Toolbar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-xl border border-zinc-200 shadow-2xs">
-        <div className="flex items-center space-x-2">
-          <span className="text-xs text-zinc-500 font-bold">Status:</span>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-lg bg-zinc-50 border border-zinc-200 px-2.5 py-1 text-xs text-zinc-900 font-medium"
+            value={
+              statusFilter
+            }
+            onChange={(event) =>
+              setStatusFilter(
+                event.target.value
+              )
+            }
+            className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs outline-none"
           >
-            <option value="ALL">All Statuses</option>
-            <option value="active">Active</option>
-            <option value="pending_registration">Pending Registration</option>
-            <option value="pending_transfer">Pending Transfer</option>
-            <option value="pending_delete">Pending Delete</option>
-            <option value="cancelled">Cancelled</option>
-            <option value="expired">Expired</option>
+            <option value="ALL">
+              All statuses
+            </option>
+
+            <option value="pending_payment">
+              Awaiting payment
+            </option>
+
+            <option value="pending_registration">
+              Registration processing
+            </option>
+
+            <option value="active">
+              Active
+            </option>
+
+            <option value="pending_transfer">
+              Transfer processing
+            </option>
+
+            <option value="pending_delete">
+              Cancellation processing
+            </option>
+
+            <option value="cancelled">
+              Cancelled
+            </option>
+
+            <option value="expired">
+              Expired
+            </option>
           </select>
+
+          <div className="relative w-full sm:max-w-sm">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-400" />
+
+            <input
+              value={search}
+              onChange={(event) =>
+                setSearch(
+                  event.target.value
+                )
+              }
+              placeholder="Search domain or customer"
+              className="w-full rounded-xl border border-zinc-200 bg-white py-2 pl-9 pr-4 text-xs outline-none focus:border-[#3120ff]"
+            />
+          </div>
         </div>
 
-        <div className="relative">
-          <Search className="h-4 w-4 text-zinc-400 absolute left-3 top-2.5" />
-          <input
-            type="text"
-            placeholder="Search domain or customer..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="rounded-xl border border-zinc-200 bg-zinc-50 pl-9 pr-4 py-1.5 text-xs text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none w-full sm:w-64"
-          />
-        </div>
-      </div>
+        <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
+          {filtered.length ===
+          0 ? (
+            <div className="px-5 py-12 text-center text-sm text-zinc-500">
+              No matching domains.
+            </div>
+          ) : (
+            <div className="divide-y divide-zinc-100">
+              {filtered.map(
+                (domain) => {
+                  const waitingForPayment =
+                    domain.status ===
+                    'pending_payment';
 
-      {/* Domains Table */}
-      <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-zinc-200 text-zinc-500 font-semibold uppercase tracking-wider">
-                <th className="pb-3">Domain</th>
-                <th className="pb-3">Customer</th>
-                <th className="pb-3">Nameservers</th>
-                <th className="pb-3">Status</th>
-                <th className="pb-3">Expires At</th>
-                <th className="pb-3 text-right">Admin Status Override</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100 text-zinc-700">
-              {filteredDomains.map(d => (
-                <tr key={d.id} className="hover:bg-zinc-50 transition">
-                  <td className="py-3.5 font-bold font-mono text-zinc-950">{d.domain_name}</td>
-                  <td className="py-3.5 text-zinc-600">{d.user_email}</td>
-                  <td className="py-3.5 text-zinc-600 font-mono text-[11px]">{d.nameservers.slice(0, 2).join(', ')}</td>
-                  <td className="py-3.5">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                      d.status === 'active' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' :
-                      d.status === 'pending_registration' ? 'border-amber-200 bg-amber-50 text-amber-700' :
-                      d.status === 'cancelled' ? 'border-zinc-200 bg-zinc-100 text-zinc-600' :
-                      'border-zinc-200 bg-zinc-100 text-zinc-600'
-                    }`}>
-                      {d.status}
-                    </span>
-                  </td>
-                  <td className="py-3.5 text-zinc-500">
-                    {d.expires_at ? new Date(d.expires_at).toLocaleDateString() : 'Awaiting ZISPA'}
-                  </td>
-                  <td className="py-3.5 text-right">
-                    <select
-                      value={d.status}
-                      onChange={(e) => {
-                        updateDomainStatus(d.id, e.target.value as DomainStatus);
-                        showNotification(`Status for ${d.domain_name} set to ${e.target.value}`, 'info');
-                      }}
-                      className="rounded-lg bg-zinc-50 border border-zinc-200 px-2 py-1 text-[11px] text-zinc-800 font-semibold"
+                  return (
+                    <div
+                      key={
+                        domain.id
+                      }
+                      className="p-5"
                     >
-                      <option value="active">active</option>
-                      <option value="pending_registration">pending_registration</option>
-                      <option value="pending_transfer">pending_transfer</option>
-                      <option value="pending_delete">pending_delete</option>
-                      <option value="cancelled">cancelled</option>
-                      <option value="expired">expired</option>
-                    </select>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                      <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="truncate font-mono text-sm font-bold text-zinc-950">
+                              {
+                                domain.domain_name
+                              }
+                            </p>
+
+                            <DomainBadge
+                              status={
+                                domain.status
+                              }
+                            />
+                          </div>
+
+                          <p className="mt-1 text-xs text-zinc-500">
+                            {
+                              domain.user_email
+                            }
+                          </p>
+
+                          <div className="mt-4 grid gap-3 text-xs sm:grid-cols-3">
+                            <Info
+                              label="Nameservers"
+                              value={
+                                domain.nameservers
+                                  .slice(
+                                    0,
+                                    2
+                                  )
+                                  .join(
+                                    ', '
+                                  ) ||
+                                'Not set'
+                              }
+                              mono
+                            />
+
+                            <Info
+                              label="Registered"
+                              value={
+                                domain.registered_at
+                                  ? new Date(
+                                      domain.registered_at
+                                    ).toLocaleDateString()
+                                  : 'Not yet'
+                              }
+                            />
+
+                            <Info
+                              label="Renewal"
+                              value={
+                                domain.expires_at
+                                  ? new Date(
+                                      domain.expires_at
+                                    ).toLocaleDateString()
+                                  : 'Not yet'
+                              }
+                            />
+                          </div>
+                        </div>
+
+                        {waitingForPayment ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setAdminSubView(
+                                'orders'
+                              )
+                            }
+                            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-[#3120ff]/20 bg-[#3120ff]/5 px-4 py-2.5 text-xs font-bold text-[#3120ff]"
+                          >
+                            <Clock3 className="h-4 w-4" />
+                            Review Payment
+                          </button>
+                        ) : (
+                          <select
+                            value={
+                              domain.status
+                            }
+                            onChange={(event) => {
+                              const status =
+                                event.target.value as
+                                  DomainStatus;
+
+                              updateDomainStatus(
+                                domain.id,
+                                status
+                              );
+
+                              showNotification(
+                                `${domain.domain_name} status updated.`,
+                                'info'
+                              );
+                            }}
+                            className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold outline-none"
+                          >
+                            <option value="pending_registration">
+                              Registration processing
+                            </option>
+
+                            <option value="active">
+                              Active
+                            </option>
+
+                            <option value="pending_transfer">
+                              Transfer processing
+                            </option>
+
+                            <option value="pending_delete">
+                              Cancellation processing
+                            </option>
+
+                            <option value="cancelled">
+                              Cancelled
+                            </option>
+
+                            <option value="expired">
+                              Expired
+                            </option>
+                          </select>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+              )}
+            </div>
+          )}
         </div>
       </div>
+    );
+  };
 
-    </div>
+const Info: React.FC<{
+  label: string;
+  value: string;
+  mono?: boolean;
+}> = ({
+  label,
+  value,
+  mono = false,
+}) => (
+  <div>
+    <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
+      {label}
+    </p>
+
+    <p
+      className={`mt-1 wrap-break-word font-semibold text-zinc-700 ${
+        mono
+          ? 'font-mono text-[11px]'
+          : ''
+      }`}
+    >
+      {value}
+    </p>
+  </div>
+);
+
+const DomainBadge: React.FC<{
+  status: string;
+}> = ({
+  status,
+}) => {
+  const label =
+    STATUS_LABELS[
+      status
+    ] ||
+    status.replace(
+      /_/g,
+      ' '
+    );
+
+  const classes =
+    status === 'active'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+      : status ===
+          'pending_payment'
+        ? 'border-[#3120ff]/20 bg-[#3120ff]/5 text-[#3120ff]'
+        : status.startsWith(
+              'pending_'
+            )
+          ? 'border-blue-200 bg-blue-50 text-blue-700'
+          : 'border-zinc-200 bg-zinc-100 text-zinc-600';
+
+  return (
+    <span
+      className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${classes}`}
+    >
+      {label}
+    </span>
   );
 };

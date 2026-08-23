@@ -1,252 +1,394 @@
 import React from 'react';
-import { 
-  Users, 
-  Globe, 
-  Clock, 
-  CreditCard, 
-  FileText, 
-  AlertTriangle, 
-  TrendingUp, 
-  ShieldCheck, 
-  ArrowRight,
-  Send,
-  CheckCircle2
+
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock3,
+  CreditCard,
+  FileText,
+  Globe2,
+  Users,
 } from 'lucide-react';
-import { useStore } from '../../context/StoreContext';
 
-export const AdminDashboard: React.FC = () => {
-  const { 
-    users, 
-    domains, 
-    orders, 
-    registryRequests, 
-    setAdminSubView 
-  } = useStore();
+import {
+  useStore,
+} from '../../context/StoreContext';
 
-  const totalCustomers = users.filter(u => u.role === 'customer').length;
-  const totalDomains = domains.length;
-  const activeDomains = domains.filter(d => d.status === 'active').length;
-  const pendingRegistrations = domains.filter(d => d.status === 'pending_registration' || d.status === 'pending').length;
-  const awaitingZispaRequests = registryRequests.filter(r => r.status === 'submitted' || r.status === 'awaiting_confirmation').length;
-  
-  // Calculate total revenue from paid orders
-  const revenueThisMonth = orders
-    .filter(o => o.status === 'paid')
-    .reduce((sum, o) => sum + o.total, 0);
+export const AdminDashboard:
+  React.FC = () => {
+    const {
+      users,
+      domains,
+      orders,
+      payments,
+      registryRequests,
+      setAdminSubView,
+    } = useStore();
 
-  // Expiring soon count
-  const now = new Date();
-  const expiringSoonCount = domains.filter(d => {
-    if (!d.expires_at || d.status !== 'active') return false;
-    const diffDays = Math.ceil((new Date(d.expires_at).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    return diffDays > 0 && diffDays <= 30;
-  }).length;
+    const customers =
+      users.filter(
+        (user) =>
+          user.role ===
+          'customer'
+      ).length;
+
+    const activeDomains =
+      domains.filter(
+        (domain) =>
+          domain.status ===
+          'active'
+      ).length;
+
+    const awaitingPayment =
+      domains.filter(
+        (domain) =>
+          domain.status ===
+          'pending_payment'
+      ).length;
+
+    const processingDomains =
+      domains.filter(
+        (domain) =>
+          domain.status ===
+            'pending_registration' ||
+          domain.status ===
+            'pending_transfer' ||
+          domain.status ===
+            'pending_delete'
+      ).length;
+
+    const pendingPayments =
+      payments.filter(
+        (payment) =>
+          payment.status ===
+            'pending' ||
+          payment.status ===
+            'pending_verification'
+      ).length;
+
+    const verifiedPayments =
+      payments.filter(
+        (payment) =>
+          payment.status ===
+          'verified'
+      );
+
+    const now =
+      new Date();
+
+    const revenueThisMonth =
+      verifiedPayments
+        .filter(
+          (payment) => {
+            const date =
+              new Date(
+                payment.verified_at ||
+                  payment.created_at
+              );
+
+            return (
+              date.getFullYear() ===
+                now.getFullYear() &&
+              date.getMonth() ===
+                now.getMonth()
+            );
+          }
+        )
+        .reduce(
+          (
+            total,
+            payment
+          ) =>
+            total +
+            payment.amount,
+          0
+        );
+
+    const registryReady =
+      registryRequests.filter(
+        (request) =>
+          request.status ===
+            'ready' ||
+          request.status ===
+            'draft'
+      ).length;
+
+    const recentOrders =
+      [...orders]
+        .sort(
+          (a, b) =>
+            new Date(
+              b.created_at
+            ).getTime() -
+            new Date(
+              a.created_at
+            ).getTime()
+        )
+        .slice(0, 5);
+
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-extrabold tracking-tight text-zinc-950 sm:text-3xl">
+            Overview
+          </h1>
+
+          <p className="mt-1 text-sm text-zinc-500">
+            Live customer, domain and payment data.
+          </p>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Metric
+            icon={Users}
+            label="Customers"
+            value={customers}
+          />
+
+          <Metric
+            icon={Globe2}
+            label="Active Domains"
+            value={activeDomains}
+          />
+
+          <Metric
+            icon={Clock3}
+            label="Awaiting Payment"
+            value={awaitingPayment}
+            onClick={() =>
+              setAdminSubView(
+                'orders'
+              )
+            }
+          />
+
+          <Metric
+            icon={CreditCard}
+            label="Pending Payments"
+            value={pendingPayments}
+            onClick={() =>
+              setAdminSubView(
+                'orders'
+              )
+            }
+          />
+
+          <Metric
+            icon={FileText}
+            label="Processing"
+            value={processingDomains}
+            onClick={() =>
+              setAdminSubView(
+                'domains'
+              )
+            }
+          />
+
+          <Metric
+            icon={
+              CheckCircle2
+            }
+            label="Registry Ready"
+            value={registryReady}
+            onClick={() =>
+              setAdminSubView(
+                'registry'
+              )
+            }
+          />
+        </div>
+
+        <div className="rounded-2xl border border-zinc-200 bg-white p-5">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                Verified revenue this month
+              </p>
+
+              <p className="mt-1 text-3xl font-bold text-zinc-950">
+                $
+                {revenueThisMonth.toFixed(
+                  2
+                )}
+              </p>
+            </div>
+
+            {pendingPayments >
+              0 && (
+              <button
+                type="button"
+                onClick={() =>
+                  setAdminSubView(
+                    'orders'
+                  )
+                }
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#3120ff] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#2819d9]"
+              >
+                <AlertTriangle className="h-4 w-4" />
+                Review Payments
+              </button>
+            )}
+          </div>
+        </div>
+
+        <section className="rounded-2xl border border-zinc-200 bg-white p-5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold text-zinc-950">
+              Recent Orders
+            </h2>
+
+            <button
+              type="button"
+              onClick={() =>
+                setAdminSubView(
+                  'orders'
+                )
+              }
+              className="text-xs font-semibold text-[#3120ff]"
+            >
+              View All
+            </button>
+          </div>
+
+          <div className="mt-4 divide-y divide-zinc-100">
+            {recentOrders.length ===
+            0 ? (
+              <p className="py-6 text-sm text-zinc-500">
+                No orders yet.
+              </p>
+            ) : (
+              recentOrders.map(
+                (order) => {
+                  const payment =
+                    payments.find(
+                      (item) =>
+                        item.order_id ===
+                        order.id
+                    );
+
+                  return (
+                    <div
+                      key={order.id}
+                      className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-mono text-xs font-bold text-zinc-950">
+                          {
+                            order.reference
+                          }
+                        </p>
+
+                        <p className="mt-1 truncate text-xs text-zinc-500">
+                          {
+                            order.user_email
+                          }
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <p className="text-sm font-bold text-zinc-950">
+                          $
+                          {order.total.toFixed(
+                            2
+                          )}
+                        </p>
+
+                        <PaymentBadge
+                          status={
+                            payment?.status ||
+                            'pending'
+                          }
+                        />
+                      </div>
+                    </div>
+                  );
+                }
+              )
+            )}
+          </div>
+        </section>
+      </div>
+    );
+  };
+
+const Metric: React.FC<{
+  icon: React.ComponentType<{
+    className?: string;
+  }>;
+  label: string;
+  value: number;
+  onClick?: () => void;
+}> = ({
+  icon: Icon,
+  label,
+  value,
+  onClick,
+}) => {
+  const content = (
+    <>
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-zinc-500">
+          {label}
+        </p>
+
+        <Icon className="h-4 w-4 text-[#3120ff]" />
+      </div>
+
+      <p className="mt-3 text-2xl font-bold text-zinc-950">
+        {value}
+      </p>
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={
+          onClick
+        }
+        className="rounded-xl border border-zinc-200 bg-white p-5 text-left transition hover:border-[#3120ff]/30"
+      >
+        {content}
+      </button>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      
-      {/* Top Banner */}
-      <div className="rounded-2xl border border-zinc-200 bg-white p-6 sm:p-8 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <div className="inline-flex items-center space-x-2 text-xs font-bold text-[#3120ff] mb-1">
-              <ShieldCheck className="h-3.5 w-3.5" />
-              <span>RUNTIME INFRASTRUCTURE ADMIN CONSOLE</span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-zinc-950 tracking-tight">
-              Registry &amp; Platform Operations
-            </h1>
-            <p className="text-xs sm:text-sm text-zinc-600 mt-1">
-              Overview of ZISPA registry dispatches, customer accounts, and revenue pipelines.
-            </p>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => setAdminSubView('registry')}
-              className="inline-flex items-center space-x-2 rounded-xl bg-[#3120ff] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#1a1de0] transition shadow-sm"
-            >
-              <Send className="h-4 w-4" />
-              <span>ZISPA Registry Desk ({registryRequests.filter(r => r.status === 'ready').length} Ready)</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* 8 Core Admin Metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        
-        {/* Metric 1 */}
-        <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between text-zinc-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">TOTAL CUSTOMERS</span>
-            <Users className="h-4 w-4 text-[#3120ff]" />
-          </div>
-          <div className="text-2xl font-extrabold text-zinc-950">{totalCustomers}</div>
-          <div className="text-[11px] text-zinc-500 mt-1">Verified account owners</div>
-        </div>
-
-        {/* Metric 2 */}
-        <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between text-zinc-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">ACTIVE DOMAINS</span>
-            <Globe className="h-4 w-4 text-[#3120ff]" />
-          </div>
-          <div className="text-2xl font-extrabold text-zinc-950">{activeDomains}</div>
-          <div className="text-[11px] text-zinc-500 mt-1">{totalDomains} total records in DB</div>
-        </div>
-
-        {/* Metric 3 */}
-        <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between text-zinc-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">PENDING REGISTRATIONS</span>
-            <Clock className="h-4 w-4 text-zinc-400" />
-          </div>
-          <div className="text-2xl font-extrabold text-zinc-950">{pendingRegistrations}</div>
-          <div className="text-[11px] text-zinc-500 mt-1">Awaiting registry processing</div>
-        </div>
-
-        {/* Metric 4 */}
-        <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between text-zinc-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">AWAITING ZISPA</span>
-            <Send className="h-4 w-4 text-[#3120ff]" />
-          </div>
-          <div className="text-2xl font-extrabold text-[#3120ff]">{awaitingZispaRequests}</div>
-          <div className="text-[11px] text-zinc-500 mt-1">Dispatched via email</div>
-        </div>
-
-        {/* Metric 5 */}
-        <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between text-zinc-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">EXPIRING SOON</span>
-            <AlertTriangle className="h-4 w-4 text-amber-500" />
-          </div>
-          <div className="text-2xl font-extrabold text-zinc-950">{expiringSoonCount}</div>
-          <div className="text-[11px] text-zinc-500 mt-1">Within 30-day window</div>
-        </div>
-
-        {/* Metric 6 */}
-        <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between text-zinc-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">REVENUE THIS MONTH</span>
-            <TrendingUp className="h-4 w-4 text-[#3120ff]" />
-          </div>
-          <div className="text-2xl font-extrabold text-zinc-950">${revenueThisMonth.toFixed(2)}</div>
-          <div className="text-[11px] text-zinc-500 mt-1">USD (100% verified)</div>
-        </div>
-
-        {/* Metric 7 */}
-        <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between text-zinc-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">REGISTRY CONFIRMED</span>
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-          </div>
-          <div className="text-2xl font-extrabold text-zinc-950">
-            {registryRequests.filter(r => r.status === 'confirmed').length}
-          </div>
-          <div className="text-[11px] text-zinc-500 mt-1">Delegation confirmed</div>
-        </div>
-
-        {/* Metric 8 */}
-        <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between text-zinc-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">NAMESERVER HEALTH</span>
-            <Globe className="h-4 w-4 text-[#3120ff]" />
-          </div>
-          <div className="text-sm font-bold text-emerald-600 mt-1">4 / 4 ONLINE</div>
-          <div className="text-[11px] text-zinc-500 mt-1">Ngaatec primary cluster</div>
-        </div>
-
-      </div>
-
-      {/* Two Columns: Recent Registry Activity & Recent Orders */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
-        {/* Recent Registry Activity */}
-        <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-bold text-zinc-950 flex items-center space-x-2">
-              <FileText className="h-4 w-4 text-[#3120ff]" />
-              <span>ZISPA Registry Queue</span>
-            </h2>
-            <button
-              onClick={() => setAdminSubView('registry')}
-              className="text-xs font-bold text-[#3120ff] hover:text-[#1a1de0] flex items-center space-x-1"
-            >
-              <span>Manage ZISPA</span>
-              <ArrowRight className="h-3.5 w-3.5" />
-            </button>
-          </div>
-
-          <div className="space-y-3 text-xs">
-            {registryRequests.slice(0, 5).map(req => (
-              <div key={req.id} className="p-3.5 rounded-xl border border-zinc-200 bg-zinc-50 flex items-center justify-between">
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <span className="font-bold font-mono text-zinc-950">{req.domain_name}</span>
-                    <span className="text-[10px] bg-red-50 text-[#3120ff] px-1.5 py-0.5 rounded font-bold border border-red-200">
-                      Action {req.action}
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-zinc-500 mt-0.5">
-                    Customer: {req.customer_email}
-                  </div>
-                </div>
-
-                <div>
-                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                    req.status === 'confirmed'
-                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                      : req.status === 'submitted'
-                      ? 'border-amber-200 bg-amber-50 text-amber-700'
-                      : 'border-zinc-200 bg-zinc-100 text-zinc-600'
-                  }`}>
-                    {req.status}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Recent Orders */}
-        <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-bold text-zinc-950 flex items-center space-x-2">
-              <CreditCard className="h-4 w-4 text-[#3120ff]" />
-              <span>Recent Orders &amp; Payments</span>
-            </h2>
-            <button
-              onClick={() => setAdminSubView('orders')}
-              className="text-xs font-bold text-[#3120ff] hover:text-[#1a1de0] flex items-center space-x-1"
-            >
-              <span>View All</span>
-              <ArrowRight className="h-3.5 w-3.5" />
-            </button>
-          </div>
-
-          <div className="space-y-3 text-xs">
-            {orders.slice(0, 5).map(order => (
-              <div key={order.id} className="p-3.5 rounded-xl border border-zinc-200 bg-zinc-50 flex items-center justify-between">
-                <div>
-                  <div className="font-bold font-mono text-zinc-950">{order.reference}</div>
-                  <div className="text-[11px] text-zinc-500">
-                    {order.user_email} • {order.items[0]?.description || 'Domain Registration'}
-                  </div>
-                </div>
-
-                <div className="text-right">
-                  <div className="font-bold text-zinc-950">${order.total.toFixed(2)} USD</div>
-                  <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">PAID</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-      </div>
-
+    <div className="rounded-xl border border-zinc-200 bg-white p-5">
+      {content}
     </div>
+  );
+};
+
+const PaymentBadge: React.FC<{
+  status: string;
+}> = ({
+  status,
+}) => {
+  const verified =
+    status ===
+    'verified';
+
+  const rejected =
+    status ===
+    'rejected';
+
+  return (
+    <span
+      className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${
+        verified
+          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+          : rejected
+            ? 'border-rose-200 bg-rose-50 text-rose-700'
+            : 'border-[#3120ff]/20 bg-[#3120ff]/5 text-[#3120ff]'
+      }`}
+    >
+      {verified
+        ? 'Verified'
+        : rejected
+          ? 'Rejected'
+          : 'Pending'}
+    </span>
   );
 };

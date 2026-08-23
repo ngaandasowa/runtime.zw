@@ -1,76 +1,564 @@
-import React, { useState } from 'react';
-import { CreditCard, Search, CheckCircle2 } from 'lucide-react';
-import { useStore } from '../../context/StoreContext';
+import React, {
+  useMemo,
+  useState,
+} from 'react';
 
-export const AdminOrdersPayments: React.FC = () => {
-  const { orders } = useStore();
-  const [search, setSearch] = useState('');
+import {
+  CheckCircle2,
+  Clock3,
+  CreditCard,
+  Search,
+  XCircle,
+} from 'lucide-react';
 
-  const filteredOrders = orders.filter(o => {
-    if (!search) return true;
-    return o.reference.toLowerCase().includes(search.toLowerCase()) || o.user_email.toLowerCase().includes(search.toLowerCase());
-  });
+import {
+  useStore,
+} from '../../context/StoreContext';
 
-  return (
-    <div className="space-y-6">
-      
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-200 pb-4">
+export const AdminOrdersPayments:
+  React.FC = () => {
+    const {
+      orders,
+      payments,
+      domains,
+      approveManualPayment,
+      rejectManualPayment,
+      showNotification,
+    } = useStore();
+
+    const [
+      search,
+      setSearch,
+    ] = useState('');
+
+    const [
+      statusFilter,
+      setStatusFilter,
+    ] = useState<
+      'ALL' |
+      'pending' |
+      'verified' |
+      'rejected'
+    >('ALL');
+
+    const [
+      busyPaymentId,
+      setBusyPaymentId,
+    ] = useState<
+      string | null
+    >(null);
+
+    const rows =
+      useMemo(() => {
+        return [...orders]
+          .sort(
+            (a, b) =>
+              new Date(
+                b.created_at
+              ).getTime() -
+              new Date(
+                a.created_at
+              ).getTime()
+          )
+          .map((order) => {
+            const payment =
+              payments.find(
+                (item) =>
+                  item.order_id ===
+                  order.id
+              ) || null;
+
+            const domain =
+              domains.find(
+                (item) =>
+                  (item as any)
+                    .order_id ===
+                  order.id
+              ) || null;
+
+            return {
+              order,
+              payment,
+              domain,
+            };
+          });
+      }, [
+        orders,
+        payments,
+        domains,
+      ]);
+
+    const filtered =
+      rows.filter(
+        ({
+          order,
+          payment,
+          domain,
+        }) => {
+          const value =
+            search
+              .trim()
+              .toLowerCase();
+
+          if (value) {
+            const matches =
+              order.reference
+                .toLowerCase()
+                .includes(value) ||
+              order.user_email
+                .toLowerCase()
+                .includes(value) ||
+              domain?.domain_name
+                .toLowerCase()
+                .includes(value) ||
+              payment?.reference
+                .toLowerCase()
+                .includes(value);
+
+            if (!matches) {
+              return false;
+            }
+          }
+
+          if (
+            statusFilter ===
+            'ALL'
+          ) {
+            return true;
+          }
+
+          if (
+            statusFilter ===
+            'pending'
+          ) {
+            return (
+              !payment ||
+              payment.status ===
+                'pending' ||
+              payment.status ===
+                'pending_verification'
+            );
+          }
+
+          return (
+            payment?.status ===
+            statusFilter
+          );
+        }
+      );
+
+    const pendingCount =
+      payments.filter(
+        (payment) =>
+          payment.status ===
+            'pending' ||
+          payment.status ===
+            'pending_verification'
+      ).length;
+
+    const verifiedCount =
+      payments.filter(
+        (payment) =>
+          payment.status ===
+          'verified'
+      ).length;
+
+    const approve = async (
+      paymentId: string
+    ) => {
+      const confirmed =
+        window.confirm(
+          'Approve this payment only after you have confirmed the EcoCash USD money was received.'
+        );
+
+      if (!confirmed) {
+        return;
+      }
+
+      setBusyPaymentId(
+        paymentId
+      );
+
+      try {
+        await approveManualPayment(
+          paymentId
+        );
+      } catch (error) {
+        showNotification(
+          error instanceof Error
+            ? error.message
+            : 'Unable to approve payment.',
+          'error'
+        );
+      } finally {
+        setBusyPaymentId(
+          null
+        );
+      }
+    };
+
+    const reject = async (
+      paymentId: string
+    ) => {
+      const reason =
+        window.prompt(
+          'Reason for rejecting this payment:',
+          'Payment could not be confirmed.'
+        );
+
+      if (reason === null) {
+        return;
+      }
+
+      setBusyPaymentId(
+        paymentId
+      );
+
+      try {
+        await rejectManualPayment(
+          paymentId,
+          reason.trim() ||
+            undefined
+        );
+      } catch (error) {
+        showNotification(
+          error instanceof Error
+            ? error.message
+            : 'Unable to reject payment.',
+          'error'
+        );
+      } finally {
+        setBusyPaymentId(
+          null
+        );
+      }
+    };
+
+    return (
+      <div className="space-y-6">
+
         <div>
-          <h1 className="text-xl sm:text-2xl font-extrabold text-zinc-950 tracking-tight flex items-center space-x-2">
-            <CreditCard className="h-6 w-6 text-[#3120ff]" />
-            <span>Orders &amp; Payment Ledger ({orders.length})</span>
+          <h1 className="text-xl font-extrabold tracking-tight text-zinc-950 sm:text-2xl">
+            Orders & Payments
           </h1>
-          <p className="text-xs text-zinc-500 mt-1">
-            Complete transaction verification history, payment references, and invoice status.
+
+          <p className="mt-1 text-xs text-zinc-500">
+            Review real customer orders and confirm manual payments.
           </p>
         </div>
-      </div>
 
-      <div className="relative max-w-sm">
-        <Search className="h-4 w-4 text-zinc-400 absolute left-3 top-2.5" />
-        <input
-          type="text"
-          placeholder="Filter by reference or customer..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="rounded-xl border border-zinc-200 bg-white pl-9 pr-4 py-1.5 text-xs text-zinc-900 focus:border-[#3120ff] focus:outline-none w-full shadow-2xs"
-        />
-      </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Metric
+            label="Orders"
+            value={orders.length}
+          />
 
-      <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-zinc-200 text-zinc-500 font-semibold uppercase tracking-wider">
-                <th className="pb-3">Reference</th>
-                <th className="pb-3">Customer</th>
-                <th className="pb-3">Items</th>
-                <th className="pb-3">Amount</th>
-                <th className="pb-3">Payment Status</th>
-                <th className="pb-3">Date</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100 text-zinc-700">
-              {filteredOrders.map(order => (
-                <tr key={order.id} className="hover:bg-zinc-50 transition">
-                  <td className="py-3.5 font-bold font-mono text-[#3120ff]">{order.reference}</td>
-                  <td className="py-3.5 text-zinc-700">{order.user_email}</td>
-                  <td className="py-3.5 text-zinc-600">{order.items.map(i => i.description).join(', ')}</td>
-                  <td className="py-3.5 font-extrabold text-zinc-950">${order.total.toFixed(2)} USD</td>
-                  <td className="py-3.5">
-                    <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      <CheckCircle2 className="h-3 w-3" />
-                      <span>PAID</span>
-                    </span>
-                  </td>
-                  <td className="py-3.5 text-zinc-500">{new Date(order.created_at).toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <Metric
+            label="Awaiting Payment"
+            value={pendingCount}
+          />
+
+          <Metric
+            label="Verified"
+            value={verifiedCount}
+          />
+        </div>
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative w-full sm:max-w-sm">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-400" />
+
+            <input
+              value={search}
+              onChange={(event) =>
+                setSearch(
+                  event.target.value
+                )
+              }
+              placeholder="Search order, customer or domain"
+              className="w-full rounded-xl border border-zinc-200 bg-white py-2 pl-9 pr-4 text-xs outline-none focus:border-[#3120ff]"
+            />
+          </div>
+
+          <select
+            value={
+              statusFilter
+            }
+            onChange={(event) =>
+              setStatusFilter(
+                event.target.value as
+                  | 'ALL'
+                  | 'pending'
+                  | 'verified'
+                  | 'rejected'
+              )
+            }
+            className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs outline-none"
+          >
+            <option value="ALL">
+              All payments
+            </option>
+
+            <option value="pending">
+              Awaiting payment
+            </option>
+
+            <option value="verified">
+              Verified
+            </option>
+
+            <option value="rejected">
+              Rejected
+            </option>
+          </select>
+        </div>
+
+        <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
+          {filtered.length ===
+          0 ? (
+            <div className="px-5 py-12 text-center text-sm text-zinc-500">
+              No matching orders.
+            </div>
+          ) : (
+            <div className="divide-y divide-zinc-100">
+              {filtered.map(
+                ({
+                  order,
+                  payment,
+                  domain,
+                }) => {
+                  const pending =
+                    !payment ||
+                    payment.status ===
+                      'pending' ||
+                    payment.status ===
+                      'pending_verification';
+
+                  return (
+                    <div
+                      key={order.id}
+                      className="p-5"
+                    >
+                      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-mono text-sm font-bold text-zinc-950">
+                              {order.reference}
+                            </p>
+
+                            <StatusBadge
+                              status={
+                                payment?.status ||
+                                'pending'
+                              }
+                            />
+                          </div>
+
+                          <p className="mt-2 text-sm font-semibold text-zinc-900">
+                            {domain?.domain_name ||
+                              order.items
+                                .map(
+                                  (item) =>
+                                    item.description
+                                )
+                                .join(', ')}
+                          </p>
+
+                          <p className="mt-1 text-xs text-zinc-500">
+                            {order.user_email}
+                          </p>
+
+                          <div className="mt-4 grid gap-3 text-xs sm:grid-cols-3">
+                            <Info
+                              label="Amount"
+                              value={`$${order.total.toFixed(
+                                2
+                              )} ${
+                                order.currency ||
+                                'USD'
+                              }`}
+                            />
+
+                            <Info
+                              label="Method"
+                              value={
+                                payment?.gateway ===
+                                'ecocash_usd'
+                                  ? 'EcoCash USD'
+                                  : payment?.gateway ||
+                                    'Not selected'
+                              }
+                            />
+
+                            <Info
+                              label="Payment Ref"
+                              value={
+                                payment?.reference ||
+                                '—'
+                              }
+                              mono
+                            />
+                          </div>
+
+                          <p className="mt-3 text-[11px] text-zinc-400">
+                            Ordered{' '}
+                            {new Date(
+                              order.created_at
+                            ).toLocaleString()}
+                          </p>
+                        </div>
+
+                        <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:flex-col">
+                          {payment &&
+                            pending && (
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={
+                                    busyPaymentId ===
+                                    payment.id
+                                  }
+                                  onClick={() =>
+                                    approve(
+                                      payment.id
+                                    )
+                                  }
+                                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#3120ff] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#2819d9] disabled:opacity-50"
+                                >
+                                  <CheckCircle2 className="h-4 w-4" />
+                                  Approve Payment
+                                </button>
+
+                                <button
+                                  type="button"
+                                  disabled={
+                                    busyPaymentId ===
+                                    payment.id
+                                  }
+                                  onClick={() =>
+                                    reject(
+                                      payment.id
+                                    )
+                                  }
+                                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50"
+                                >
+                                  <XCircle className="h-4 w-4" />
+                                  Reject
+                                </button>
+                              </>
+                            )}
+
+                          {payment?.status ===
+                            'verified' && (
+                            <div className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs font-bold text-emerald-700">
+                              <CheckCircle2 className="h-4 w-4" />
+                              Verified
+                            </div>
+                          )}
+
+                          {payment?.status ===
+                            'rejected' && (
+                            <div className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs font-bold text-rose-700">
+                              <XCircle className="h-4 w-4" />
+                              Rejected
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+              )}
+            </div>
+          )}
         </div>
       </div>
+    );
+  };
 
-    </div>
+const Metric: React.FC<{
+  label: string;
+  value: number;
+}> = ({
+  label,
+  value,
+}) => (
+  <div className="rounded-xl border border-zinc-200 bg-white p-4">
+    <p className="text-xs text-zinc-500">
+      {label}
+    </p>
+
+    <p className="mt-1 text-2xl font-bold text-zinc-950">
+      {value}
+    </p>
+  </div>
+);
+
+const Info: React.FC<{
+  label: string;
+  value: string;
+  mono?: boolean;
+}> = ({
+  label,
+  value,
+  mono = false,
+}) => (
+  <div>
+    <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
+      {label}
+    </p>
+
+    <p
+      className={`mt-1 font-semibold text-zinc-700 ${
+        mono
+          ? 'font-mono'
+          : ''
+      }`}
+    >
+      {value}
+    </p>
+  </div>
+);
+
+const StatusBadge: React.FC<{
+  status: string;
+}> = ({
+  status,
+}) => {
+  const verified =
+    status === 'verified';
+
+  const rejected =
+    status === 'rejected';
+
+  const label =
+    verified
+      ? 'Verified'
+      : rejected
+        ? 'Rejected'
+        : status ===
+            'pending_verification'
+          ? 'Awaiting verification'
+          : 'Awaiting payment';
+
+  const classes =
+    verified
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+      : rejected
+        ? 'border-rose-200 bg-rose-50 text-rose-700'
+        : 'border-[#3120ff]/20 bg-[#3120ff]/5 text-[#3120ff]';
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-bold ${classes}`}
+    >
+      {verified ? (
+        <CheckCircle2 className="h-3 w-3" />
+      ) : (
+        <Clock3 className="h-3 w-3" />
+      )}
+
+      {label}
+    </span>
   );
 };

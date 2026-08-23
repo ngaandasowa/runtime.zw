@@ -34,16 +34,16 @@ export const AdminNameservers: React.FC = () => {
       
       <div className="border-b border-zinc-200 pb-4">
         <div className="flex items-center space-x-2 text-xs font-bold text-[#3120ff] mb-1">
-          <span>DNS INFRASTRUCTURE</span>
+          <span>DEFAULT DNS</span>
           <span>•</span>
-          <span>NGAATEC AUTHORITATIVE CLUSTER</span>
+          <span>RUNTIME</span>
         </div>
         <h1 className="text-xl sm:text-2xl font-extrabold text-zinc-950 tracking-tight flex items-center space-x-2">
           <Server className="h-6 w-6 text-[#3120ff]" />
           <span>Platform Default Nameservers</span>
         </h1>
         <p className="text-xs text-zinc-500 mt-1">
-          These nameservers are automatically populated when customers register or transfer .co.zw domains.
+          These nameservers are used as Runtime's default DNS when customers register or transfer supported domains.
         </p>
       </div>
 

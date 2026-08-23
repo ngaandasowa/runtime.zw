@@ -1,8 +1,6 @@
-import React, {
-  useState,
-} from 'react';
-
+import React, { useMemo, useState } from 'react';
 import {
+  AlertCircle,
   CheckCircle2,
   Download,
   Eye,
@@ -13,9 +11,7 @@ import {
   X,
 } from 'lucide-react';
 
-import {
-  useStore,
-} from '../../context/StoreContext';
+import { useStore } from '../../context/StoreContext';
 
 import {
   RegistryAction,
@@ -25,6 +21,29 @@ import {
 import {
   registryTemplateService,
 } from '../../services/RegistryTemplateService';
+
+const ACTION_LABELS: Record<
+  RegistryAction,
+  string
+> = {
+  N: 'New',
+  M: 'Modify',
+  D: 'Delete',
+  T: 'Transfer',
+};
+
+const STATUS_LABELS: Record<
+  string,
+  string
+> = {
+  draft: 'Draft',
+  ready: 'Ready',
+  submitted: 'Submitted',
+  awaiting_confirmation:
+    'Awaiting confirmation',
+  confirmed: 'Confirmed',
+  failed: 'Failed',
+};
 
 export const AdminRegistryManager: React.FC =
   () => {
@@ -39,6 +58,18 @@ export const AdminRegistryManager: React.FC =
     } = useStore();
 
     const [
+      search,
+      setSearch,
+    ] = useState('');
+
+    const [
+      actionFilter,
+      setActionFilter,
+    ] = useState<
+      'ALL' | RegistryAction
+    >('ALL');
+
+    const [
       selectedRequest,
       setSelectedRequest,
     ] =
@@ -47,37 +78,14 @@ export const AdminRegistryManager: React.FC =
       );
 
     const [
-      modalMode,
-      setModalMode,
-    ] = useState<
-      | 'preview'
-      | 'manual_create'
-      | null
-    >(null);
-
-    const [
-      filterAction,
-      setFilterAction,
-    ] =
-      useState<string>('ALL');
-
-    const [
-      searchQuery,
-      setSearchQuery,
-    ] =
-      useState<string>('');
-
-    /*
-     * ----------------------------------------------------------
-     * MANUAL REQUEST
-     * ----------------------------------------------------------
-     */
+      manualOpen,
+      setManualOpen,
+    ] = useState(false);
 
     const [
       manualDomainId,
       setManualDomainId,
-    ] =
-      useState<string>('');
+    ] = useState('');
 
     const [
       manualAction,
@@ -87,113 +95,102 @@ export const AdminRegistryManager: React.FC =
         'N'
       );
 
-    /*
-     * ----------------------------------------------------------
-     * STATS
-     * ----------------------------------------------------------
-     */
+    const filtered =
+      useMemo(
+        () =>
+          registryRequests.filter(
+            (request) => {
+              if (
+                actionFilter !==
+                  'ALL' &&
+                request.action !==
+                  actionFilter
+              ) {
+                return false;
+              }
 
-    const pendingN =
-      registryRequests.filter(
-        (request) =>
-          request.action === 'N' &&
-          (
-            request.status === 'ready' ||
-            request.status === 'draft'
-          )
-      ).length;
+              const value =
+                search
+                  .trim()
+                  .toLowerCase();
 
-    const pendingM =
-      registryRequests.filter(
-        (request) =>
-          request.action === 'M' &&
-          (
-            request.status === 'ready' ||
-            request.status === 'draft'
-          )
-      ).length;
+              if (!value) {
+                return true;
+              }
 
-    const pendingT =
-      registryRequests.filter(
-        (request) =>
-          request.action === 'T' &&
-          (
-            request.status === 'ready' ||
-            request.status === 'draft'
-          )
-      ).length;
-
-    const pendingD =
-      registryRequests.filter(
-        (request) =>
-          request.action === 'D' &&
-          (
-            request.status === 'ready' ||
-            request.status === 'draft'
-          )
-      ).length;
-
-    const awaitingRegistry =
-      registryRequests.filter(
-        (request) =>
-          request.status ===
-            'submitted' ||
-          request.status ===
-            'awaiting_confirmation'
-      ).length;
-
-    const confirmedRequests =
-      registryRequests.filter(
-        (request) =>
-          request.status ===
-          'confirmed'
-      ).length;
-
-    /*
-     * ----------------------------------------------------------
-     * FILTERING
-     * ----------------------------------------------------------
-     */
-
-    const filteredRequests =
-      registryRequests.filter(
-        (request) => {
-          if (
-            filterAction !==
-              'ALL' &&
-            request.action !==
-              filterAction
-          ) {
-            return false;
-          }
-
-          const query =
-            searchQuery
-              .trim()
-              .toLowerCase();
-
-          if (!query) {
-            return true;
-          }
-
-          return (
-            request.domain_name
-              .toLowerCase()
-              .includes(query) ||
-            request.customer_email
-              .toLowerCase()
-              .includes(query)
-          );
-        }
+              return (
+                request.domain_name
+                  .toLowerCase()
+                  .includes(
+                    value
+                  ) ||
+                request.customer_email
+                  .toLowerCase()
+                  .includes(
+                    value
+                  )
+              );
+            }
+          ),
+        [
+          registryRequests,
+          search,
+          actionFilter,
+        ]
       );
 
-    /*
-     * ----------------------------------------------------------
-     * DOWNLOAD TEMPLATE
-     * ----------------------------------------------------------
-     */
+    const counts =
+      useMemo(
+        () => ({
+          ready:
+            registryRequests.filter(
+              (item) =>
+                item.status ===
+                  'ready' ||
+                item.status ===
+                  'draft'
+            ).length,
 
-    const handleDownloadTxt = (
+          submitted:
+            registryRequests.filter(
+              (item) =>
+                item.status ===
+                  'submitted' ||
+                item.status ===
+                  'awaiting_confirmation'
+            ).length,
+
+          confirmed:
+            registryRequests.filter(
+              (item) =>
+                item.status ===
+                'confirmed'
+            ).length,
+        }),
+        [
+          registryRequests,
+        ]
+      );
+
+    const selectedDomain =
+      selectedRequest
+        ? domains.find(
+            (item) =>
+              item.id ===
+                selectedRequest.domain_id ||
+              item.domain_name ===
+                selectedRequest.domain_name
+          ) || null
+        : null;
+
+    const missingFields =
+      selectedDomain
+        ? registryTemplateService.validateTemplateData(
+            selectedDomain
+          )
+        : [];
+
+    const downloadTemplate = (
       request: RegistryRequest
     ) => {
       const filename =
@@ -202,13 +199,23 @@ export const AdminRegistryManager: React.FC =
           request.action
         );
 
+      /*
+       * ZISPA requires plain ASCII.
+       * Strip non-ASCII characters from the generated attachment.
+       */
+      const ascii =
+        request.generated_template
+          .normalize('NFKD')
+          .replace(
+            /[^\x00-\x7F]/g,
+            ''
+          );
+
       const blob =
         new Blob(
-          [
-            request.generated_template,
-          ],
+          [ascii],
           {
-            type: 'text/plain;charset=utf-8',
+            type: 'text/plain;charset=us-ascii',
           }
         );
 
@@ -243,18 +250,12 @@ export const AdminRegistryManager: React.FC =
       );
 
       showNotification(
-        `Downloaded ${filename}`,
-        'info'
+        `${filename} downloaded.`,
+        'success'
       );
     };
 
-    /*
-     * ----------------------------------------------------------
-     * MANUAL REQUEST CREATION
-     * ----------------------------------------------------------
-     */
-
-    const handleCreateManual = (
+    const createManual = (
       event: React.FormEvent
     ) => {
       event.preventDefault();
@@ -270,260 +271,191 @@ export const AdminRegistryManager: React.FC =
         manualAction
       );
 
-      setModalMode(
-        null
+      setManualDomainId(
+        ''
+      );
+      setManualAction(
+        'N'
+      );
+      setManualOpen(
+        false
       );
     };
 
     return (
       <div className="space-y-6">
 
-        {/* HEADER */}
         <div className="flex flex-col gap-4 border-b border-zinc-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="mb-1 flex items-center space-x-2 text-xs font-bold text-[#3120ff]">
-              <span>
-                REGISTRAR PROTOCOL
-              </span>
-
-              <span>
-                •
-              </span>
-
-              <span>
-                REGISTRY ENGINE
-              </span>
+            <div className="mb-1 flex items-center gap-2 text-xs font-bold text-[#3120ff]">
+              <FileText className="h-4 w-4" />
+              ADMIN ONLY
             </div>
 
-            <h1 className="flex items-center space-x-2 text-xl font-extrabold tracking-tight text-zinc-950 sm:text-2xl">
-              <FileText className="h-6 w-6 text-[#3120ff]" />
-
-              <span>
-                Registry Management
-              </span>
+            <h1 className="text-xl font-extrabold tracking-tight text-zinc-950 sm:text-2xl">
+              ZISPA Registry
             </h1>
 
             <p className="mt-1 text-xs text-zinc-500">
-              Prepare, review and manage domain registry requests.
+              Prepare, download and track Zimbabwe registry applications.
             </p>
           </div>
 
           <button
             type="button"
-            onClick={() => {
-              if (
-                domains.length >
-                0
-              ) {
-                setManualDomainId(
-                  domains[0].id
-                );
-
-                setModalMode(
-                  'manual_create'
-                );
-              } else {
-                showNotification(
-                  'No domains are available for a manual registry request.',
-                  'info'
-                );
-              }
-            }}
-            className="inline-flex items-center justify-center space-x-2 rounded-xl bg-[#3120ff] px-4 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-[#1a1de0]"
+            onClick={() =>
+              setManualOpen(
+                true
+              )
+            }
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#3120ff] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#2819d9]"
           >
             <Plus className="h-4 w-4" />
-
-            <span>
-              Create Registry Request
-            </span>
+            New Request
           </button>
         </div>
 
-        {/* STATS */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Metric
+            label="Ready"
+            value={
+              counts.ready
+            }
+          />
 
-          <div className="rounded-xl border border-zinc-200 bg-white p-4 text-center shadow-xs">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-              Pending Reg
-            </div>
+          <Metric
+            label="Submitted"
+            value={
+              counts.submitted
+            }
+          />
 
-            <div className="mt-1 text-xl font-extrabold text-[#3120ff]">
-              {pendingN}
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-zinc-200 bg-white p-4 text-center shadow-xs">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-              Pending Modify
-            </div>
-
-            <div className="mt-1 text-xl font-extrabold text-zinc-950">
-              {pendingM}
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-zinc-200 bg-white p-4 text-center shadow-xs">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-              Pending Transfer
-            </div>
-
-            <div className="mt-1 text-xl font-extrabold text-zinc-950">
-              {pendingT}
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-zinc-200 bg-white p-4 text-center shadow-xs">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-              Pending Delete
-            </div>
-
-            <div className="mt-1 text-xl font-extrabold text-zinc-950">
-              {pendingD}
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-zinc-200 bg-white p-4 text-center shadow-xs">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-              Awaiting Registry
-            </div>
-
-            <div className="mt-1 text-xl font-extrabold text-[#3120ff]">
-              {awaitingRegistry}
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-zinc-200 bg-white p-4 text-center shadow-xs">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-              Confirmed
-            </div>
-
-            <div className="mt-1 text-xl font-extrabold text-emerald-600">
-              {
-                confirmedRequests
-              }
-            </div>
-          </div>
+          <Metric
+            label="Confirmed"
+            value={
+              counts.confirmed
+            }
+          />
         </div>
 
-        {/* FILTERS */}
-        <div className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-3 shadow-2xs sm:flex-row sm:items-center sm:justify-between">
+        <div className="rounded-xl border border-zinc-200 bg-white p-4 text-xs text-zinc-600">
+          <p className="font-semibold text-zinc-950">
+            Manual submission workflow
+          </p>
 
-          <div className="flex items-center space-x-2">
-            <span className="text-xs font-bold text-zinc-500">
-              Action:
+          <p className="mt-1 leading-5">
+            Download one plain-text application per domain and email it to{' '}
+            <span className="font-mono">
+              {settings.registry_email_to}
             </span>
+            . Use the full domain name as the email subject.
+          </p>
+        </div>
 
-            <div className="inline-flex rounded-lg bg-zinc-100 p-0.5 text-xs font-bold">
-              {[
-                'ALL',
-                'N',
-                'M',
-                'T',
-                'D',
-              ].map(
-                (
-                  action
-                ) => (
-                  <button
-                    key={
-                      action
-                    }
-                    type="button"
-                    onClick={() =>
-                      setFilterAction(
-                        action
-                      )
-                    }
-                    className={`rounded-md px-2.5 py-1 transition ${
-                      filterAction ===
-                      action
-                        ? 'bg-white text-zinc-950 shadow-xs'
-                        : 'text-zinc-600 hover:text-zinc-950'
-                    }`}
-                  >
-                    {action}
-                  </button>
-                )
-              )}
-            </div>
-          </div>
-
-          <div className="relative">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative max-w-sm flex-1">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-400" />
 
             <input
-              type="text"
-              placeholder="Search domain or customer..."
               value={
-                searchQuery
+                search
               }
               onChange={(
                 event
               ) =>
-                setSearchQuery(
-                  event
-                    .target
-                    .value
+                setSearch(
+                  event.target.value
                 )
               }
-              className="w-full rounded-xl border border-zinc-200 bg-zinc-50 py-1.5 pl-9 pr-4 text-xs text-zinc-900 outline-none focus:border-[#3120ff] focus:bg-white sm:w-64"
+              placeholder="Search domain or customer"
+              className="w-full rounded-xl border border-zinc-200 bg-white py-2 pl-9 pr-4 text-xs outline-none focus:border-[#3120ff]"
             />
           </div>
+
+          <select
+            value={
+              actionFilter
+            }
+            onChange={(
+              event
+            ) =>
+              setActionFilter(
+                event.target.value as
+                  | 'ALL'
+                  | RegistryAction
+              )
+            }
+            className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs outline-none"
+          >
+            <option value="ALL">
+              All actions
+            </option>
+
+            <option value="N">
+              N · New
+            </option>
+
+            <option value="M">
+              M · Modify
+            </option>
+
+            <option value="T">
+              T · Transfer
+            </option>
+
+            <option value="D">
+              D · Delete
+            </option>
+          </select>
         </div>
 
-        {/* TABLE */}
-        <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-6">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-225 text-left text-xs">
+        <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+          {filtered.length ===
+          0 ? (
+            <div className="px-6 py-14 text-center">
+              <FileText className="mx-auto h-7 w-7 text-zinc-300" />
 
-              <thead>
-                <tr className="border-b border-zinc-200 font-semibold uppercase tracking-wider text-zinc-500">
-                  <th className="pb-3">
-                    Domain
-                  </th>
+              <p className="mt-3 text-sm font-semibold text-zinc-950">
+                No registry requests
+              </p>
 
-                  <th className="pb-3">
-                    Action
-                  </th>
+              <p className="mt-1 text-xs text-zinc-500">
+                New .co.zw, .org.zw and .ac.zw requests will appear here.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-212.5 text-left text-xs">
+                <thead>
+                  <tr className="border-b border-zinc-200 bg-zinc-50 text-zinc-500">
+                    <th className="px-4 py-3">
+                      Domain
+                    </th>
 
-                  <th className="pb-3">
-                    Customer
-                  </th>
+                    <th className="px-4 py-3">
+                      Action
+                    </th>
 
-                  <th className="pb-3">
-                    Payment
-                  </th>
+                    <th className="px-4 py-3">
+                      Customer
+                    </th>
 
-                  <th className="pb-3">
-                    Status
-                  </th>
+                    <th className="px-4 py-3">
+                      Status
+                    </th>
 
-                  <th className="pb-3">
-                    Submitted
-                  </th>
+                    <th className="px-4 py-3">
+                      Created
+                    </th>
 
-                  <th className="pb-3 text-right">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody className="divide-y divide-zinc-100 text-zinc-700">
-
-                {filteredRequests.length ===
-                0 ? (
-                  <tr>
-                    <td
-                      colSpan={
-                        7
-                      }
-                      className="py-10 text-center text-zinc-500"
-                    >
-                      No registry requests found.
-                    </td>
+                    <th className="px-4 py-3 text-right">
+                      Actions
+                    </th>
                   </tr>
-                ) : (
-                  filteredRequests.map(
+                </thead>
+
+                <tbody className="divide-y divide-zinc-200">
+                  {filtered.map(
                     (
                       request
                     ) => (
@@ -531,137 +463,99 @@ export const AdminRegistryManager: React.FC =
                         key={
                           request.id
                         }
-                        className="transition hover:bg-zinc-50"
                       >
-
-                        <td className="py-3.5 font-mono font-bold text-zinc-950">
+                        <td className="px-4 py-3 font-mono font-semibold text-zinc-950">
                           {
                             request.domain_name
                           }
                         </td>
 
-                        <td className="py-3.5">
-                          <span
-                            className={`inline-flex rounded border px-2 py-0.5 text-[11px] font-bold ${
-                              request.action ===
-                              'N'
-                                ? 'border-red-200 bg-red-50 text-[#3120ff]'
-                                : 'border-zinc-200 bg-zinc-100 text-zinc-800'
-                            }`}
-                          >
+                        <td className="px-4 py-3">
+                          <span className="rounded-md bg-zinc-100 px-2 py-1 font-mono font-bold text-zinc-800">
                             {
                               request.action
                             }
                           </span>
+
+                          <span className="ml-2 text-zinc-500">
+                            {
+                              ACTION_LABELS[
+                                request.action
+                              ]
+                            }
+                          </span>
                         </td>
 
-                        <td
-                          className="max-w-40 truncate py-3.5 text-zinc-600"
-                          title={
-                            request.customer_email
-                          }
-                        >
+                        <td className="px-4 py-3 text-zinc-600">
                           {
                             request.customer_email
                           }
                         </td>
 
-                        <td className="py-3.5">
-                          <span className="font-mono font-semibold text-zinc-900">
-                            {request.payment_reference ||
-                              '—'}
-                          </span>
-                        </td>
-
-                        <td className="py-3.5">
-                          <span
-                            className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold ${
-                              request.status ===
-                              'confirmed'
-                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                : request.status ===
-                                    'submitted'
-                                  ? 'border-amber-200 bg-amber-50 text-amber-700'
-                                  : request.status ===
-                                      'ready'
-                                    ? 'border-zinc-300 bg-zinc-100 text-zinc-800'
-                                    : 'border-zinc-200 bg-zinc-50 text-zinc-500'
-                            }`}
-                          >
-                            {
+                        <td className="px-4 py-3">
+                          <StatusBadge
+                            status={
                               request.status
                             }
-                          </span>
+                          />
                         </td>
 
-                        <td className="py-3.5 text-zinc-500">
-                          {request.submitted_at
-                            ? new Date(
-                                request.submitted_at
-                              ).toLocaleDateString()
-                            : '—'}
+                        <td className="px-4 py-3 text-zinc-500">
+                          {new Date(
+                            request.created_at
+                          ).toLocaleDateString()}
                         </td>
 
-                        <td className="py-3.5 text-right">
-                          <div className="flex items-center justify-end space-x-1.5">
-
-                            {/* PREVIEW */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedRequest(
-                                  request
-                                );
-
-                                setModalMode(
-                                  'preview'
-                                );
-                              }}
-                              title="Preview registry template"
-                              className="rounded-lg bg-zinc-100 p-1.5 text-zinc-600 transition hover:bg-zinc-200 hover:text-zinc-950"
-                            >
-                              <Eye className="h-3.5 w-3.5" />
-                            </button>
-
-                            {/* DOWNLOAD */}
+                        <td className="px-4 py-3">
+                          <div className="flex justify-end gap-2">
                             <button
                               type="button"
                               onClick={() =>
-                                handleDownloadTxt(
+                                setSelectedRequest(
                                   request
                                 )
                               }
-                              title="Download template"
-                              className="rounded-lg bg-zinc-100 p-1.5 text-zinc-600 transition hover:bg-zinc-200 hover:text-zinc-950"
+                              title="Preview"
+                              className="rounded-lg bg-zinc-100 p-2 text-zinc-600 hover:bg-zinc-200"
                             >
-                              <Download className="h-3.5 w-3.5" />
+                              <Eye className="h-4 w-4" />
                             </button>
 
-                            {/* SUBMIT */}
-                            {request.status !==
-                              'confirmed' &&
-                              request.status !==
-                                'submitted' && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    submitRegistryRequest(
-                                      request.id
-                                    )
-                                  }
-                                  className="inline-flex items-center space-x-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1 font-bold text-[#3120ff] transition hover:bg-red-100"
-                                >
-                                  <Send className="h-3 w-3" />
+                            <button
+                              type="button"
+                              onClick={() =>
+                                downloadTemplate(
+                                  request
+                                )
+                              }
+                              title="Download"
+                              className="rounded-lg bg-zinc-100 p-2 text-zinc-600 hover:bg-zinc-200"
+                            >
+                              <Download className="h-4 w-4" />
+                            </button>
 
-                                  <span>
-                                    Submit
-                                  </span>
-                                </button>
-                              )}
+                            {(request.status ===
+                              'ready' ||
+                              request.status ===
+                                'draft') && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  submitRegistryRequest(
+                                    request.id
+                                  )
+                                }
+                                className="inline-flex items-center gap-1 rounded-lg bg-[#3120ff] px-3 py-2 font-semibold text-white"
+                              >
+                                <Send className="h-3.5 w-3.5" />
+                                Mark Submitted
+                              </button>
+                            )}
 
-                            {/* CONFIRM */}
-                            {request.status ===
-                              'submitted' && (
+                            {(request.status ===
+                              'submitted' ||
+                              request.status ===
+                                'awaiting_confirmation') && (
                               <button
                                 type="button"
                                 onClick={() =>
@@ -669,219 +563,171 @@ export const AdminRegistryManager: React.FC =
                                     request.id
                                   )
                                 }
-                                className="inline-flex items-center space-x-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 font-bold text-emerald-700 transition hover:bg-emerald-100"
+                                className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 font-semibold text-emerald-700"
                               >
-                                <CheckCircle2 className="h-3 w-3" />
-
-                                <span>
-                                  Confirm
-                                </span>
+                                <CheckCircle2 className="h-3.5 w-3.5" />
+                                Confirm
                               </button>
                             )}
                           </div>
                         </td>
                       </tr>
                     )
-                  )
-                )}
-              </tbody>
-            </table>
-          </div>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
-        {/* PREVIEW MODAL */}
-        {modalMode ===
-          'preview' &&
-          selectedRequest && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-
-              <div className="relative w-full max-w-2xl rounded-2xl border border-zinc-200 bg-white p-6 text-zinc-900 shadow-2xl ring-1 ring-black/5">
-
-                <div className="mb-4 flex items-start justify-between border-b border-zinc-200 pb-4">
-
+        {selectedRequest && (
+          <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm sm:p-4">
+            <div className="flex h-full items-end justify-center sm:items-center">
+              <div className="flex max-h-dvh w-full flex-col overflow-hidden bg-white sm:max-h-[92dvh] sm:max-w-3xl sm:rounded-2xl sm:border sm:border-zinc-200 sm:shadow-2xl">
+                <div className="flex shrink-0 items-center justify-between border-b border-zinc-200 px-4 py-4 sm:px-6">
                   <div>
-                    <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-bold text-zinc-950">
+                      {
+                        selectedRequest.domain_name
+                      }
+                    </h3>
 
-                      <span className="font-mono text-sm font-bold text-zinc-950">
-                        {registryTemplateService.getFilename(
-                          selectedRequest.domain_name,
+                    <p className="mt-1 text-xs text-zinc-500">
+                      {selectedRequest.action} ·{' '}
+                      {
+                        ACTION_LABELS[
                           selectedRequest.action
-                        )}
-                      </span>
-
-                      <span className="rounded border border-red-200 bg-red-50 px-2 py-0.5 font-mono text-[10px] font-bold text-[#3120ff]">
-                        Plain Text
-                      </span>
-                    </div>
-
-                    <div className="mt-1 text-xs text-zinc-500">
-                      Subject:{' '}
-                      <code className="font-mono text-zinc-950">
-                        {
-                          selectedRequest.email_subject
-                        }
-                      </code>
-                    </div>
+                        ]
+                      }
+                    </p>
                   </div>
 
                   <button
                     type="button"
                     onClick={() =>
-                      setModalMode(
+                      setSelectedRequest(
                         null
                       )
                     }
-                    className="rounded-lg p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                    className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-100"
                   >
                     <X className="h-5 w-5" />
                   </button>
                 </div>
 
-                {/* METADATA */}
-                <div className="mb-4 space-y-1 rounded-xl border border-zinc-200 bg-zinc-50 p-3 font-mono text-xs text-zinc-600">
+                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+                  <div className="grid gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-4 font-mono text-xs text-zinc-600 sm:grid-cols-2">
+                    <p>
+                      From:{' '}
+                      {
+                        settings.registry_email_from
+                      }
+                    </p>
 
-                  <div>
-                    <span className="text-zinc-400">
-                      From:
-                    </span>{' '}
+                    <p>
+                      To:{' '}
+                      {
+                        settings.registry_email_to
+                      }
+                    </p>
+
+                    <p>
+                      Subject:{' '}
+                      {
+                        selectedRequest.email_subject
+                      }
+                    </p>
+
+                    <p>
+                      Attachment:{' '}
+                      {registryTemplateService.getFilename(
+                        selectedRequest.domain_name,
+                        selectedRequest.action
+                      )}
+                    </p>
+                  </div>
+
+                  {missingFields.length >
+                    0 && (
+                    <div className="mt-4 flex gap-3 rounded-xl border border-[#3120ff]/20 bg-[#3120ff]/5 p-4">
+                      <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+
+                      <div>
+                        <p className="text-xs font-bold text-amber-900">
+                          Required information is missing
+                        </p>
+
+                        <p className="mt-1 text-xs leading-5 text-amber-800">
+                          {
+                            missingFields.join(
+                              ', '
+                            )
+                          }
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <pre className="mt-4 overflow-x-auto whitespace-pre rounded-xl bg-zinc-950 p-4 font-mono text-[11px] leading-5 text-zinc-100">
                     {
-                      settings.registry_email_from
+                      selectedRequest.generated_template
                     }
-                  </div>
-
-                  <div>
-                    <span className="text-zinc-400">
-                      To:
-                    </span>{' '}
-                    {
-                      settings.registry_email_to
-                    }
-                  </div>
-
-                  <div>
-                    <span className="text-zinc-400">
-                      Attachment:
-                    </span>{' '}
-                    {registryTemplateService.getFilename(
-                      selectedRequest.domain_name,
-                      selectedRequest.action
-                    )}
-                  </div>
+                  </pre>
                 </div>
 
-                {/* TEMPLATE */}
-                <pre className="max-h-80 overflow-y-auto whitespace-pre-wrap rounded-xl bg-zinc-900 p-4 font-mono text-xs leading-relaxed text-zinc-100">
-                  {
-                    selectedRequest.generated_template
-                  }
-                </pre>
-
-                {/* FOOTER */}
-                <div className="mt-4 flex flex-col gap-3 border-t border-zinc-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
-
+                <div className="flex shrink-0 items-center justify-end gap-2 border-t border-zinc-200 bg-white px-4 py-3 sm:px-6">
                   <button
                     type="button"
                     onClick={() =>
-                      handleDownloadTxt(
+                      downloadTemplate(
                         selectedRequest
                       )
                     }
-                    className="inline-flex items-center justify-center space-x-1.5 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-bold text-zinc-700 hover:bg-zinc-100"
+                    disabled={
+                      missingFields.length >
+                      0
+                    }
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#3120ff] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40"
                   >
-                    <Download className="h-3.5 w-3.5 text-[#3120ff]" />
-
-                    <span>
-                      Download .txt
-                    </span>
+                    <Download className="h-4 w-4" />
+                    Download .txt
                   </button>
-
-                  <div className="flex items-center justify-end space-x-2">
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setModalMode(
-                          null
-                        )
-                      }
-                      className="px-3 py-2 text-xs font-bold text-zinc-500 hover:text-zinc-900"
-                    >
-                      Close
-                    </button>
-
-                    {selectedRequest.status !==
-                      'confirmed' &&
-                      selectedRequest.status !==
-                        'submitted' && (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            await submitRegistryRequest(
-                              selectedRequest.id
-                            );
-
-                            setModalMode(
-                              null
-                            );
-                          }}
-                          className="inline-flex items-center space-x-1.5 rounded-xl bg-[#3120ff] px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-[#1a1de0]"
-                        >
-                          <Send className="h-3.5 w-3.5" />
-
-                          <span>
-                            Submit Request
-                          </span>
-                        </button>
-                      )}
-                  </div>
                 </div>
               </div>
             </div>
-          )}
+          </div>
+        )}
 
-        {/* MANUAL CREATE MODAL */}
-        {modalMode ===
-          'manual_create' && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-
-            <div className="relative w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 text-zinc-900 shadow-2xl ring-1 ring-black/5">
-
-              <div className="mb-4 flex items-start justify-between">
-
-                <div>
-                  <h3 className="text-base font-bold text-zinc-950">
-                    Create Registry Request
-                  </h3>
-
-                  <p className="mt-1 text-xs text-zinc-500">
-                    Generate a request for an existing domain.
-                  </p>
-                </div>
+        {manualOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+            <form
+              onSubmit={
+                createManual
+              }
+              className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-5 shadow-2xl"
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-zinc-950">
+                  New Registry Request
+                </h3>
 
                 <button
                   type="button"
                   onClick={() =>
-                    setModalMode(
-                      null
+                    setManualOpen(
+                      false
                     )
                   }
-                  className="rounded-lg p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                  className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-100"
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
 
-              <form
-                onSubmit={
-                  handleCreateManual
-                }
-                className="space-y-4 text-xs"
-              >
-
-                {/* DOMAIN */}
+              <div className="mt-5 space-y-4">
                 <div>
-                  <label className="mb-1 block font-semibold text-zinc-700">
-                    Select Domain
+                  <label className="mb-1.5 block text-xs font-semibold text-zinc-700">
+                    Domain
                   </label>
 
                   <select
@@ -892,113 +738,146 @@ export const AdminRegistryManager: React.FC =
                       event
                     ) =>
                       setManualDomainId(
-                        event
-                          .target
-                          .value
+                        event.target.value
                       )
                     }
-                    className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 font-mono text-zinc-900 outline-none focus:border-[#3120ff] focus:bg-white"
+                    className="w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-sm"
                   >
-                    {domains.map(
-                      (
-                        domain
-                      ) => (
-                        <option
-                          key={
-                            domain.id
-                          }
-                          value={
-                            domain.id
-                          }
-                        >
-                          {
-                            domain.domain_name
-                          }{' '}
-                          (
-                          {
-                            domain.status
-                          }
+                    <option value="">
+                      Select a domain
+                    </option>
+
+                    {domains
+                      .filter(
+                        (domain) =>
+                          ['.co.zw', '.org.zw', '.ac.zw'].some(
+                            (tld) =>
+                              domain.domain_name
+                                .toLowerCase()
+                                .endsWith(
+                                  tld
+                                )
                           )
-                        </option>
                       )
-                    )}
+                      .map(
+                        (
+                          domain
+                        ) => (
+                          <option
+                            key={
+                              domain.id
+                            }
+                            value={
+                              domain.id
+                            }
+                          >
+                            {
+                              domain.domain_name
+                            }
+                          </option>
+                        )
+                      )}
                   </select>
                 </div>
 
-                {/* ACTION */}
                 <div>
-                  <label className="mb-1 block font-semibold text-zinc-700">
-                    Action Type
+                  <label className="mb-1.5 block text-xs font-semibold text-zinc-700">
+                    Action
                   </label>
 
-                  <div className="grid grid-cols-4 gap-2 font-mono">
-                    {(
-                      [
-                        'N',
-                        'M',
-                        'D',
-                        'T',
-                      ] as RegistryAction[]
-                    ).map(
-                      (
-                        action
-                      ) => (
-                        <button
-                          key={
-                            action
-                          }
-                          type="button"
-                          onClick={() =>
-                            setManualAction(
-                              action
-                            )
-                          }
-                          className={`rounded-xl border p-2 text-center font-bold transition ${
-                            manualAction ===
-                            action
-                              ? 'border-red-300 bg-red-50 text-[#3120ff]'
-                              : 'border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-zinc-100'
-                          }`}
-                        >
-                          {
-                            action
-                          }
-                        </button>
-                      )
-                    )}
-                  </div>
-
-                  <div className="mt-2 text-[11px] text-zinc-500">
-                    N = New · M = Modify · D = Delete · T = Transfer
-                  </div>
-                </div>
-
-                {/* ACTIONS */}
-                <div className="flex justify-end space-x-2 border-t border-zinc-200 pt-4">
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setModalMode(
-                        null
+                  <select
+                    value={
+                      manualAction
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setManualAction(
+                        event.target.value as RegistryAction
                       )
                     }
-                    className="px-3 py-2 font-bold text-zinc-500 hover:text-zinc-900"
+                    className="w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-sm"
                   >
-                    Cancel
-                  </button>
+                    <option value="N">
+                      N · New
+                    </option>
 
-                  <button
-                    type="submit"
-                    className="rounded-xl bg-[#3120ff] px-4 py-2 font-bold text-white shadow-xs hover:bg-[#1a1de0]"
-                  >
-                    Generate Request
-                  </button>
+                    <option value="M">
+                      M · Modify
+                    </option>
+
+                    <option value="T">
+                      T · Transfer
+                    </option>
+
+                    <option value="D">
+                      D · Delete
+                    </option>
+                  </select>
                 </div>
-              </form>
-            </div>
+              </div>
+
+              <div className="mt-5 flex justify-end">
+                <button
+                  type="submit"
+                  className="rounded-xl bg-[#3120ff] px-4 py-2.5 text-xs font-bold text-white"
+                >
+                  Create Request
+                </button>
+              </div>
+            </form>
           </div>
         )}
       </div>
     );
   };
+
+const Metric: React.FC<{
+  label: string;
+  value: number;
+}> = ({
+  label,
+  value,
+}) => (
+  <div className="rounded-xl border border-zinc-200 bg-white p-4">
+    <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-400">
+      {label}
+    </p>
+
+    <p className="mt-1 text-2xl font-extrabold text-zinc-950">
+      {value}
+    </p>
+  </div>
+);
+
+const StatusBadge: React.FC<{
+  status: string;
+}> = ({
+  status,
+}) => {
+  const confirmed =
+    status ===
+    'confirmed';
+
+  const submitted =
+    status ===
+      'submitted' ||
+    status ===
+      'awaiting_confirmation';
+
+  return (
+    <span
+      className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-bold ${
+        confirmed
+          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+          : submitted
+            ? 'border-[#3120ff]/20 bg-[#3120ff]/5 text-[#3120ff]'
+            : 'border-zinc-200 bg-zinc-50 text-zinc-600'
+      }`}
+    >
+      {STATUS_LABELS[
+        status
+      ] || status}
+    </span>
+  );
+};

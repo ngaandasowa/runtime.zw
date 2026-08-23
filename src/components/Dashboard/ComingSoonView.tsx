@@ -37,7 +37,7 @@ export const ComingSoonView: React.FC<ComingSoonViewProps> = ({
           </div>
 
           <div className="shrink-0">
-            <div className="rounded-xl border border-red-200 bg-red-50/50 px-4 py-3 text-center">
+            <div className="rounded-xl border border-[#3120ff]/15 bg-[#3120ff]/5/50 px-4 py-3 text-center">
               <span className="text-xs font-bold text-[#3120ff] uppercase tracking-wider block">
                 Module Status
               </span>
@@ -59,7 +59,7 @@ export const ComingSoonView: React.FC<ComingSoonViewProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {architectureSpecs.map((spec, i) => (
             <div key={i} className="flex items-start space-x-3 p-3.5 rounded-xl border border-zinc-200 bg-zinc-50">
-              <div className="flex h-5 w-5 items-center justify-center rounded-lg bg-red-50 text-[#3120ff] font-bold text-xs shrink-0 mt-0.5 border border-red-200 font-mono">
+              <div className="flex h-5 w-5 items-center justify-center rounded-lg bg-[#3120ff]/5 text-[#3120ff] font-bold text-xs shrink-0 mt-0.5 border border-[#3120ff]/15 font-mono">
                 {i + 1}
               </div>
               <p className="text-xs text-zinc-700 leading-relaxed font-mono">

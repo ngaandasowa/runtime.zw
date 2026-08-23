@@ -32,6 +32,10 @@ import { DashboardShell } from './components/Dashboard/DashboardShell';
 import { LegalPage } from './components/LegalPage';
 
 import {
+  ComingSoon,
+} from './pages/ComingSoon';
+
+import {
   AlertCircle,
   CheckCircle2,
   Info,
@@ -278,6 +282,16 @@ const AppContent: React.FC = () => {
               <Hero />
               <PlatformModules />
               <PricingSection />
+            </PublicLayout>
+          }
+        />
+
+
+        <Route
+          path="/coming-soon"
+          element={
+            <PublicLayout>
+              <ComingSoon />
             </PublicLayout>
           }
         />

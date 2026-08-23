@@ -1,550 +1,1562 @@
-import React, { useState } from 'react';
-import { 
-  Globe, 
-  Plus, 
-  Search, 
-  ArrowRight, 
-  Edit3, 
-  Trash2, 
-  History, 
-  ShieldAlert, 
-  Server, 
-  Check, 
-  Clock, 
+import React, { useMemo, useState } from 'react';
+import {
   AlertCircle,
-  FileText,
-  Lock,
-  ArrowLeftRight
+  ArrowLeftRight,
+  CalendarDays,
+  CheckCircle2,
+  Clock3,
+  Edit3,
+  Globe2,
+  RefreshCw,
+  Search,
+  Server,
+  ShieldAlert,
+  Trash2,
+  UserRound,
+  X,
 } from 'lucide-react';
+
 import { useStore } from '../../context/StoreContext';
-import { Domain, RegistrantDetails } from '../../types';
+import {
+  Domain,
+  RegistrantDetails,
+} from '../../types';
 import { nameserverService } from '../../services/NameserverService';
 
-export const DashboardDomains: React.FC = () => {
-  const { 
-    currentUser, 
-    domains, 
-    setRegistrationModalOpen,
-    updateDomainNameservers,
-    requestDomainModify,
-    requestDomainDelete,
-    requestDomainTransfer
-  } = useStore();
+type ModalMode =
+  | 'details'
+  | 'nameservers'
+  | 'owner'
+  | 'cancel'
+  | 'activity'
+  | 'renew'
+  | null;
 
-  const [activeTab, setActiveTab] = useState<'my_domains' | 'transfers'>('my_domains');
-  const [selectedDomain, setSelectedDomain] = useState<Domain | null>(null);
-  const [modalMode, setModalMode] = useState<'details' | 'nameservers' | 'modify' | 'delete' | 'history' | null>(null);
+const formatDate = (
+  value?: string
+) => {
+  if (!value) return 'Not available yet';
 
-  // Transfer form
-  const [transferDomain, setTransferDomain] = useState('');
-  const [transferAuthCode, setTransferAuthCode] = useState('');
-
-  // Nameservers editor state
-  const [editNs, setEditNs] = useState<string[]>([]);
-  const [nsError, setNsError] = useState<string | null>(null);
-
-  // Modify editor state
-  const [modifyOwner, setModifyOwner] = useState<RegistrantDetails | null>(null);
-  const [modifyNs, setModifyNs] = useState<string[]>([]);
-
-  // Delete modal state
-  const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
-
-  const userDomains = domains.filter(d => d.user_email === currentUser?.email || d.user_id === currentUser?.id);
-
-  const openNameserversModal = (domain: Domain) => {
-    setSelectedDomain(domain);
-    const ns = [...domain.nameservers];
-    while (ns.length < 4) ns.push('');
-    setEditNs(ns);
-    setNsError(null);
-    setModalMode('nameservers');
-  };
-
-  const handleSaveNameservers = () => {
-    if (!selectedDomain) return;
-    const active = editNs.filter(n => n.trim().length > 0);
-    const validation = nameserverService.validateNameservers(active);
-    if (!validation.valid) {
-      setNsError(validation.error || 'Invalid nameservers');
-      return;
+  return new Date(
+    value
+  ).toLocaleDateString(
+    undefined,
+    {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
     }
-    updateDomainNameservers(selectedDomain.id, active);
-    setModalMode(null);
-  };
+  );
+};
 
-  const openModifyModal = (domain: Domain) => {
-    setSelectedDomain(domain);
-    setModifyOwner({ ...domain.owner_details });
-    setModifyNs([...domain.nameservers]);
-    setModalMode('modify');
-  };
-
-  const handleSaveModify = () => {
-    if (!selectedDomain || !modifyOwner) return;
-    requestDomainModify(selectedDomain.id, modifyOwner, modifyNs);
-    setModalMode(null);
-  };
-
-  const openDeleteModal = (domain: Domain) => {
-    setSelectedDomain(domain);
-    setDeleteConfirmInput('');
-    setModalMode('delete');
-  };
-
-  const handleExecuteDelete = () => {
-    if (!selectedDomain) return;
-    const success = requestDomainDelete(selectedDomain.id, deleteConfirmInput);
-    if (success) {
-      setModalMode(null);
-    }
-  };
-
-  const openHistoryModal = (domain: Domain) => {
-    setSelectedDomain(domain);
-    setModalMode('history');
-  };
-
-  const handleTransferSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!transferDomain.trim()) return;
-    requestDomainTransfer(transferDomain.trim(), transferAuthCode.trim());
-    setTransferDomain('');
-    setTransferAuthCode('');
-    setActiveTab('my_domains');
+const statusLabel = (
+  status: string
+) => {
+  const labels: Record<
+    string,
+    string
+  > = {
+    active: 'Active',
+    pending_payment:
+      'Awaiting payment',
+    pending_registration:
+      'Registration processing',
+    pending_transfer:
+      'Transfer processing',
+    pending_delete:
+      'Cancellation requested',
+    pending:
+      'Processing',
+    cancelled:
+      'Cancelled',
+    expired:
+      'Expired',
   };
 
   return (
-    <div className="space-y-6">
-      
-      {/* Top Header & Tabs */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-200 pb-4">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-extrabold text-zinc-950 tracking-tight flex items-center space-x-2">
-            <Globe className="h-6 w-6 text-[#3120ff]" />
-            <span>Domain Management</span>
-          </h1>
-          <p className="text-xs text-zinc-500 mt-1">
-            Register, transfer, and manage authoritative nameservers for Zimbabwean ccTLDs (.co.zw).
-          </p>
-        </div>
+    labels[status] ||
+    status.replace(/_/g, ' ')
+  );
+};
 
-        <div className="flex items-center space-x-2">
-          <div className="inline-flex rounded-xl border border-zinc-200 bg-white p-1 text-xs font-bold shadow-2xs">
-            <button
-              onClick={() => setActiveTab('my_domains')}
-              className={`px-3 py-1.5 rounded-lg transition ${activeTab === 'my_domains' ? 'bg-[#3120ff] text-white' : 'text-zinc-600 hover:text-zinc-900'}`}
-            >
-              My Domains ({userDomains.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('transfers')}
-              className={`px-3 py-1.5 rounded-lg transition ${activeTab === 'transfers' ? 'bg-[#3120ff] text-white' : 'text-zinc-600 hover:text-zinc-900'}`}
-            >
-              Transfer In (T)
-            </button>
+const activityLabel = (
+  action: string
+) => {
+  const labels: Record<
+    string,
+    string
+  > = {
+    NEW: 'Registration',
+    MODIFY: 'Account update',
+    DELETE: 'Cancellation',
+    TRANSFER: 'Transfer',
+    RENEWAL: 'Renewal',
+    STATUS_CHANGE:
+      'Status update',
+  };
+
+  return (
+    labels[action] ||
+    'Account update'
+  );
+};
+
+export const DashboardDomains: React.FC =
+  () => {
+    const {
+      currentUser,
+      domains,
+      setRegistrationModalOpen,
+      updateDomainNameservers,
+      requestDomainModify,
+      requestDomainDelete,
+      requestDomainTransfer,
+      renewDomain,
+      showNotification,
+    } = useStore();
+
+    const [
+      activeTab,
+      setActiveTab,
+    ] = useState<
+      'domains' | 'transfer'
+    >('domains');
+
+    const [
+      search,
+      setSearch,
+    ] = useState('');
+
+    const [
+      selectedDomain,
+      setSelectedDomain,
+    ] =
+      useState<Domain | null>(
+        null
+      );
+
+    const [
+      modalMode,
+      setModalMode,
+    ] =
+      useState<ModalMode>(
+        null
+      );
+
+    const [
+      editNameservers,
+      setEditNameservers,
+    ] = useState<string[]>([]);
+
+    const [
+      nameserverError,
+      setNameserverError,
+    ] =
+      useState<string | null>(
+        null
+      );
+
+    const [
+      editOwner,
+      setEditOwner,
+    ] =
+      useState<RegistrantDetails | null>(
+        null
+      );
+
+    const [
+      cancelConfirm,
+      setCancelConfirm,
+    ] = useState('');
+
+    const [
+      transferDomain,
+      setTransferDomain,
+    ] = useState('');
+
+    const [
+      transferAuthCode,
+      setTransferAuthCode,
+    ] = useState('');
+
+    const [
+      renewalYears,
+      setRenewalYears,
+    ] = useState(1);
+
+    const [
+      renewalGateway,
+      setRenewalGateway,
+    ] = useState<
+      'ecocash_usd' |
+      'pesepay'
+    >('ecocash_usd');
+
+    const [
+      renewing,
+      setRenewing,
+    ] = useState(false);
+
+    const userDomains =
+      useMemo(
+        () =>
+          domains
+            .filter(
+              (domain) =>
+                domain.user_id ===
+                  currentUser?.id ||
+                domain.user_email ===
+                  currentUser?.email
+            )
+            .filter(
+              (domain) =>
+                !search.trim() ||
+                domain.domain_name
+                  .toLowerCase()
+                  .includes(
+                    search
+                      .trim()
+                      .toLowerCase()
+                  )
+            ),
+        [
+          domains,
+          currentUser,
+          search,
+        ]
+      );
+
+    const openDetails = (
+      domain: Domain
+    ) => {
+      setSelectedDomain(
+        domain
+      );
+      setModalMode(
+        'details'
+      );
+    };
+
+    const openNameservers = (
+      domain: Domain
+    ) => {
+      const next = [
+        ...domain.nameservers,
+      ];
+
+      while (
+        next.length < 4
+      ) {
+        next.push('');
+      }
+
+      setSelectedDomain(
+        domain
+      );
+      setEditNameservers(
+        next
+      );
+      setNameserverError(
+        null
+      );
+      setModalMode(
+        'nameservers'
+      );
+    };
+
+    const saveNameservers =
+      () => {
+        if (
+          !selectedDomain
+        ) {
+          return;
+        }
+
+        const active =
+          editNameservers
+            .map((item) =>
+              item.trim()
+            )
+            .filter(Boolean);
+
+        const validation =
+          nameserverService
+            .validateNameservers(
+              active
+            );
+
+        if (
+          !validation.valid
+        ) {
+          setNameserverError(
+            validation.error ||
+              'Please check the nameservers.'
+          );
+          return;
+        }
+
+        updateDomainNameservers(
+          selectedDomain.id,
+          active
+        );
+
+        setModalMode(
+          null
+        );
+      };
+
+    const openOwner = (
+      domain: Domain
+    ) => {
+      setSelectedDomain(
+        domain
+      );
+
+      setEditOwner({
+        ...domain.owner_details,
+      });
+
+      setModalMode(
+        'owner'
+      );
+    };
+
+    const saveOwner = () => {
+      if (
+        !selectedDomain ||
+        !editOwner
+      ) {
+        return;
+      }
+
+      requestDomainModify(
+        selectedDomain.id,
+        editOwner,
+        selectedDomain.nameservers
+      );
+
+      setModalMode(
+        null
+      );
+    };
+
+    const openCancel = (
+      domain: Domain
+    ) => {
+      setSelectedDomain(
+        domain
+      );
+      setCancelConfirm(
+        ''
+      );
+      setModalMode(
+        'cancel'
+      );
+    };
+
+    const confirmCancel =
+      () => {
+        if (
+          !selectedDomain
+        ) {
+          return;
+        }
+
+        const success =
+          requestDomainDelete(
+            selectedDomain.id,
+            cancelConfirm
+          );
+
+        if (success) {
+          setModalMode(
+            null
+          );
+        }
+      };
+
+    const openRenewal = (
+      domain: Domain
+    ) => {
+      if (
+        domain.status ===
+        'pending_registration'
+      ) {
+        showNotification(
+          'This domain is still being registered.',
+          'info'
+        );
+        return;
+      }
+
+      setSelectedDomain(
+        domain
+      );
+      setRenewalYears(
+        1
+      );
+      setRenewalGateway(
+        'ecocash_usd'
+      );
+      setModalMode(
+        'renew'
+      );
+    };
+
+    const projectedExpiry =
+      useMemo(() => {
+        if (
+          !selectedDomain
+        ) {
+          return null;
+        }
+
+        const now =
+          new Date();
+
+        const current =
+          selectedDomain.expires_at
+            ? new Date(
+                selectedDomain.expires_at
+              )
+            : null;
+
+        const base =
+          current &&
+          current.getTime() >
+            now.getTime()
+            ? new Date(
+                current
+              )
+            : now;
+
+        const next =
+          new Date(base);
+
+        next.setFullYear(
+          next.getFullYear() +
+            renewalYears
+        );
+
+        return next;
+      }, [
+        selectedDomain,
+        renewalYears,
+      ]);
+
+    const renewalTotal =
+      selectedDomain
+        ? selectedDomain.renewal_price *
+          renewalYears
+        : 0;
+
+    const completeRenewal =
+      async () => {
+        if (
+          !selectedDomain
+        ) {
+          return;
+        }
+
+        if (
+          renewalGateway ===
+          'pesepay'
+        ) {
+          showNotification(
+            'PesePay is not enabled yet.',
+            'info'
+          );
+          return;
+        }
+
+        try {
+          setRenewing(
+            true
+          );
+
+          await renewDomain(
+            selectedDomain.id,
+            renewalYears,
+            'ecocash_usd'
+          );
+
+          showNotification(
+            'Renewal order created. Complete the EcoCash USD payment and send your screenshot to Runtime on WhatsApp.',
+            'success'
+          );
+
+          setModalMode(
+            null
+          );
+        } catch (error) {
+          showNotification(
+            error instanceof Error
+              ? error.message
+              : 'Unable to renew this domain.',
+            'error'
+          );
+        } finally {
+          setRenewing(
+            false
+          );
+        }
+      };
+
+    const submitTransfer =
+      async (
+        event: React.FormEvent
+      ) => {
+        event.preventDefault();
+
+        if (
+          !transferDomain.trim()
+        ) {
+          return;
+        }
+
+        try {
+          await requestDomainTransfer(
+            transferDomain.trim(),
+            transferAuthCode.trim()
+          );
+
+          setTransferDomain(
+            ''
+          );
+          setTransferAuthCode(
+            ''
+          );
+        } catch (error) {
+          showNotification(
+            error instanceof Error
+              ? error.message
+              : 'Unable to submit the transfer request.',
+            'error'
+          );
+        }
+      };
+
+    return (
+      <div className="space-y-6">
+
+        <div className="flex flex-col gap-4 border-b border-zinc-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="flex items-center gap-2 text-xl font-extrabold tracking-tight text-zinc-950 sm:text-2xl">
+              <Globe2 className="h-6 w-6 text-[#3120ff]" />
+              My Domains
+            </h1>
+
+            <p className="mt-1 text-xs text-zinc-500">
+              Register, renew and manage your domain names.
+            </p>
           </div>
 
           <button
-            onClick={() => setRegistrationModalOpen(true)}
-            className="inline-flex items-center space-x-1.5 rounded-xl bg-[#3120ff] px-3.5 py-2 text-xs font-bold text-white hover:bg-[#2819d9] transition shadow-xs"
+            type="button"
+            onClick={() =>
+              setRegistrationModalOpen(
+                true
+              )
+            }
+            className="rounded-xl bg-[#3120ff] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#2819d9]"
           >
-            <Plus className="h-4 w-4" />
-            <span>Register .co.zw ($2/yr)</span>
+            Register New Domain
           </button>
         </div>
-      </div>
 
-      {/* TAB 1: My Domains */}
-      {activeTab === 'my_domains' && (
-        <div className="space-y-4">
-          {userDomains.length === 0 ? (
-            <div className="text-center py-12 border border-dashed border-zinc-200 rounded-2xl bg-white shadow-2xs">
-              <Globe className="h-10 w-10 text-zinc-400 mx-auto mb-3" />
-              <h3 className="text-base font-bold text-zinc-950">No Domains Found</h3>
-              <p className="text-xs text-zinc-500 max-w-sm mx-auto mt-1 mb-4">
-                Secure your Zimbabwean domain name today with direct domain service delegation and $2.00/yr pricing.
-              </p>
-              <button
-                onClick={() => setRegistrationModalOpen(true)}
-                className="inline-flex items-center space-x-2 rounded-xl bg-[#3120ff] px-5 py-2.5 text-xs font-bold text-white hover:bg-[#2819d9] shadow-xs"
-              >
-                <span>Search Domain Now</span>
-                <ArrowRight className="h-4 w-4" />
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-4">
-              {userDomains.map((domain) => (
-                <div 
-                  key={domain.id}
-                  className="rounded-xl border border-zinc-200 bg-white p-5 hover:border-zinc-300 transition shadow-xs"
-                >
-                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                    
-                    {/* Domain Title & Details */}
-                    <div className="space-y-1.5">
-                      <div className="flex items-center space-x-3">
-                        <span className="text-lg font-bold font-mono text-zinc-950">
-                          {domain.domain_name}
-                        </span>
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                          domain.status === 'active' 
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700' 
-                            : domain.status === 'pending_registration'
-                            ? 'border-amber-200 bg-amber-50 text-amber-700'
-                            : domain.status === 'pending_delete'
-                            ? 'border-rose-200 bg-rose-50 text-rose-700'
-                            : 'border-zinc-200 bg-zinc-100 text-zinc-600'
-                        }`}>
-                          {domain.status.toUpperCase()}
-                        </span>
-                      </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              setActiveTab(
+                'domains'
+              )
+            }
+            className={`rounded-lg px-3 py-2 text-xs font-semibold ${
+              activeTab ===
+              'domains'
+                ? 'bg-[#3120ff] text-white'
+                : 'bg-white text-zinc-600 ring-1 ring-zinc-200'
+            }`}
+          >
+            My Domains
+          </button>
 
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-500">
-                        <div>Owner: <span className="text-zinc-800 font-medium">{domain.owner_details.full_name}</span></div>
-                        <div>•</div>
-                        <div>Nameservers: <span className="text-zinc-800 font-mono">{domain.nameservers.join(', ')}</span></div>
-                        <div>•</div>
-                        <div>Renewal: <span className="text-[#3120ff] font-bold">${domain.renewal_price.toFixed(2)}/yr</span></div>
-                      </div>
-                    </div>
-
-                    {/* Actions Toolbar */}
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        onClick={() => openNameserversModal(domain)}
-                        className="inline-flex items-center space-x-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:bg-white hover:border-zinc-300 transition"
-                      >
-                        <Server className="h-3.5 w-3.5 text-[#3120ff]" />
-                        <span>Nameservers</span>
-                      </button>
-
-                      <button
-                        onClick={() => openModifyModal(domain)}
-                        className="inline-flex items-center space-x-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:bg-white hover:border-zinc-300 transition"
-                      >
-                        <Edit3 className="h-3.5 w-3.5 text-[#3120ff]" />
-                        <span>Modify (M)</span>
-                      </button>
-
-                      <button
-                        onClick={() => openHistoryModal(domain)}
-                        className="inline-flex items-center space-x-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:bg-white hover:border-zinc-300 transition"
-                      >
-                        <History className="h-3.5 w-3.5 text-zinc-400" />
-                        <span>Timeline</span>
-                      </button>
-
-                      <button
-                        onClick={() => openDeleteModal(domain)}
-                        className="inline-flex items-center space-x-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 hover:border-rose-200 transition"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        <span>Delete</span>
-                      </button>
-                    </div>
-
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <button
+            type="button"
+            onClick={() =>
+              setActiveTab(
+                'transfer'
+              )
+            }
+            className={`rounded-lg px-3 py-2 text-xs font-semibold ${
+              activeTab ===
+              'transfer'
+                ? 'bg-[#3120ff] text-white'
+                : 'bg-white text-zinc-600 ring-1 ring-zinc-200'
+            }`}
+          >
+            Transfer a Domain
+          </button>
         </div>
-      )}
 
-      {/* TAB 2: Transfer In */}
-      {activeTab === 'transfers' && (
-        <div className="rounded-2xl border border-zinc-200 bg-white p-6 sm:p-8 max-w-2xl mx-auto shadow-sm">
-          <div className="flex items-center space-x-3 mb-4">
-            <ArrowLeftRight className="h-6 w-6 text-[#3120ff]" />
-            <div>
-              <h2 className="text-lg font-bold text-zinc-950">Transfer Domain into Runtime</h2>
-              <p className="text-xs text-zinc-500">Initiate an official Domain transfer (Action T) to Runtime registrar infrastructure.</p>
-            </div>
-          </div>
+        {activeTab ===
+        'domains' ? (
+          <>
+            <div className="relative max-w-sm">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-400" />
 
-          <form onSubmit={handleTransferSubmit} className="space-y-4 text-xs">
-            <div>
-              <label className="block text-zinc-700 font-semibold mb-1">Domain Name to Transfer *</label>
               <input
-                type="text"
-                placeholder="existingdomain.co.zw"
-                value={transferDomain}
-                onChange={(e) => setTransferDomain(e.target.value.toLowerCase())}
-                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none font-mono"
+                value={
+                  search
+                }
+                onChange={(
+                  event
+                ) =>
+                  setSearch(
+                    event.target.value
+                  )
+                }
+                placeholder="Search your domains"
+                className="w-full rounded-xl border border-zinc-200 bg-white py-2 pl-9 pr-4 text-xs outline-none focus:border-[#3120ff]"
               />
             </div>
 
-            <div>
-              <label className="block text-zinc-700 font-semibold mb-1">EPP / Authorization Code (Optional)</label>
-              <input
-                type="text"
-                placeholder="Auth code from losing registrar"
-                value={transferAuthCode}
-                onChange={(e) => setTransferAuthCode(e.target.value)}
-                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none font-mono"
-              />
-            </div>
+            <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+              {userDomains.length ===
+              0 ? (
+                <div className="px-6 py-14 text-center">
+                  <Globe2 className="mx-auto h-7 w-7 text-zinc-300" />
 
-            <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200 text-zinc-600">
-              <strong className="text-zinc-900 font-bold">Domain transfer Policy:</strong> Domain transfers do not incur extra transfer penalties. Once requested, a domain service Action T form is generated and dispatched to the registry.
-            </div>
+                  <p className="mt-3 text-sm font-semibold text-zinc-950">
+                    No domains found
+                  </p>
 
-            <button
-              type="submit"
-              disabled={!transferDomain.trim()}
-              className="w-full inline-flex items-center justify-center space-x-2 rounded-xl bg-[#3120ff] py-3 text-sm font-bold text-white hover:bg-[#2819d9] transition disabled:opacity-50 shadow-sm"
-            >
-              <span>Submit Transfer Request (Action T)</span>
-              <ArrowRight className="h-4 w-4" />
-            </button>
-          </form>
-        </div>
-      )}
-
-      {/* MODAL 1: Nameservers Editor */}
-      {modalMode === 'nameservers' && selectedDomain && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
-          <div className="relative w-full max-w-lg rounded-2xl border border-zinc-200 bg-white p-6 text-zinc-900 shadow-2xl ring-1 ring-black/5">
-            <h3 className="text-base font-bold text-zinc-950 mb-1">
-              Update Nameservers: {selectedDomain.domain_name}
-            </h3>
-            <p className="text-xs text-zinc-500 mb-4">
-              Specify 2 to 4 authoritative nameservers. Updating queues a domain service MODIFY (M) request.
-            </p>
-
-            <div className="space-y-3 mb-4 text-xs font-mono">
-              {editNs.map((ns, idx) => (
-                <div key={idx}>
-                  <label className="block text-[11px] font-semibold text-zinc-600 mb-1">
-                    Nameserver {idx + 1} {idx < 2 ? '*' : '(Optional)'}
-                  </label>
-                  <input
-                    type="text"
-                    value={ns}
-                    onChange={(e) => {
-                      const copy = [...editNs];
-                      copy[idx] = e.target.value;
-                      setEditNs(copy);
-                    }}
-                    placeholder={`ns${idx + 1}.example.com`}
-                    className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2 text-xs text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none"
-                  />
+                  <p className="mt-1 text-xs text-zinc-500">
+                    Your registered domains will appear here.
+                  </p>
                 </div>
-              ))}
+              ) : (
+                <div className="divide-y divide-zinc-200">
+                  {userDomains.map(
+                    (domain) => (
+                      <div
+                        key={
+                          domain.id
+                        }
+                        className="grid gap-4 p-4 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-center sm:px-5"
+                      >
+                        <div className="min-w-0">
+                          <p className="break-all font-mono text-sm font-bold text-zinc-950">
+                            {
+                              domain.domain_name
+                            }
+                          </p>
 
-              {nsError && (
-                <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs">
-                  {nsError}
+                          <p className="mt-1 text-xs text-zinc-500">
+                            Registered:{' '}
+                            {
+                              formatDate(
+                                domain.registered_at
+                              )
+                            }
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
+                            Status
+                          </p>
+
+                          <p className="mt-1 text-xs font-semibold text-zinc-800">
+                            {
+                              statusLabel(
+                                domain.status
+                              )
+                            }
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
+                            Renewal
+                          </p>
+
+                          <p className="mt-1 text-xs font-semibold text-zinc-800">
+                            {
+                              domain.expires_at
+                                ? formatDate(
+                                    domain.expires_at
+                                  )
+                                : 'Starts when active'
+                            }
+                          </p>
+
+                          <p className="mt-0.5 text-[11px] text-zinc-500">
+                            $
+                            {domain.renewal_price.toFixed(
+                              2
+                            )}
+                            /year
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 sm:justify-end">
+                          {(domain.status ===
+                            'active' ||
+                            domain.status ===
+                              'expired') && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openRenewal(
+                                  domain
+                                )
+                              }
+                              className="rounded-lg bg-[#3120ff] px-3 py-2 text-xs font-semibold text-white hover:bg-[#2819d9]"
+                            >
+                              Renew
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openDetails(
+                                domain
+                              )
+                            }
+                            className="rounded-lg bg-zinc-100 px-3 py-2 text-xs font-semibold text-zinc-700 hover:bg-zinc-200"
+                          >
+                            Manage
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  )}
                 </div>
               )}
             </div>
-
-            <div className="flex justify-end space-x-3 pt-3 border-t border-zinc-200 text-xs">
-              <button
-                onClick={() => setModalMode(null)}
-                className="px-4 py-2 font-semibold text-zinc-500 hover:text-zinc-900"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveNameservers}
-                className="rounded-xl bg-[#3120ff] px-4 py-2 font-bold text-white hover:bg-[#2819d9] shadow-xs"
-              >
-                Save &amp; Queue domain service (M)
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 2: Modify Details (domain service M) */}
-      {modalMode === 'modify' && selectedDomain && modifyOwner && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs overflow-y-auto">
-          <div className="relative w-full max-w-xl rounded-2xl border border-zinc-200 bg-white p-6 text-zinc-900 shadow-2xl ring-1 ring-black/5 my-8">
-            <h3 className="text-base font-bold text-zinc-950 mb-1">
-              Modify Domain Contact (domain service Action M)
-            </h3>
-            <p className="text-xs text-zinc-500 mb-4">
-              Target: <strong className="text-zinc-950 font-mono">{selectedDomain.domain_name}</strong>. domain service requires complete contact specifications.
-            </p>
-
-            <div className="space-y-3 text-xs">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-zinc-600 font-semibold mb-1">Full Name</label>
-                  <input
-                    type="text"
-                    value={modifyOwner.full_name}
-                    onChange={(e) => setModifyOwner({ ...modifyOwner, full_name: e.target.value })}
-                    className="w-full rounded-xl bg-zinc-50 border border-zinc-200 p-2 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-zinc-600 font-semibold mb-1">Organisation</label>
-                  <input
-                    type="text"
-                    value={modifyOwner.org_name || ''}
-                    onChange={(e) => setModifyOwner({ ...modifyOwner, org_name: e.target.value })}
-                    className="w-full rounded-xl bg-zinc-50 border border-zinc-200 p-2 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none"
-                  />
-                </div>
-              </div>
+          </>
+        ) : (
+          <div className="max-w-xl rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-6">
+            <div className="flex items-start gap-3">
+              <ArrowLeftRight className="mt-0.5 h-5 w-5 text-[#3120ff]" />
 
               <div>
-                <label className="block text-zinc-600 font-semibold mb-1">Physical Address</label>
-                <input
-                  type="text"
-                  value={modifyOwner.physical_address}
-                  onChange={(e) => setModifyOwner({ ...modifyOwner, physical_address: e.target.value })}
-                  className="w-full rounded-xl bg-zinc-50 border border-zinc-200 p-2 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none"
+                <h2 className="text-sm font-bold text-zinc-950">
+                  Transfer a domain to Runtime
+                </h2>
+
+                <p className="mt-1 text-xs leading-5 text-zinc-500">
+                  Enter the domain and transfer code supplied by your current provider.
+                </p>
+              </div>
+            </div>
+
+            <form
+              onSubmit={
+                submitTransfer
+              }
+              className="mt-5 space-y-4"
+            >
+              <Field
+                label="Domain name"
+                value={
+                  transferDomain
+                }
+                placeholder="example.com"
+                onChange={
+                  setTransferDomain
+                }
+              />
+
+              <Field
+                label="Transfer code"
+                value={
+                  transferAuthCode
+                }
+                placeholder="Authorization code"
+                onChange={
+                  setTransferAuthCode
+                }
+              />
+
+              <button
+                type="submit"
+                className="rounded-xl bg-[#3120ff] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#2819d9]"
+              >
+                Start Transfer
+              </button>
+            </form>
+          </div>
+        )}
+
+        {modalMode ===
+          'details' &&
+          selectedDomain && (
+            <Modal
+              title={
+                selectedDomain.domain_name
+              }
+              onClose={() =>
+                setModalMode(
+                  null
+                )
+              }
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Info
+                  label="Status"
+                  value={statusLabel(
+                    selectedDomain.status
+                  )}
+                />
+
+                <Info
+                  label="Registered"
+                  value={formatDate(
+                    selectedDomain.registered_at
+                  )}
+                />
+
+                <Info
+                  label="Renews"
+                  value={
+                    selectedDomain.expires_at
+                      ? formatDate(
+                          selectedDomain.expires_at
+                        )
+                      : 'Starts when registration is completed'
+                  }
+                />
+
+                <Info
+                  label="Renewal price"
+                  value={`$${selectedDomain.renewal_price.toFixed(
+                    2
+                  )} / year`}
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-zinc-600 font-semibold mb-1">Phone</label>
-                  <input
-                    type="text"
-                    value={modifyOwner.phone}
-                    onChange={(e) => setModifyOwner({ ...modifyOwner, phone: e.target.value })}
-                    className="w-full rounded-xl bg-zinc-50 border border-zinc-200 p-2 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none font-mono"
-                  />
+              <div className="mt-5 rounded-xl border border-zinc-200 p-4">
+                <div className="flex items-center gap-2">
+                  <Server className="h-4 w-4 text-[#3120ff]" />
+                  <p className="text-xs font-bold text-zinc-950">
+                    Nameservers
+                  </p>
                 </div>
-                <div>
-                  <label className="block text-zinc-600 font-semibold mb-1">Email</label>
-                  <input
-                    type="email"
-                    value={modifyOwner.email}
-                    onChange={(e) => setModifyOwner({ ...modifyOwner, email: e.target.value })}
-                    className="w-full rounded-xl bg-zinc-50 border border-zinc-200 p-2 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none font-mono"
-                  />
+
+                <div className="mt-3 space-y-1">
+                  {selectedDomain.nameservers.map(
+                    (
+                      item
+                    ) => (
+                      <p
+                        key={
+                          item
+                        }
+                        className="break-all font-mono text-xs text-zinc-600"
+                      >
+                        {
+                          item
+                        }
+                      </p>
+                    )
+                  )}
                 </div>
               </div>
 
-              <div>
-                <label className="block text-zinc-600 font-semibold mb-1">Organisation Description</label>
-                <input
-                  type="text"
-                  value={modifyOwner.org_description}
-                  onChange={(e) => setModifyOwner({ ...modifyOwner, org_description: e.target.value })}
-                  className="w-full rounded-xl bg-zinc-50 border border-zinc-200 p-2 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none"
+              <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                {(selectedDomain.status ===
+                  'active' ||
+                  selectedDomain.status ===
+                    'expired') && (
+                  <ActionButton
+                    icon={
+                      RefreshCw
+                    }
+                    label="Renew Domain"
+                    onClick={() =>
+                      openRenewal(
+                        selectedDomain
+                      )
+                    }
+                  />
+                )}
+
+                <ActionButton
+                  icon={
+                    Server
+                  }
+                  label="Change Nameservers"
+                  onClick={() =>
+                    openNameservers(
+                      selectedDomain
+                    )
+                  }
+                />
+
+                <ActionButton
+                  icon={
+                    UserRound
+                  }
+                  label="Update Owner Details"
+                  onClick={() =>
+                    openOwner(
+                      selectedDomain
+                    )
+                  }
+                />
+
+                <ActionButton
+                  icon={
+                    Clock3
+                  }
+                  label="Activity"
+                  onClick={() =>
+                    setModalMode(
+                      'activity'
+                    )
+                  }
+                />
+
+                <ActionButton
+                  icon={
+                    Trash2
+                  }
+                  label="Request Cancellation"
+                  danger
+                  onClick={() =>
+                    openCancel(
+                      selectedDomain
+                    )
+                  }
+                />
+              </div>
+            </Modal>
+          )}
+
+        {modalMode ===
+          'renew' &&
+          selectedDomain && (
+            <Modal
+              title={`Renew ${selectedDomain.domain_name}`}
+              onClose={() =>
+                setModalMode(
+                  null
+                )
+              }
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Info
+                  label="Current renewal date"
+                  value={
+                    selectedDomain.expires_at
+                      ? formatDate(
+                          selectedDomain.expires_at
+                        )
+                      : 'Not available'
+                  }
+                />
+
+                <Info
+                  label="Renewal rate"
+                  value={`$${selectedDomain.renewal_price.toFixed(
+                    2
+                  )} / year`}
                 />
               </div>
 
-              <div>
-                <label className="block text-zinc-600 font-semibold mb-1">Proposed Usage</label>
-                <input
-                  type="text"
-                  value={modifyOwner.proposed_usage}
-                  onChange={(e) => setModifyOwner({ ...modifyOwner, proposed_usage: e.target.value })}
-                  className="w-full rounded-xl bg-zinc-50 border border-zinc-200 p-2 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none"
+              <div className="mt-5">
+                <label className="mb-1.5 block text-xs font-semibold text-zinc-700">
+                  Number of years
+                </label>
+
+                <select
+                  value={
+                    renewalYears
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    setRenewalYears(
+                      Number(
+                        event.target.value
+                      )
+                    )
+                  }
+                  className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#3120ff]"
+                >
+                  {[
+                    1, 2, 3, 4, 5,
+                  ].map(
+                    (
+                      years
+                    ) => (
+                      <option
+                        key={
+                          years
+                        }
+                        value={
+                          years
+                        }
+                      >
+                        {
+                          years
+                        }{' '}
+                        {years ===
+                        1
+                          ? 'year'
+                          : 'years'}
+                      </option>
+                    )
+                  )}
+                </select>
+              </div>
+
+              <div className="mt-5 overflow-hidden rounded-xl border border-zinc-200">
+                <Summary
+                  label="New renewal date"
+                  value={
+                    projectedExpiry
+                      ? projectedExpiry.toLocaleDateString()
+                      : '—'
+                  }
+                />
+
+                <Summary
+                  label="Total"
+                  value={`$${renewalTotal.toFixed(
+                    2
+                  )} USD`}
+                  strong
                 />
               </div>
-            </div>
 
-            <div className="flex justify-end space-x-3 pt-4 mt-4 border-t border-zinc-200 text-xs">
-              <button
-                onClick={() => setModalMode(null)}
-                className="px-4 py-2 font-semibold text-zinc-500 hover:text-zinc-900"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveModify}
-                className="rounded-xl bg-[#3120ff] px-4 py-2 font-bold text-white hover:bg-[#2819d9] shadow-xs"
-              >
-                Submit Modification (M)
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              <div className="mt-5">
+                <p className="mb-2 text-xs font-semibold text-zinc-700">
+                  Payment method
+                </p>
 
-      {/* MODAL 3: Delete Protection (domain service D) */}
-      {modalMode === 'delete' && selectedDomain && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
-          <div className="relative w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 text-zinc-900 shadow-2xl ring-1 ring-black/5">
-            <div className="flex items-center space-x-2 text-zinc-950 mb-2">
-              <ShieldAlert className="h-5 w-5 text-[#3120ff]" />
-              <h3 className="text-base font-bold">Delete Protection Warning</h3>
-            </div>
-            
-            <p className="text-xs text-zinc-600 mb-3 leading-relaxed">
-              You are requesting deletion of <strong className="text-zinc-950 font-mono">{selectedDomain.domain_name}</strong> from the official domain service.
-            </p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setRenewalGateway(
+                        'ecocash_usd'
+                      )
+                    }
+                    className={`rounded-xl border p-3 text-left transition ${
+                      renewalGateway ===
+                      'ecocash_usd'
+                        ? 'border-[#3120ff] bg-[#3120ff]/5'
+                        : 'border-zinc-200 bg-white'
+                    }`}
+                  >
+                    <p className="text-xs font-semibold text-zinc-950">
+                      EcoCash USD
+                    </p>
 
-            <p className="text-xs text-zinc-500 mb-4">
-              To prevent accidental deletion, please type <span className="font-bold text-zinc-950 font-mono select-all">{selectedDomain.domain_name}</span> below:
-            </p>
+                    <p className="mt-1 text-[11px] leading-4 text-zinc-500">
+                      Manual payment. Payment is verified by Runtime before your renewal date changes.
+                    </p>
+                  </button>
 
-            <input
-              type="text"
-              value={deleteConfirmInput}
-              onChange={(e) => setDeleteConfirmInput(e.target.value)}
-              placeholder={selectedDomain.domain_name}
-              className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 font-mono text-xs text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none mb-4"
-            />
+                  <button
+                    type="button"
+                    disabled
+                    className="cursor-not-allowed rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-left opacity-50"
+                  >
+                    <p className="text-xs font-semibold text-zinc-950">
+                      PesePay
+                    </p>
 
-            <div className="flex justify-end space-x-3 pt-2 border-t border-zinc-200 text-xs">
-              <button
-                onClick={() => setModalMode(null)}
-                className="px-4 py-2 font-semibold text-zinc-500 hover:text-zinc-900"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleExecuteDelete}
-                disabled={deleteConfirmInput.trim().toLowerCase() !== selectedDomain.domain_name.toLowerCase()}
-                className="rounded-xl bg-rose-600 px-4 py-2 font-bold text-white hover:bg-rose-500 disabled:opacity-40 transition shadow-xs"
-              >
-                Confirm Delete (domain service D)
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+                    <p className="mt-1 text-[11px] leading-4 text-zinc-500">
+                      Online payment coming shortly.
+                    </p>
+                  </button>
+                </div>
 
-      {/* MODAL 4: Domain History Timeline */}
-      {modalMode === 'history' && selectedDomain && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
-          <div className="relative w-full max-w-lg rounded-2xl border border-zinc-200 bg-white p-6 text-zinc-900 shadow-2xl ring-1 ring-black/5">
-            <h3 className="text-base font-bold text-zinc-950 mb-1">
-              Audit Timeline: {selectedDomain.domain_name}
-            </h3>
-            <p className="text-xs text-zinc-500 mb-4 font-mono">
-              Immutable registry &amp; modification event trail
-            </p>
+                {renewalGateway ===
+                  'ecocash_usd' && (
+                  <div className="mt-3 rounded-xl border border-[#3120ff]/15 bg-[#3120ff]/5 p-3">
+                    <p className="text-xs font-semibold text-zinc-950">
+                      EcoCash USD
+                    </p>
 
-            <div className="space-y-4 max-h-72 overflow-y-auto pr-2">
-              {selectedDomain.history.map((h, i) => (
-                <div key={i} className="flex items-start space-x-3 border-l-2 border-[#3120ff] pl-3 py-1 text-xs">
-                  <div>
-                    <div className="flex items-center space-x-2">
-                      <span className="font-bold text-zinc-950">Action {h.action}</span>
-                      <span className="text-[10px] text-[#3120ff] bg-red-50 px-1.5 py-0.5 rounded font-semibold border border-red-200">{h.status}</span>
-                      <span className="text-[10px] text-zinc-400 font-mono">{new Date(h.created_at).toLocaleString()}</span>
-                    </div>
-                    <p className="text-zinc-600 mt-1">{h.description}</p>
-                    <p className="text-[10px] text-zinc-400 font-mono mt-0.5">Actor: {h.actor}</p>
+                    <p className="mt-1 text-[11px] leading-5 text-zinc-500">
+                      After creating the renewal order, send the exact amount to 0783827570, Ngaavongwe Ndasowampange, then send your screenshot to Runtime on WhatsApp. The renewal will only be applied after payment is confirmed.
+                    </p>
                   </div>
+                )}
+              </div>
+
+              <div className="mt-5 flex justify-end">
+                <button
+                  type="button"
+                  onClick={
+                    completeRenewal
+                  }
+                  disabled={
+                    renewing
+                  }
+                  className="rounded-xl bg-[#3120ff] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#2819d9] disabled:opacity-50"
+                >
+                  {renewing
+                    ? 'Creating order...'
+                    : `Create Renewal Order · $${renewalTotal.toFixed(
+                        2
+                      )}`}
+                </button>
+              </div>
+            </Modal>
+          )}
+
+        {modalMode ===
+          'nameservers' &&
+          selectedDomain && (
+            <Modal
+              title="Change Nameservers"
+              onClose={() =>
+                setModalMode(
+                  null
+                )
+              }
+            >
+              <div className="space-y-3">
+                {editNameservers.map(
+                  (
+                    value,
+                    index
+                  ) => (
+                    <Field
+                      key={
+                        index
+                      }
+                      label={`Nameserver ${index + 1}${index < 2 ? ' *' : ''}`}
+                      value={
+                        value
+                      }
+                      placeholder={`ns${index + 1}.example.com`}
+                      onChange={(
+                        next
+                      ) => {
+                        const copy = [
+                          ...editNameservers,
+                        ];
+
+                        copy[
+                          index
+                        ] =
+                          next;
+
+                        setEditNameservers(
+                          copy
+                        );
+                      }}
+                    />
+                  )
+                )}
+              </div>
+
+              {nameserverError && (
+                <div className="mt-4 flex gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  {
+                    nameserverError
+                  }
                 </div>
-              ))}
-            </div>
+              )}
 
-            <div className="flex justify-end pt-4 mt-4 border-t border-zinc-200 text-xs">
-              <button
-                onClick={() => setModalMode(null)}
-                className="rounded-xl bg-zinc-100 px-4 py-2 font-semibold text-zinc-700 hover:bg-zinc-200"
-              >
-                Close
-              </button>
-            </div>
-          </div>
+              <div className="mt-5 flex justify-end">
+                <button
+                  type="button"
+                  onClick={
+                    saveNameservers
+                  }
+                  className="rounded-xl bg-[#3120ff] px-4 py-2.5 text-xs font-bold text-white"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </Modal>
+          )}
+
+        {modalMode ===
+          'owner' &&
+          selectedDomain &&
+          editOwner && (
+            <Modal
+              title="Update Owner Details"
+              onClose={() =>
+                setModalMode(
+                  null
+                )
+              }
+            >
+              <div className="grid gap-4 sm:grid-cols-2">
+                {[
+                  [
+                    'Full name',
+                    'full_name',
+                  ],
+                  [
+                    'Organisation',
+                    'org_name',
+                  ],
+                  [
+                    'Physical address',
+                    'physical_address',
+                  ],
+                  [
+                    'Postal address',
+                    'postal_address',
+                  ],
+                  [
+                    'Town / City',
+                    'city',
+                  ],
+                  [
+                    'Country',
+                    'country',
+                  ],
+                  [
+                    'Phone',
+                    'phone',
+                  ],
+                  [
+                    'Email',
+                    'email',
+                  ],
+                  [
+                    'Organisation / activity',
+                    'org_description',
+                  ],
+                  [
+                    'Proposed use',
+                    'proposed_usage',
+                  ],
+                ].map(
+                  ([
+                    label,
+                    key,
+                  ]) => (
+                    <Field
+                      key={
+                        key
+                      }
+                      label={
+                        label
+                      }
+                      value={
+                        String(
+                          editOwner[
+                            key as keyof RegistrantDetails
+                          ] ||
+                            ''
+                        )
+                      }
+                      onChange={(
+                        value
+                      ) =>
+                        setEditOwner(
+                          {
+                            ...editOwner,
+                            [key]:
+                              value,
+                          }
+                        )
+                      }
+                    />
+                  )
+                )}
+              </div>
+
+              <div className="mt-5 flex justify-end">
+                <button
+                  type="button"
+                  onClick={
+                    saveOwner
+                  }
+                  className="rounded-xl bg-[#3120ff] px-4 py-2.5 text-xs font-bold text-white"
+                >
+                  Submit Update
+                </button>
+              </div>
+            </Modal>
+          )}
+
+        {modalMode ===
+          'cancel' &&
+          selectedDomain && (
+            <Modal
+              title="Request Domain Cancellation"
+              onClose={() =>
+                setModalMode(
+                  null
+                )
+              }
+            >
+              <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
+                <div className="flex gap-2">
+                  <ShieldAlert className="h-5 w-5 shrink-0 text-rose-600" />
+
+                  <p className="text-xs leading-5 text-rose-800">
+                    This can make the domain stop working. Type the domain name below to confirm your request.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <Field
+                  label="Domain name"
+                  value={
+                    cancelConfirm
+                  }
+                  placeholder={
+                    selectedDomain.domain_name
+                  }
+                  onChange={
+                    setCancelConfirm
+                  }
+                />
+              </div>
+
+              <div className="mt-5 flex justify-end">
+                <button
+                  type="button"
+                  disabled={
+                    cancelConfirm
+                      .trim()
+                      .toLowerCase() !==
+                    selectedDomain.domain_name.toLowerCase()
+                  }
+                  onClick={
+                    confirmCancel
+                  }
+                  className="rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40"
+                >
+                  Request Cancellation
+                </button>
+              </div>
+            </Modal>
+          )}
+
+        {modalMode ===
+          'activity' &&
+          selectedDomain && (
+            <Modal
+              title="Domain Activity"
+              onClose={() =>
+                setModalMode(
+                  null
+                )
+              }
+            >
+              {selectedDomain.history.length ===
+              0 ? (
+                <p className="text-xs text-zinc-500">
+                  No activity recorded yet.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {[...selectedDomain.history]
+                    .reverse()
+                    .map(
+                      (
+                        item
+                      ) => (
+                        <div
+                          key={
+                            item.id
+                          }
+                          className="rounded-xl border border-zinc-200 p-4"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-xs font-bold text-zinc-950">
+                              {
+                                activityLabel(
+                                  item.action
+                                )
+                              }
+                            </p>
+
+                            <p className="text-[10px] text-zinc-400">
+                              {new Date(
+                                item.created_at
+                              ).toLocaleString()}
+                            </p>
+                          </div>
+
+                          <p className="mt-2 text-xs leading-5 text-zinc-600">
+                            {
+                              item.description
+                                .replace(
+                                  /\bN\/M\/D\/T\b/gi,
+                                  'domain update'
+                                )
+                                .replace(
+                                  /\bAction\s+[NMDT]\b/gi,
+                                  'Domain update'
+                                )
+                                .replace(
+                                  /\bZISPA\b/gi,
+                                  'registration service'
+                                )
+                            }
+                          </p>
+                        </div>
+                      )
+                    )}
+                </div>
+              )}
+            </Modal>
+          )}
+      </div>
+    );
+  };
+
+const Modal: React.FC<{
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}> = ({
+  title,
+  onClose,
+  children,
+}) => (
+  <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm sm:p-4">
+    <div className="flex h-full items-end justify-center sm:items-center">
+      <div className="flex max-h-dvh w-full flex-col overflow-hidden bg-white sm:max-h-[90dvh] sm:max-w-2xl sm:rounded-2xl sm:border sm:border-zinc-200 sm:shadow-2xl">
+        <div className="flex shrink-0 items-center justify-between border-b border-zinc-200 px-4 py-4 sm:px-6">
+          <h3 className="min-w-0 truncate text-base font-bold text-zinc-950">
+            {title}
+          </h3>
+
+          <button
+            type="button"
+            onClick={
+              onClose
+            }
+            className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-900"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
-      )}
 
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+          {children}
+        </div>
+      </div>
     </div>
-  );
-};
+  </div>
+);
+
+const Field: React.FC<{
+  label: string;
+  value: string;
+  placeholder?: string;
+  onChange: (value: string) => void;
+}> = ({
+  label,
+  value,
+  placeholder,
+  onChange,
+}) => (
+  <div>
+    <label className="mb-1.5 block text-xs font-semibold text-zinc-700">
+      {label}
+    </label>
+
+    <input
+      value={
+        value
+      }
+      onChange={(
+        event
+      ) =>
+        onChange(
+          event.target.value
+        )
+      }
+      placeholder={
+        placeholder
+      }
+      className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#3120ff]"
+    />
+  </div>
+);
+
+const Info: React.FC<{
+  label: string;
+  value: string;
+}> = ({
+  label,
+  value,
+}) => (
+  <div className="rounded-xl border border-zinc-200 p-4">
+    <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
+      {label}
+    </p>
+
+    <p className="mt-1 text-sm font-semibold text-zinc-950">
+      {value}
+    </p>
+  </div>
+);
+
+const Summary: React.FC<{
+  label: string;
+  value: string;
+  strong?: boolean;
+}> = ({
+  label,
+  value,
+  strong,
+}) => (
+  <div className="flex items-center justify-between gap-4 border-b border-zinc-200 px-4 py-3 last:border-0">
+    <span className="text-xs text-zinc-500">
+      {label}
+    </span>
+
+    <span
+      className={`text-right ${
+        strong
+          ? 'text-base font-bold text-[#3120ff]'
+          : 'text-xs font-semibold text-zinc-950'
+      }`}
+    >
+      {value}
+    </span>
+  </div>
+);
+
+const ActionButton: React.FC<{
+  icon: React.ComponentType<{
+    className?: string;
+  }>;
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+}> = ({
+  icon: Icon,
+  label,
+  onClick,
+  danger,
+}) => (
+  <button
+    type="button"
+    onClick={
+      onClick
+    }
+    className={`flex items-center gap-2 rounded-xl border p-3 text-left text-xs font-semibold transition ${
+      danger
+        ? 'border-rose-200 text-rose-700 hover:bg-rose-50'
+        : 'border-zinc-200 text-zinc-700 hover:bg-zinc-50'
+    }`}
+  >
+    <Icon className="h-4 w-4" />
+    {label}
+  </button>
+);

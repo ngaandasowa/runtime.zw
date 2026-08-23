@@ -1,230 +1,383 @@
 import React from 'react';
-import { 
-  Globe, 
-  Layers, 
-  CreditCard, 
-  ArrowRight, 
-  CheckCircle2, 
-  Clock, 
-  AlertTriangle, 
-  Plus, 
-  Server,
-  ShieldCheck,
-  Cpu
+
+import {
+  ArrowRight,
+  CheckCircle2,
+  Clock3,
+  Globe2,
+  Plus,
 } from 'lucide-react';
-import { useStore } from '../../context/StoreContext';
 
-export const DashboardOverview: React.FC = () => {
-  const { 
-    currentUser, 
-    domains, 
-    orders, 
-    setDashboardSubView, 
-    setRegistrationModalOpen 
-  } = useStore();
+import {
+  useStore,
+} from '../../context/StoreContext';
 
-  const userDomains = domains.filter(d => d.user_email === currentUser?.email || d.user_id === currentUser?.id);
-  const activeDomainsCount = userDomains.filter(d => d.status === 'active').length;
-  const pendingDomainsCount = userDomains.filter(d => d.status === 'pending_registration' || d.status === 'pending').length;
-  
-  // Domains expiring within 30 days
-  const now = new Date();
-  const expiringSoon = userDomains.filter(d => {
-    if (!d.expires_at || d.status !== 'active') return false;
-    const diffDays = Math.ceil((new Date(d.expires_at).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    return diffDays > 0 && diffDays <= 30;
-  });
+export const DashboardOverview:
+  React.FC = () => {
+    const {
+      currentUser,
+      domains,
+      orders,
+      payments,
+      setDashboardSubView,
+      setRegistrationModalOpen,
+    } = useStore();
 
-  return (
-    <div className="space-y-6">
-      {/* Welcome Banner */}
-      <div className="rounded-2xl border border-zinc-200 bg-white p-6 sm:p-8 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center space-x-2 text-xs font-bold text-[#3120ff] mb-1">
-              <span>CLOUD WORKSPACE</span>
-              <span>•</span>
-              <span>{currentUser?.organisation || 'Individual Account'}</span>
+    const userDomains =
+      domains.filter(
+        (domain) =>
+          domain.user_id ===
+            currentUser?.id ||
+          domain.user_email ===
+            currentUser?.email
+      );
+
+    const userOrders =
+      orders.filter(
+        (order) =>
+          order.user_id ===
+            currentUser?.id ||
+          order.user_email ===
+            currentUser?.email
+      );
+
+    const userPayments =
+      payments.filter(
+        (payment) =>
+          payment.user_id ===
+          currentUser?.id
+      );
+
+    const activeCount =
+      userDomains.filter(
+        (domain) =>
+          domain.status ===
+          'active'
+      ).length;
+
+    const awaitingPayment =
+      userDomains.filter(
+        (domain) =>
+          domain.status ===
+          'pending_payment'
+      ).length;
+
+    const processingCount =
+      userDomains.filter(
+        (domain) =>
+          domain.status ===
+            'pending_registration' ||
+          domain.status ===
+            'pending_transfer' ||
+          domain.status ===
+            'pending_delete'
+      ).length;
+
+    const verifiedPayments =
+      userPayments.filter(
+        (payment) =>
+          payment.status ===
+          'verified'
+      ).length;
+
+    const recentDomains =
+      [...userDomains]
+        .sort(
+          (a, b) =>
+            new Date(
+              b.created_at
+            ).getTime() -
+            new Date(
+              a.created_at
+            ).getTime()
+        )
+        .slice(0, 5);
+
+    return (
+      <div className="space-y-8">
+
+        {/* WELCOME */}
+        <section>
+          <p className="text-xs font-semibold text-[#3120ff]">
+            Runtime
+          </p>
+
+          <div className="mt-1 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-zinc-950 sm:text-3xl">
+                Welcome,{' '}
+                {currentUser?.name}
+              </h1>
+
+              <p className="mt-1 text-sm text-zinc-500">
+                Manage your domains and orders.
+              </p>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-zinc-950 tracking-tight">
-              Welcome, {currentUser?.name}
-            </h1>
-            <p className="text-xs sm:text-sm text-zinc-600 mt-1">
-              Manage your registered domains, active delegations, and cloud resources.
-            </p>
-          </div>
 
-          <div className="flex items-center space-x-3 shrink-0">
             <button
-              onClick={() => setRegistrationModalOpen(true)}
-              className="inline-flex items-center space-x-2 rounded-xl bg-[#3120ff] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#2819d9] transition shadow-sm active:scale-95"
+              type="button"
+              onClick={() =>
+                setRegistrationModalOpen(
+                  true
+                )
+              }
+              className="hidden items-center gap-2 rounded-xl bg-[#3120ff] px-4 py-2.5 text-xs font-semibold text-white sm:inline-flex"
             >
               <Plus className="h-4 w-4" />
-              <span>Register New Domain</span>
+              Register domain
             </button>
           </div>
-        </div>
-      </div>
+        </section>
 
-      {/* Expiry Warning Notice if any */}
-      {expiringSoon.length > 0 && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900 text-xs flex items-start space-x-3">
-          <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <span className="font-bold">Upcoming Domain Renewal Notice: </span>
-            {expiringSoon.map(d => d.domain_name).join(', ')} is expiring within 30 days. Renewal rate is locked at $2.00 USD/year.
+        {/* SUMMARY */}
+        <section className="border-y border-zinc-200 bg-white sm:rounded-xl sm:border">
+          <div className="grid grid-cols-2 divide-x divide-y divide-zinc-100 sm:grid-cols-4 sm:divide-y-0">
+            <Metric
+              label="Active"
+              value={
+                activeCount
+              }
+            />
+
+            <Metric
+              label="Awaiting payment"
+              value={
+                awaitingPayment
+              }
+            />
+
+            <Metric
+              label="Processing"
+              value={
+                processingCount
+              }
+            />
+
+            <Metric
+              label="Orders"
+              value={
+                userOrders.length
+              }
+            />
           </div>
+        </section>
+
+        {/* PAYMENT NOTICE */}
+        {awaitingPayment >
+          0 && (
           <button
-            onClick={() => setDashboardSubView('billing')}
-            className="text-xs font-bold text-amber-700 hover:underline shrink-0"
+            type="button"
+            onClick={() =>
+              setDashboardSubView(
+                'billing'
+              )
+            }
+            className="flex w-full items-center justify-between gap-4 border-y border-[#3120ff]/15 bg-[#3120ff]/5 px-4 py-4 text-left sm:rounded-xl sm:border"
           >
-            Review Renewals →
+            <div>
+              <p className="text-sm font-semibold text-zinc-950">
+                Payment required
+              </p>
+
+              <p className="mt-1 text-xs text-zinc-500">
+                {awaitingPayment}{' '}
+                domain
+                {awaitingPayment ===
+                1
+                  ? ''
+                  : 's'}{' '}
+                waiting for payment.
+              </p>
+            </div>
+
+            <ArrowRight className="h-4 w-4 shrink-0 text-[#3120ff]" />
           </button>
-        </div>
-      )}
-
-      {/* Top Metrics Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        
-        {/* Metric 1 */}
-        <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between text-zinc-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">ACTIVE DOMAINS</span>
-            <Globe className="h-4 w-4 text-[#3120ff]" />
-          </div>
-          <div className="text-2xl font-extrabold text-zinc-950">
-            {activeDomainsCount}
-          </div>
-          <div className="text-[11px] text-zinc-500 mt-1">
-            Delegated to domain service
-          </div>
-        </div>
-
-        {/* Metric 2 */}
-        <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between text-zinc-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">PENDING SUBMISSION</span>
-            <Clock className="h-4 w-4 text-zinc-400" />
-          </div>
-          <div className="text-2xl font-extrabold text-zinc-950">
-            {pendingDomainsCount}
-          </div>
-          <div className="text-[11px] text-zinc-500 mt-1">
-            Awaiting registration confirmation
-          </div>
-        </div>
-
-        {/* Metric 3 */}
-        <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between text-zinc-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">TOTAL ORDERS</span>
-            <CreditCard className="h-4 w-4 text-[#3120ff]" />
-          </div>
-          <div className="text-2xl font-extrabold text-zinc-950">
-            {orders.length}
-          </div>
-          <div className="text-[11px] text-zinc-500 mt-1">
-            All invoices verified
-          </div>
-        </div>
-
-        {/* Metric 4 */}
-        <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between text-zinc-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">CLOUD RUNTIME</span>
-            <Cpu className="h-4 w-4 text-[#3120ff]" />
-          </div>
-          <div className="text-sm font-bold text-[#3120ff] mt-1">
-            PHASE 2 READY
-          </div>
-          <div className="text-[11px] text-zinc-500 mt-1">
-            Compute &amp; DB modules queued
-          </div>
-        </div>
-
-      </div>
-
-      {/* User Domains Quick Table */}
-      <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-bold text-zinc-950 flex items-center space-x-2">
-            <Globe className="h-4 w-4 text-[#3120ff]" />
-            <span>My Registered Domains</span>
-          </h2>
-
-          <button
-            onClick={() => setDashboardSubView('domains')}
-            className="text-xs font-bold text-[#3120ff] hover:text-[#2819d9] flex items-center space-x-1"
-          >
-            <span>View All ({userDomains.length})</span>
-            <ArrowRight className="h-3.5 w-3.5" />
-          </button>
-        </div>
-
-        {userDomains.length === 0 ? (
-          <div className="text-center py-10 border border-dashed border-zinc-200 rounded-xl bg-zinc-50">
-            <Globe className="h-8 w-8 text-zinc-400 mx-auto mb-2" />
-            <p className="text-sm text-zinc-700 font-bold">No domains registered yet.</p>
-            <p className="text-xs text-zinc-500 mt-1">Start by securing your .co.zw name for $2/year.</p>
-            <button
-              onClick={() => setRegistrationModalOpen(true)}
-              className="mt-4 inline-flex items-center space-x-1.5 rounded-xl bg-[#3120ff] px-4 py-2 text-xs font-bold text-white hover:bg-[#2819d9] shadow-xs"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span>Register Domain</span>
-            </button>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-zinc-200 text-zinc-500 font-semibold uppercase tracking-wider">
-                  <th className="pb-3">Domain Name</th>
-                  <th className="pb-3">Status</th>
-                  <th className="pb-3">Nameservers</th>
-                  <th className="pb-3">Expires At</th>
-                  <th className="pb-3 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100 text-zinc-700">
-                {userDomains.map(d => (
-                  <tr key={d.id} className="hover:bg-zinc-50 transition">
-                    <td className="py-3.5 font-bold font-mono text-zinc-950">
-                      {d.domain_name}
-                    </td>
-                    <td className="py-3.5">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                        d.status === 'active' 
-                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700' 
-                          : d.status === 'pending_registration'
-                          ? 'border-amber-200 bg-amber-50 text-amber-700'
-                          : 'border-zinc-200 bg-zinc-100 text-zinc-600'
-                      }`}>
-                        {d.status}
-                      </span>
-                    </td>
-                    <td className="py-3.5 text-zinc-500 font-mono text-[11px]">
-                      {d.nameservers.slice(0, 2).join(', ')}
-                      {d.nameservers.length > 2 ? ` (+${d.nameservers.length - 2})` : ''}
-                    </td>
-                    <td className="py-3.5 text-zinc-500">
-                      {d.expires_at ? new Date(d.expires_at).toLocaleDateString() : 'Pending domain service'}
-                    </td>
-                    <td className="py-3.5 text-right">
-                      <button
-                        onClick={() => setDashboardSubView('domains')}
-                        className="rounded-lg bg-zinc-100 px-2.5 py-1 text-zinc-700 font-semibold hover:bg-[#3120ff] hover:text-white transition"
-                      >
-                        Manage
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         )}
+
+        {/* DOMAINS */}
+        <section>
+          <div className="mb-3 flex items-end justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-bold text-zinc-950">
+                Your domains
+              </h2>
+
+              <p className="mt-0.5 text-xs text-zinc-500">
+                Latest domain records.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                setDashboardSubView(
+                  'domains'
+                )
+              }
+              className="text-xs font-semibold text-[#3120ff]"
+            >
+              View all
+            </button>
+          </div>
+
+          <div className="border-y border-zinc-200 bg-white sm:rounded-xl sm:border">
+            {recentDomains.length ===
+            0 ? (
+              <div className="px-4 py-10 text-center">
+                <Globe2 className="mx-auto h-6 w-6 text-zinc-300" />
+
+                <p className="mt-3 text-sm font-semibold text-zinc-900">
+                  No domains yet
+                </p>
+
+                <p className="mt-1 text-xs text-zinc-500">
+                  Register your first domain to get started.
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-zinc-100">
+                {recentDomains.map(
+                  (domain) => (
+                    <button
+                      key={
+                        domain.id
+                      }
+                      type="button"
+                      onClick={() =>
+                        setDashboardSubView(
+                          'domains'
+                        )
+                      }
+                      className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left sm:px-5"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate font-mono text-sm font-bold text-zinc-950">
+                          {
+                            domain.domain_name
+                          }
+                        </p>
+
+                        <p className="mt-1 text-xs text-zinc-500">
+                          {domain.expires_at
+                            ? `Renews ${new Date(
+                                domain.expires_at
+                              ).toLocaleDateString()}`
+                            : statusLabel(
+                                domain.status
+                              )}
+                        </p>
+                      </div>
+
+                      <DomainStatus
+                        status={
+                          domain.status
+                        }
+                      />
+                    </button>
+                  )
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* SIMPLE BILLING FOOTNOTE */}
+        <p className="text-xs text-zinc-400">
+          {verifiedPayments}{' '}
+          verified payment
+          {verifiedPayments ===
+          1
+            ? ''
+            : 's'}{' '}
+          on your account.
+        </p>
       </div>
-    </div>
+    );
+  };
+
+const Metric: React.FC<{
+  label: string;
+  value: number;
+}> = ({
+  label,
+  value,
+}) => (
+  <div className="px-4 py-4 sm:px-5">
+    <p className="text-[11px] font-medium text-zinc-500">
+      {label}
+    </p>
+
+    <p className="mt-1 text-xl font-bold text-zinc-950">
+      {value}
+    </p>
+  </div>
+);
+
+const statusLabel = (
+  status: string
+) => {
+  switch (status) {
+    case 'pending_payment':
+      return 'Awaiting payment';
+
+    case 'pending_registration':
+      return 'Registration processing';
+
+    case 'active':
+      return 'Active';
+
+    case 'pending_transfer':
+      return 'Transfer processing';
+
+    case 'pending_delete':
+      return 'Cancellation processing';
+
+    case 'expired':
+      return 'Expired';
+
+    case 'cancelled':
+      return 'Cancelled';
+
+    default:
+      return status.replace(
+        /_/g,
+        ' '
+      );
+  }
+};
+
+const DomainStatus: React.FC<{
+  status: string;
+}> = ({
+  status,
+}) => {
+  if (
+    status === 'active'
+  ) {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold text-emerald-700">
+        <CheckCircle2 className="h-3.5 w-3.5" />
+        Active
+      </span>
+    );
+  }
+
+  if (
+    status ===
+    'pending_payment'
+  ) {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold text-zinc-500">
+        <Clock3 className="h-3.5 w-3.5" />
+        Payment
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold text-[#3120ff]">
+      <Clock3 className="h-3.5 w-3.5" />
+      Processing
+    </span>
   );
 };

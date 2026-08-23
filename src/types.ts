@@ -28,6 +28,7 @@ export interface RegistrantDetails {
 
 export type DomainStatus = 
   | 'pending' 
+  | 'pending_payment'
   | 'pending_registration' 
   | 'active' 
   | 'pending_transfer' 
@@ -68,8 +69,6 @@ export interface Domain {
   registration_price?: number;
 }
 
-export type OrderStatus = 'pending' | 'paid' | 'failed' | 'cancelled' | 'refunded';
-
 export interface OrderItem {
   id: string;
   order_id: string;
@@ -97,20 +96,60 @@ export interface Order {
   items: OrderItem[];
 }
 
-export type PaymentStatus = 'pending' | 'verified' | 'failed';
-export type PaymentGateway = 'paynow' | 'ecocash' | 'innbucks' | 'stripe_card' | 'bank_transfer';
+export type PaymentGateway =
+  | 'ecocash_usd'
+  | 'pesepay'
+  | 'paynow'
+  | 'ecocash'
+  | 'innbucks'
+  | 'stripe_card'
+  | 'bank_transfer';
+
+export type PaymentStatus =
+  | 'pending'
+  | 'pending_verification'
+  | 'verified'
+  | 'failed'
+  | 'rejected'
+  | 'refunded';
+
+export type OrderStatus =
+  | 'pending'
+  | 'unpaid'
+  | 'payment_pending'
+  | 'paid'
+  | 'processing'
+  | 'completed'
+  | 'cancelled'
+  | 'refunded';
+
 
 export interface Payment {
   id: string;
   order_id: string;
   user_id: string;
+
   reference: string;
+
   amount: number;
   currency: string;
+
   gateway: PaymentGateway;
   status: PaymentStatus;
+
+  customer_confirmed_payment?: boolean;
+  customer_confirmed_at?: string;
+
+  provider_reference?: string;
+  transaction_id?: string;
+
   verified_at?: string;
+  verified_by?: string;
+
+  rejection_reason?: string;
+
   created_at: string;
+  updated_at?: string;
 }
 
 export interface TldPricing {
