@@ -231,9 +231,6 @@ export const DashboardShell: React.FC = () => {
 
         {/* Sidebar Footer */}
         <div className="pt-4 border-t border-zinc-200">
-          <div className="text-[10px] font-mono text-zinc-400 text-center pb-2">
-            Runtime Engine v1.0
-          </div>
           <button
             onClick={logout}
             className="w-full flex items-center justify-center space-x-2 py-2 text-xs font-semibold text-zinc-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition"

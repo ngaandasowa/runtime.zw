@@ -49,7 +49,7 @@ export const AdminDashboard: React.FC = () => {
       <div className="rounded-2xl border border-zinc-200 bg-white p-6 sm:p-8 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <div className="inline-flex items-center space-x-2 text-xs font-bold text-[#FF2D20] mb-1">
+            <div className="inline-flex items-center space-x-2 text-xs font-bold text-[#3120ff] mb-1">
               <ShieldCheck className="h-3.5 w-3.5" />
               <span>RUNTIME INFRASTRUCTURE ADMIN CONSOLE</span>
             </div>
@@ -64,7 +64,7 @@ export const AdminDashboard: React.FC = () => {
           <div className="flex items-center space-x-2">
             <button
               onClick={() => setAdminSubView('registry')}
-              className="inline-flex items-center space-x-2 rounded-xl bg-[#FF2D20] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#E0241A] transition shadow-sm"
+              className="inline-flex items-center space-x-2 rounded-xl bg-[#3120ff] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#1a1de0] transition shadow-sm"
             >
               <Send className="h-4 w-4" />
               <span>ZISPA Registry Desk ({registryRequests.filter(r => r.status === 'ready').length} Ready)</span>
@@ -80,7 +80,7 @@ export const AdminDashboard: React.FC = () => {
         <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-xs">
           <div className="flex items-center justify-between text-zinc-500 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">TOTAL CUSTOMERS</span>
-            <Users className="h-4 w-4 text-[#FF2D20]" />
+            <Users className="h-4 w-4 text-[#3120ff]" />
           </div>
           <div className="text-2xl font-extrabold text-zinc-950">{totalCustomers}</div>
           <div className="text-[11px] text-zinc-500 mt-1">Verified account owners</div>
@@ -90,7 +90,7 @@ export const AdminDashboard: React.FC = () => {
         <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-xs">
           <div className="flex items-center justify-between text-zinc-500 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">ACTIVE DOMAINS</span>
-            <Globe className="h-4 w-4 text-[#FF2D20]" />
+            <Globe className="h-4 w-4 text-[#3120ff]" />
           </div>
           <div className="text-2xl font-extrabold text-zinc-950">{activeDomains}</div>
           <div className="text-[11px] text-zinc-500 mt-1">{totalDomains} total records in DB</div>
@@ -110,9 +110,9 @@ export const AdminDashboard: React.FC = () => {
         <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-xs">
           <div className="flex items-center justify-between text-zinc-500 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">AWAITING ZISPA</span>
-            <Send className="h-4 w-4 text-[#FF2D20]" />
+            <Send className="h-4 w-4 text-[#3120ff]" />
           </div>
-          <div className="text-2xl font-extrabold text-[#FF2D20]">{awaitingZispaRequests}</div>
+          <div className="text-2xl font-extrabold text-[#3120ff]">{awaitingZispaRequests}</div>
           <div className="text-[11px] text-zinc-500 mt-1">Dispatched via email</div>
         </div>
 
@@ -130,7 +130,7 @@ export const AdminDashboard: React.FC = () => {
         <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-xs">
           <div className="flex items-center justify-between text-zinc-500 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">REVENUE THIS MONTH</span>
-            <TrendingUp className="h-4 w-4 text-[#FF2D20]" />
+            <TrendingUp className="h-4 w-4 text-[#3120ff]" />
           </div>
           <div className="text-2xl font-extrabold text-zinc-950">${revenueThisMonth.toFixed(2)}</div>
           <div className="text-[11px] text-zinc-500 mt-1">USD (100% verified)</div>
@@ -152,7 +152,7 @@ export const AdminDashboard: React.FC = () => {
         <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-xs">
           <div className="flex items-center justify-between text-zinc-500 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">NAMESERVER HEALTH</span>
-            <Globe className="h-4 w-4 text-[#FF2D20]" />
+            <Globe className="h-4 w-4 text-[#3120ff]" />
           </div>
           <div className="text-sm font-bold text-emerald-600 mt-1">4 / 4 ONLINE</div>
           <div className="text-[11px] text-zinc-500 mt-1">Ngaatec primary cluster</div>
@@ -167,12 +167,12 @@ export const AdminDashboard: React.FC = () => {
         <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-base font-bold text-zinc-950 flex items-center space-x-2">
-              <FileText className="h-4 w-4 text-[#FF2D20]" />
+              <FileText className="h-4 w-4 text-[#3120ff]" />
               <span>ZISPA Registry Queue</span>
             </h2>
             <button
               onClick={() => setAdminSubView('registry')}
-              className="text-xs font-bold text-[#FF2D20] hover:text-[#E0241A] flex items-center space-x-1"
+              className="text-xs font-bold text-[#3120ff] hover:text-[#1a1de0] flex items-center space-x-1"
             >
               <span>Manage ZISPA</span>
               <ArrowRight className="h-3.5 w-3.5" />
@@ -185,7 +185,7 @@ export const AdminDashboard: React.FC = () => {
                 <div>
                   <div className="flex items-center space-x-2">
                     <span className="font-bold font-mono text-zinc-950">{req.domain_name}</span>
-                    <span className="text-[10px] bg-red-50 text-[#FF2D20] px-1.5 py-0.5 rounded font-bold border border-red-200">
+                    <span className="text-[10px] bg-red-50 text-[#3120ff] px-1.5 py-0.5 rounded font-bold border border-red-200">
                       Action {req.action}
                     </span>
                   </div>
@@ -214,12 +214,12 @@ export const AdminDashboard: React.FC = () => {
         <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-base font-bold text-zinc-950 flex items-center space-x-2">
-              <CreditCard className="h-4 w-4 text-[#FF2D20]" />
+              <CreditCard className="h-4 w-4 text-[#3120ff]" />
               <span>Recent Orders &amp; Payments</span>
             </h2>
             <button
               onClick={() => setAdminSubView('orders')}
-              className="text-xs font-bold text-[#FF2D20] hover:text-[#E0241A] flex items-center space-x-1"
+              className="text-xs font-bold text-[#3120ff] hover:text-[#1a1de0] flex items-center space-x-1"
             >
               <span>View All</span>
               <ArrowRight className="h-3.5 w-3.5" />

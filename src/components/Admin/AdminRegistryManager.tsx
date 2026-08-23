@@ -281,7 +281,7 @@ export const AdminRegistryManager: React.FC =
         {/* HEADER */}
         <div className="flex flex-col gap-4 border-b border-zinc-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="mb-1 flex items-center space-x-2 text-xs font-bold text-[#FF2D20]">
+            <div className="mb-1 flex items-center space-x-2 text-xs font-bold text-[#3120ff]">
               <span>
                 REGISTRAR PROTOCOL
               </span>
@@ -296,7 +296,7 @@ export const AdminRegistryManager: React.FC =
             </div>
 
             <h1 className="flex items-center space-x-2 text-xl font-extrabold tracking-tight text-zinc-950 sm:text-2xl">
-              <FileText className="h-6 w-6 text-[#FF2D20]" />
+              <FileText className="h-6 w-6 text-[#3120ff]" />
 
               <span>
                 Registry Management
@@ -329,7 +329,7 @@ export const AdminRegistryManager: React.FC =
                 );
               }
             }}
-            className="inline-flex items-center justify-center space-x-2 rounded-xl bg-[#FF2D20] px-4 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-[#E0241A]"
+            className="inline-flex items-center justify-center space-x-2 rounded-xl bg-[#3120ff] px-4 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-[#1a1de0]"
           >
             <Plus className="h-4 w-4" />
 
@@ -347,7 +347,7 @@ export const AdminRegistryManager: React.FC =
               Pending Reg
             </div>
 
-            <div className="mt-1 text-xl font-extrabold text-[#FF2D20]">
+            <div className="mt-1 text-xl font-extrabold text-[#3120ff]">
               {pendingN}
             </div>
           </div>
@@ -387,7 +387,7 @@ export const AdminRegistryManager: React.FC =
               Awaiting Registry
             </div>
 
-            <div className="mt-1 text-xl font-extrabold text-[#FF2D20]">
+            <div className="mt-1 text-xl font-extrabold text-[#3120ff]">
               {awaitingRegistry}
             </div>
           </div>
@@ -466,7 +466,7 @@ export const AdminRegistryManager: React.FC =
                     .value
                 )
               }
-              className="w-full rounded-xl border border-zinc-200 bg-zinc-50 py-1.5 pl-9 pr-4 text-xs text-zinc-900 outline-none focus:border-[#FF2D20] focus:bg-white sm:w-64"
+              className="w-full rounded-xl border border-zinc-200 bg-zinc-50 py-1.5 pl-9 pr-4 text-xs text-zinc-900 outline-none focus:border-[#3120ff] focus:bg-white sm:w-64"
             />
           </div>
         </div>
@@ -545,7 +545,7 @@ export const AdminRegistryManager: React.FC =
                             className={`inline-flex rounded border px-2 py-0.5 text-[11px] font-bold ${
                               request.action ===
                               'N'
-                                ? 'border-red-200 bg-red-50 text-[#FF2D20]'
+                                ? 'border-red-200 bg-red-50 text-[#3120ff]'
                                 : 'border-zinc-200 bg-zinc-100 text-zinc-800'
                             }`}
                           >
@@ -649,7 +649,7 @@ export const AdminRegistryManager: React.FC =
                                       request.id
                                     )
                                   }
-                                  className="inline-flex items-center space-x-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1 font-bold text-[#FF2D20] transition hover:bg-red-100"
+                                  className="inline-flex items-center space-x-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1 font-bold text-[#3120ff] transition hover:bg-red-100"
                                 >
                                   <Send className="h-3 w-3" />
 
@@ -709,7 +709,7 @@ export const AdminRegistryManager: React.FC =
                         )}
                       </span>
 
-                      <span className="rounded border border-red-200 bg-red-50 px-2 py-0.5 font-mono text-[10px] font-bold text-[#FF2D20]">
+                      <span className="rounded border border-red-200 bg-red-50 px-2 py-0.5 font-mono text-[10px] font-bold text-[#3120ff]">
                         Plain Text
                       </span>
                     </div>
@@ -788,7 +788,7 @@ export const AdminRegistryManager: React.FC =
                     }
                     className="inline-flex items-center justify-center space-x-1.5 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-bold text-zinc-700 hover:bg-zinc-100"
                   >
-                    <Download className="h-3.5 w-3.5 text-[#FF2D20]" />
+                    <Download className="h-3.5 w-3.5 text-[#3120ff]" />
 
                     <span>
                       Download .txt
@@ -824,7 +824,7 @@ export const AdminRegistryManager: React.FC =
                               null
                             );
                           }}
-                          className="inline-flex items-center space-x-1.5 rounded-xl bg-[#FF2D20] px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-[#E0241A]"
+                          className="inline-flex items-center space-x-1.5 rounded-xl bg-[#3120ff] px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-[#1a1de0]"
                         >
                           <Send className="h-3.5 w-3.5" />
 
@@ -897,7 +897,7 @@ export const AdminRegistryManager: React.FC =
                           .value
                       )
                     }
-                    className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 font-mono text-zinc-900 outline-none focus:border-[#FF2D20] focus:bg-white"
+                    className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 font-mono text-zinc-900 outline-none focus:border-[#3120ff] focus:bg-white"
                   >
                     {domains.map(
                       (
@@ -956,7 +956,7 @@ export const AdminRegistryManager: React.FC =
                           className={`rounded-xl border p-2 text-center font-bold transition ${
                             manualAction ===
                             action
-                              ? 'border-red-300 bg-red-50 text-[#FF2D20]'
+                              ? 'border-red-300 bg-red-50 text-[#3120ff]'
                               : 'border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-zinc-100'
                           }`}
                         >
@@ -990,7 +990,7 @@ export const AdminRegistryManager: React.FC =
 
                   <button
                     type="submit"
-                    className="rounded-xl bg-[#FF2D20] px-4 py-2 font-bold text-white shadow-xs hover:bg-[#E0241A]"
+                    className="rounded-xl bg-[#3120ff] px-4 py-2 font-bold text-white shadow-xs hover:bg-[#1a1de0]"
                   >
                     Generate Request
                   </button>

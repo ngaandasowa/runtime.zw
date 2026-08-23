@@ -31,13 +31,13 @@ export const AdminPricing: React.FC = () => {
       
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-200 pb-4">
         <div>
-          <div className="flex items-center space-x-2 text-xs font-bold text-[#FF2D20] mb-1">
+          <div className="flex items-center space-x-2 text-xs font-bold text-[#3120ff] mb-1">
             <span>FINANCIAL MATRIX</span>
             <span>•</span>
             <span>UPSTREAM NGAATEC PROXY + RUNTIME PRICING RULE</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-zinc-950 tracking-tight flex items-center space-x-2">
-            <DollarSign className="h-6 w-6 text-[#FF2D20]" />
+            <DollarSign className="h-6 w-6 text-[#3120ff]" />
             <span>TLD Pricing &amp; Registry Margin</span>
           </h1>
           <p className="text-xs text-zinc-500 mt-1">
@@ -57,7 +57,7 @@ export const AdminPricing: React.FC = () => {
 
       {/* Pricing Rule Info Box */}
       <div className="rounded-2xl border border-red-200 bg-red-50/50 p-4 text-xs text-zinc-700 flex items-start space-x-3">
-        <ShieldCheck className="h-5 w-5 text-[#FF2D20] shrink-0 mt-0.5" />
+        <ShieldCheck className="h-5 w-5 text-[#3120ff] shrink-0 mt-0.5" />
         <div className="space-y-1">
           <div className="font-bold text-zinc-950">Runtime Fixed $2.00 Rule Enforced:</div>
           <div>
@@ -87,7 +87,7 @@ export const AdminPricing: React.FC = () => {
                 return (
                   <tr key={tld.id} className="hover:bg-zinc-50 transition">
                     <td className="py-3.5 font-bold font-mono text-zinc-950 text-sm">{tld.tld}</td>
-                    <td className="py-3.5 text-[#FF2D20] font-extrabold">${tld.runtime_registration_price.toFixed(2)} USD</td>
+                    <td className="py-3.5 text-[#3120ff] font-extrabold">${tld.runtime_registration_price.toFixed(2)} USD</td>
                     <td className="py-3.5 text-zinc-800 font-medium">${tld.runtime_renewal_price.toFixed(2)} USD</td>
                     <td className="py-3.5 text-zinc-500">${tld.upstream_price?.toFixed(2) || tld.registry_cost.toFixed(2)} USD</td>
                     <td className="py-3.5">
@@ -107,7 +107,7 @@ export const AdminPricing: React.FC = () => {
                         onClick={() => setEditingTld({ ...tld })}
                         className="inline-flex items-center space-x-1 rounded-xl bg-zinc-100 px-2.5 py-1 text-zinc-700 font-semibold hover:bg-zinc-200 transition"
                       >
-                        <Edit3 className="h-3 w-3 text-[#FF2D20]" />
+                        <Edit3 className="h-3 w-3 text-[#3120ff]" />
                         <span>Edit</span>
                       </button>
                     </td>
@@ -133,7 +133,7 @@ export const AdminPricing: React.FC = () => {
                   step="0.01"
                   value={editingTld.runtime_registration_price}
                   onChange={(e) => setEditingTld({ ...editingTld, runtime_registration_price: parseFloat(e.target.value) || 0 })}
-                  className="w-full rounded-xl bg-zinc-50 border border-zinc-200 p-2 text-zinc-900 focus:border-[#FF2D20] focus:bg-white focus:outline-none font-mono"
+                  className="w-full rounded-xl bg-zinc-50 border border-zinc-200 p-2 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none font-mono"
                 />
               </div>
 
@@ -144,7 +144,7 @@ export const AdminPricing: React.FC = () => {
                   step="0.01"
                   value={editingTld.runtime_renewal_price}
                   onChange={(e) => setEditingTld({ ...editingTld, runtime_renewal_price: parseFloat(e.target.value) || 0 })}
-                  className="w-full rounded-xl bg-zinc-50 border border-zinc-200 p-2 text-zinc-900 focus:border-[#FF2D20] focus:bg-white focus:outline-none font-mono"
+                  className="w-full rounded-xl bg-zinc-50 border border-zinc-200 p-2 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none font-mono"
                 />
               </div>
 
@@ -155,7 +155,7 @@ export const AdminPricing: React.FC = () => {
                   step="0.01"
                   value={editingTld.registry_cost}
                   onChange={(e) => setEditingTld({ ...editingTld, registry_cost: parseFloat(e.target.value) || 0 })}
-                  className="w-full rounded-xl bg-zinc-50 border border-zinc-200 p-2 text-zinc-900 focus:border-[#FF2D20] focus:bg-white focus:outline-none font-mono"
+                  className="w-full rounded-xl bg-zinc-50 border border-zinc-200 p-2 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none font-mono"
                 />
               </div>
 
@@ -165,7 +165,7 @@ export const AdminPricing: React.FC = () => {
                   id="isActive"
                   checked={editingTld.active}
                   onChange={(e) => setEditingTld({ ...editingTld, active: e.target.checked })}
-                  className="rounded border-zinc-300 text-[#FF2D20] focus:ring-[#FF2D20]"
+                  className="rounded border-zinc-300 text-[#3120ff] focus:ring-[#3120ff]"
                 />
                 <label htmlFor="isActive" className="text-zinc-800 font-medium">Active for registration</label>
               </div>
@@ -180,7 +180,7 @@ export const AdminPricing: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="rounded-xl bg-[#FF2D20] px-4 py-2 font-bold text-white hover:bg-[#E0241A] shadow-xs"
+                  className="rounded-xl bg-[#3120ff] px-4 py-2 font-bold text-white hover:bg-[#1a1de0] shadow-xs"
                 >
                   Save TLD
                 </button>

@@ -41,12 +41,12 @@ export const AdminShell: React.FC = () => {
           {/* Admin Header Badge */}
           <div className="rounded-xl border border-red-200 bg-red-50/50 p-3">
             <div className="flex items-center space-x-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-100 text-[#FF2D20] font-bold border border-red-200">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-100 text-[#3120ff] font-bold border border-red-200">
                 <ShieldAlert className="h-4 w-4" />
               </div>
               <div>
                 <div className="text-xs font-bold text-zinc-950">Runtime Admin</div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-[#FF2D20]">REGISTRAR CONSOLE</div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-[#3120ff]">REGISTRAR CONSOLE</div>
               </div>
             </div>
           </div>
@@ -58,7 +58,7 @@ export const AdminShell: React.FC = () => {
               onClick={() => setAdminSubView('dashboard')}
               className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl font-bold transition ${
                 adminSubView === 'dashboard'
-                  ? 'bg-[#FF2D20] text-white shadow-xs'
+                  ? 'bg-[#3120ff] text-white shadow-xs'
                   : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
               }`}
             >
@@ -70,7 +70,7 @@ export const AdminShell: React.FC = () => {
               onClick={() => setAdminSubView('registry')}
               className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-bold transition ${
                 adminSubView === 'registry'
-                  ? 'bg-[#FF2D20] text-white shadow-xs'
+                  ? 'bg-[#3120ff] text-white shadow-xs'
                   : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
               }`}
             >
@@ -80,7 +80,7 @@ export const AdminShell: React.FC = () => {
               </div>
               {pendingRegistryCount > 0 && (
                 <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
-                  adminSubView === 'registry' ? 'bg-white/20 text-white' : 'bg-red-100 text-[#FF2D20]'
+                  adminSubView === 'registry' ? 'bg-white/20 text-white' : 'bg-red-100 text-[#3120ff]'
                 }`}>
                   {pendingRegistryCount}
                 </span>
@@ -91,7 +91,7 @@ export const AdminShell: React.FC = () => {
               onClick={() => setAdminSubView('domains')}
               className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl font-bold transition ${
                 adminSubView === 'domains'
-                  ? 'bg-[#FF2D20] text-white shadow-xs'
+                  ? 'bg-[#3120ff] text-white shadow-xs'
                   : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
               }`}
             >
@@ -103,7 +103,7 @@ export const AdminShell: React.FC = () => {
               onClick={() => setAdminSubView('pricing')}
               className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl font-bold transition ${
                 adminSubView === 'pricing'
-                  ? 'bg-[#FF2D20] text-white shadow-xs'
+                  ? 'bg-[#3120ff] text-white shadow-xs'
                   : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
               }`}
             >
@@ -115,7 +115,7 @@ export const AdminShell: React.FC = () => {
               onClick={() => setAdminSubView('orders')}
               className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl font-bold transition ${
                 adminSubView === 'orders'
-                  ? 'bg-[#FF2D20] text-white shadow-xs'
+                  ? 'bg-[#3120ff] text-white shadow-xs'
                   : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
               }`}
             >
@@ -127,7 +127,7 @@ export const AdminShell: React.FC = () => {
               onClick={() => setAdminSubView('nameservers')}
               className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl font-bold transition ${
                 adminSubView === 'nameservers'
-                  ? 'bg-[#FF2D20] text-white shadow-xs'
+                  ? 'bg-[#3120ff] text-white shadow-xs'
                   : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
               }`}
             >
@@ -139,7 +139,7 @@ export const AdminShell: React.FC = () => {
               onClick={() => setAdminSubView('settings')}
               className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl font-bold transition ${
                 adminSubView === 'settings'
-                  ? 'bg-[#FF2D20] text-white shadow-xs'
+                  ? 'bg-[#3120ff] text-white shadow-xs'
                   : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
               }`}
             >

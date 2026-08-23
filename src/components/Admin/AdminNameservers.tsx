@@ -33,13 +33,13 @@ export const AdminNameservers: React.FC = () => {
     <div className="space-y-6 max-w-3xl">
       
       <div className="border-b border-zinc-200 pb-4">
-        <div className="flex items-center space-x-2 text-xs font-bold text-[#FF2D20] mb-1">
+        <div className="flex items-center space-x-2 text-xs font-bold text-[#3120ff] mb-1">
           <span>DNS INFRASTRUCTURE</span>
           <span>•</span>
           <span>NGAATEC AUTHORITATIVE CLUSTER</span>
         </div>
         <h1 className="text-xl sm:text-2xl font-extrabold text-zinc-950 tracking-tight flex items-center space-x-2">
-          <Server className="h-6 w-6 text-[#FF2D20]" />
+          <Server className="h-6 w-6 text-[#3120ff]" />
           <span>Platform Default Nameservers</span>
         </h1>
         <p className="text-xs text-zinc-500 mt-1">
@@ -56,7 +56,7 @@ export const AdminNameservers: React.FC = () => {
               type="text"
               value={ns1}
               onChange={(e) => setNs1(e.target.value)}
-              className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#FF2D20] focus:bg-white focus:outline-none font-mono"
+              className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none font-mono"
             />
           </div>
 
@@ -66,7 +66,7 @@ export const AdminNameservers: React.FC = () => {
               type="text"
               value={ns2}
               onChange={(e) => setNs2(e.target.value)}
-              className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#FF2D20] focus:bg-white focus:outline-none font-mono"
+              className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none font-mono"
             />
           </div>
 
@@ -76,7 +76,7 @@ export const AdminNameservers: React.FC = () => {
               type="text"
               value={ns3}
               onChange={(e) => setNs3(e.target.value)}
-              className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#FF2D20] focus:bg-white focus:outline-none font-mono"
+              className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none font-mono"
             />
           </div>
 
@@ -86,7 +86,7 @@ export const AdminNameservers: React.FC = () => {
               type="text"
               value={ns4}
               onChange={(e) => setNs4(e.target.value)}
-              className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#FF2D20] focus:bg-white focus:outline-none font-mono"
+              className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none font-mono"
             />
           </div>
 
@@ -99,7 +99,7 @@ export const AdminNameservers: React.FC = () => {
           <div className="pt-2">
             <button
               type="submit"
-              className="inline-flex items-center space-x-2 rounded-xl bg-[#FF2D20] px-5 py-2.5 text-xs font-bold text-white hover:bg-[#E0241A] transition shadow-xs"
+              className="inline-flex items-center space-x-2 rounded-xl bg-[#3120ff] px-5 py-2.5 text-xs font-bold text-white hover:bg-[#1a1de0] transition shadow-xs"
             >
               <Save className="h-4 w-4" />
               <span>Save Nameservers</span>

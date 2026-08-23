@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   AlertCircle,
   ArrowLeft,
@@ -78,6 +79,8 @@ const emptyRegistrant = (): RegistrantDetails => ({
   proposed_usage: '',
 });
 
+const REGISTRATION_DRAFT_KEY = 'runtime_registration_draft';
+
 export const DomainRegistrationModal: React.FC = () => {
   const {
     registrationModalOpen,
@@ -91,6 +94,7 @@ export const DomainRegistrationModal: React.FC = () => {
     setDashboardSubView,
     showNotification,
   } = useStore();
+  const navigate = useNavigate();
 
   const [step, setStep] = useState<Step>('search');
   const [startedWithSelectedDomain, setStartedWithSelectedDomain] =
@@ -226,6 +230,7 @@ const [isProcessing, setIsProcessing] =
   const closeModal = () => {
     setRegistrationModalOpen(false);
     setPendingRegisterDomain(null);
+    sessionStorage.removeItem(REGISTRATION_DRAFT_KEY);
     resetState();
   };
 
@@ -283,6 +288,26 @@ const [isProcessing, setIsProcessing] =
 
         setAvailabilityResult(result);
 
+        const savedDraft = sessionStorage.getItem(REGISTRATION_DRAFT_KEY);
+        const draft = savedDraft
+          ? JSON.parse(savedDraft) as {
+              domain: string;
+              registrantType: RegistrantType;
+              registrantDetails: RegistrantDetails;
+              useDefaultNameservers: boolean;
+              customNameservers: string[];
+              gateway: Gateway;
+            }
+          : null;
+
+        if (draft?.domain === result.domain) {
+          setRegistrantType(draft.registrantType);
+          setRegistrantDetails(draft.registrantDetails);
+          setUseDefaultNameservers(draft.useDefaultNameservers);
+          setCustomNameservers(draft.customNameservers);
+          setGateway(draft.gateway);
+        }
+
         await loadRenewPrice(
           result.domain
         );
@@ -319,6 +344,10 @@ const [isProcessing, setIsProcessing] =
           fillFromAccount();
         } else {
           setStep('nameservers');
+        }
+
+        if (draft?.domain === result.domain) {
+          setStep('payment');
         }
       } catch (error) {
         console.error(
@@ -587,6 +616,24 @@ const [isProcessing, setIsProcessing] =
       }
     }
 
+    if (!currentUser) {
+      sessionStorage.setItem(
+        REGISTRATION_DRAFT_KEY,
+        JSON.stringify({
+          domain: availabilityResult.domain,
+          registrantType,
+          registrantDetails,
+          useDefaultNameservers,
+          customNameservers,
+          gateway,
+        })
+      );
+      setRegistrationModalOpen(false);
+      showNotification('Please sign in to continue to payment.', 'info');
+      navigate('/login');
+      return;
+    }
+
     setIsProcessing(true);
 
     try {
@@ -602,6 +649,7 @@ const [isProcessing, setIsProcessing] =
 
       setRegistrationModalOpen(false);
       setPendingRegisterDomain(null);
+      sessionStorage.removeItem(REGISTRATION_DRAFT_KEY);
       setActiveView('dashboard');
       setDashboardSubView('domains');
       resetState();

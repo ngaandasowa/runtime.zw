@@ -30,7 +30,7 @@ export const AdminSettings: React.FC = () => {
       
       <div className="border-b border-zinc-200 pb-4">
         <h1 className="text-xl sm:text-2xl font-extrabold text-zinc-950 tracking-tight flex items-center space-x-2">
-          <Settings className="h-6 w-6 text-[#FF2D20]" />
+          <Settings className="h-6 w-6 text-[#3120ff]" />
           <span>Platform &amp; Registrar Settings</span>
         </h1>
         <p className="text-xs text-zinc-500 mt-1">
@@ -43,7 +43,7 @@ export const AdminSettings: React.FC = () => {
           
           <div>
             <h3 className="text-sm font-bold text-zinc-950 mb-3 flex items-center space-x-2">
-              <Mail className="h-4 w-4 text-[#FF2D20]" />
+              <Mail className="h-4 w-4 text-[#3120ff]" />
               <span>ZISPA Email Dispatch Configuration</span>
             </h3>
 
@@ -54,7 +54,7 @@ export const AdminSettings: React.FC = () => {
                   type="email"
                   value={fromEmail}
                   onChange={(e) => setFromEmail(e.target.value)}
-                  className="w-full rounded-xl bg-zinc-50 border border-zinc-200 p-2.5 text-zinc-900 focus:border-[#FF2D20] focus:bg-white focus:outline-none font-mono"
+                  className="w-full rounded-xl bg-zinc-50 border border-zinc-200 p-2.5 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none font-mono"
                 />
               </div>
 
@@ -64,7 +64,7 @@ export const AdminSettings: React.FC = () => {
                   type="email"
                   value={toEmail}
                   onChange={(e) => setToEmail(e.target.value)}
-                  className="w-full rounded-xl bg-zinc-50 border border-zinc-200 p-2.5 text-zinc-900 focus:border-[#FF2D20] focus:bg-white focus:outline-none font-mono"
+                  className="w-full rounded-xl bg-zinc-50 border border-zinc-200 p-2.5 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none font-mono"
                 />
               </div>
             </div>
@@ -72,7 +72,7 @@ export const AdminSettings: React.FC = () => {
 
           <div className="border-t border-zinc-200 pt-5">
             <h3 className="text-sm font-bold text-zinc-950 mb-3 flex items-center space-x-2">
-              <Building className="h-4 w-4 text-[#FF2D20]" />
+              <Building className="h-4 w-4 text-[#3120ff]" />
               <span>Default Technical &amp; Billing Contact (Ngaatec)</span>
             </h3>
 
@@ -83,7 +83,7 @@ export const AdminSettings: React.FC = () => {
                   type="text"
                   value={techName}
                   onChange={(e) => setTechName(e.target.value)}
-                  className="w-full rounded-xl bg-zinc-50 border border-zinc-200 p-2.5 text-zinc-900 focus:border-[#FF2D20] focus:bg-white focus:outline-none"
+                  className="w-full rounded-xl bg-zinc-50 border border-zinc-200 p-2.5 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none"
                 />
               </div>
 
@@ -94,7 +94,7 @@ export const AdminSettings: React.FC = () => {
                     type="email"
                     value={techEmail}
                     onChange={(e) => setTechEmail(e.target.value)}
-                    className="w-full rounded-xl bg-zinc-50 border border-zinc-200 p-2.5 text-zinc-900 focus:border-[#FF2D20] focus:bg-white focus:outline-none font-mono"
+                    className="w-full rounded-xl bg-zinc-50 border border-zinc-200 p-2.5 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none font-mono"
                   />
                 </div>
                 <div>
@@ -103,7 +103,7 @@ export const AdminSettings: React.FC = () => {
                     type="text"
                     value={techPhone}
                     onChange={(e) => setTechPhone(e.target.value)}
-                    className="w-full rounded-xl bg-zinc-50 border border-zinc-200 p-2.5 text-zinc-900 focus:border-[#FF2D20] focus:bg-white focus:outline-none font-mono"
+                    className="w-full rounded-xl bg-zinc-50 border border-zinc-200 p-2.5 text-zinc-900 focus:border-[#3120ff] focus:bg-white focus:outline-none font-mono"
                   />
                 </div>
               </div>
@@ -112,7 +112,7 @@ export const AdminSettings: React.FC = () => {
 
           <div className="border-t border-zinc-200 pt-5">
             <h3 className="text-sm font-bold text-zinc-950 mb-3 flex items-center space-x-2">
-              <Shield className="h-4 w-4 text-[#FF2D20]" />
+              <Shield className="h-4 w-4 text-[#3120ff]" />
               <span>Automation Policies</span>
             </h3>
 
@@ -122,7 +122,7 @@ export const AdminSettings: React.FC = () => {
                 id="autoSubmit"
                 checked={autoSubmit}
                 onChange={(e) => setAutoSubmit(e.target.checked)}
-                className="h-4 w-4 rounded border-zinc-300 text-[#FF2D20] focus:ring-[#FF2D20]"
+                className="h-4 w-4 rounded border-zinc-300 text-[#3120ff] focus:ring-[#3120ff]"
               />
               <label htmlFor="autoSubmit" className="text-zinc-700 font-medium">
                 Auto-generate and stage ZISPA action templates immediately upon verified order payment
@@ -133,7 +133,7 @@ export const AdminSettings: React.FC = () => {
           <div className="pt-3">
             <button
               type="submit"
-              className="inline-flex items-center space-x-2 rounded-xl bg-[#FF2D20] px-5 py-2.5 text-xs font-bold text-white hover:bg-[#E0241A] transition shadow-xs"
+              className="inline-flex items-center space-x-2 rounded-xl bg-[#3120ff] px-5 py-2.5 text-xs font-bold text-white hover:bg-[#1a1de0] transition shadow-xs"
             >
               <Save className="h-4 w-4" />
               <span>Save System Settings</span>

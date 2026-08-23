@@ -6,7 +6,14 @@ import { Link, useNavigate } from 'react-router-dom';
 interface AuthPageProps { mode: 'login' | 'register'; }
 
 export const AuthPage: React.FC<AuthPageProps> = ({ mode }) => {
-  const { login, register, loginWithGoogle, resetPassword } = useStore();
+  const {
+    login,
+    register,
+    loginWithGoogle,
+    resetPassword,
+    pendingRegisterDomain,
+    setRegistrationModalOpen,
+  } = useStore();
   const navigate = useNavigate();
   const isLogin = mode === 'login';
   const [name, setName] = useState('');
@@ -21,6 +28,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ mode }) => {
     try {
       if (isLogin) await login(email, password);
       else await register(name, email, password);
+      if (pendingRegisterDomain) setRegistrationModalOpen(true);
       navigate('/dashboard', { replace: true });
     }
     catch (authError) { setError(authError instanceof Error ? authError.message : 'Unable to authenticate.'); }
@@ -29,7 +37,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({ mode }) => {
 
   const googleSignIn = async () => {
     setError(''); setLoading(true);
-    try { await loginWithGoogle(); navigate('/dashboard', { replace: true }); }
+    try {
+      await loginWithGoogle();
+      if (pendingRegisterDomain) setRegistrationModalOpen(true);
+      navigate('/dashboard', { replace: true });
+    }
     catch (authError) { setError(authError instanceof Error ? authError.message : 'Unable to sign in with Google.'); }
     finally { setLoading(false); }
   };
