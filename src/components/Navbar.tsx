@@ -18,6 +18,7 @@ export const Navbar: React.FC = () => {
   const {
     currentUser,
     setActiveView,
+    setRegistrationModalOpen,
   } = useStore();
 
   const navigate = useNavigate();
@@ -77,13 +78,7 @@ export const Navbar: React.FC = () => {
    */
   const registerDomain = () => {
     closeMenu();
-
-    if (currentUser) {
-      setActiveView('dashboard');
-      navigate('/dashboard');
-    } else {
-      navigate('/register');
-    }
+    setRegistrationModalOpen(true);
   };
 
   return (
@@ -193,6 +188,7 @@ export const Navbar: React.FC = () => {
           >
             Register a domain
           </button>
+          
 
         </div>
       </div>

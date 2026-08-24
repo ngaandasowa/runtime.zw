@@ -31,6 +31,8 @@ import { AdminShell } from './components/Admin/AdminShell';
 import { DashboardShell } from './components/Dashboard/DashboardShell';
 import { LegalPage } from './components/LegalPage';
 
+import AuthAction from "./pages/AuthAction";
+
 import {
   ComingSoon,
 } from './pages/ComingSoon';
@@ -150,10 +152,10 @@ const AppContent: React.FC = () => {
   const location = useLocation();
 
   const isAuthRoute = [
-    '/login',
-    '/register',
-  ].includes(location.pathname);
-
+  '/login',
+  '/register',
+  '/auth/action',
+].includes(location.pathname);
   /*
    * ----------------------------------------------------------
    * AUTOMATIC SCROLL BEHAVIOUR
@@ -286,6 +288,7 @@ const AppContent: React.FC = () => {
           }
         />
 
+        <Route path="/auth/action" element={<AuthAction />} />
 
         <Route
           path="/coming-soon"
