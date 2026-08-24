@@ -505,9 +505,9 @@ export const Footer: React.FC = () => {
           </button>
 
           <p>
-            ©{' '}
+            {' '}
             {new Date().getFullYear()}{' '}
-            Runtime. All rights reserved.
+            © Runtime.
           </p>
         </div>
 
