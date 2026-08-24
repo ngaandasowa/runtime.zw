@@ -474,7 +474,7 @@ export const Footer: React.FC = () => {
             </p>
 
             <a
-              href="https://chat.whatsapp.com/F3yFxX2jtekIIGKkfYQP4N?s=sw&p=a&mlu=4"
+              href="https://chat.whatsapp.com/FikSS8syGpvFTg4gCWCiL4?s=cl&p=a&mlu=4"
               target="_blank"
               rel="noreferrer"
               className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-[#3120ff] transition-colors hover:text-[#2819d9]"
