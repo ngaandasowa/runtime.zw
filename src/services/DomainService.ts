@@ -54,6 +54,38 @@ export type DomainPricingRow = {
 const API_BASE =
   'https://clientzone.ngaatec.com/api-proxy.php';
 
+export const RUNTIME_ZW_PRICES: Record<
+  string,
+  {
+    register: number;
+    renew: number;
+    transfer: number;
+  }
+> = {
+  '.co.zw': {
+    register: 2,
+    renew: 2,
+    transfer: 2,
+  },
+
+  '.org.zw': {
+    register: 3,
+    renew: 3,
+    transfer: 3,
+  },
+
+  '.ac.zw': {
+    register: 3,
+    renew: 3,
+    transfer: 3,
+  },
+};
+
+export const MANUAL_ZW_TLDS = [
+  '.org.zw',
+  '.ac.zw',
+] as const;  
+
 export const POPULAR_EXTENSIONS = [
   '.co.zw',
   '.online',
@@ -271,48 +303,69 @@ class DomainService {
    */
 
   async getDomainPrice(
-    domain: string
-  ) {
-    try {
-      const pricing =
-        await this.getPricing();
+  domain: string
+): Promise<number | undefined> {
+  const normalized =
+    this.cleanDomain(domain);
 
-      const normalized =
-        domain.toLowerCase();
-
-      /*
-       * Longest extensions first.
-       *
-       * Important for:
-       *
-       * .co.zw
-       * .co.za
-       */
-      const sorted = [
-        ...pricing,
-      ].sort(
+  /*
+   * Runtime-controlled Zimbabwe pricing
+   * must always override upstream pricing.
+   */
+  const fixedTld =
+    Object.keys(
+      RUNTIME_ZW_PRICES
+    )
+      .sort(
         (a, b) =>
-          b.tld.length -
-          a.tld.length
+          b.length -
+          a.length
+      )
+      .find((tld) =>
+        normalized.endsWith(
+          tld
+        )
       );
 
-      const match = sorted.find(
-        (item) =>
+  if (fixedTld) {
+    return (
+      RUNTIME_ZW_PRICES[
+        fixedTld
+      ].register
+    );
+  }
+
+  /*
+   * Everything else comes from
+   * the Ngaatec pricing API.
+   */
+  try {
+    const pricing =
+      await this.getPricing();
+
+    const match =
+      [...pricing]
+        .sort(
+          (a, b) =>
+            b.tld.length -
+            a.tld.length
+        )
+        .find((item) =>
           normalized.endsWith(
             item.tld
           )
-      );
+        );
 
-      return match?.register;
-    } catch (error) {
-      console.warn(
-        'Unable to get domain price:',
-        error
-      );
+    return match?.register;
+  } catch (error) {
+    console.warn(
+      'Unable to get domain price:',
+      error
+    );
 
-      return undefined;
-    }
+    return undefined;
   }
+}
 
   /*
    * ------------------------------------------------------------

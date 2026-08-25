@@ -175,13 +175,25 @@ export const AdminOrdersPayments:
         return;
       }
 
+      const transactionId =
+        window.prompt(
+          'Enter the EcoCash transaction ID. If no message was received, enter a note such as "Cash received".',
+          'Cash received'
+        );
+
+      if (transactionId === null) {
+        return;
+      }
+
       setBusyPaymentId(
         paymentId
       );
 
       try {
         await approveManualPayment(
-          paymentId
+          paymentId,
+          transactionId.trim() ||
+            'Cash received'
         );
       } catch (error) {
         showNotification(
@@ -394,6 +406,15 @@ export const AdminOrdersPayments:
                               label="Payment Ref"
                               value={
                                 payment?.reference ||
+                                '—'
+                              }
+                              mono
+                            />
+
+                            <Info
+                              label="Transaction ID"
+                              value={
+                                payment?.transaction_id ||
                                 '—'
                               }
                               mono

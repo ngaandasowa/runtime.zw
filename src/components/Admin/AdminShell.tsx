@@ -11,6 +11,7 @@ import {
   Server,
   Settings,
   ShieldAlert,
+  Users,
   X,
 } from 'lucide-react';
 
@@ -46,9 +47,18 @@ import {
   AdminSettings,
 } from './AdminSettings';
 
+import {
+  AdminCustomers,
+} from './AdminCustomers';
+
+import {
+  AdminCustomerAccount,
+} from './AdminCustomerAccount';
+
 type NavItem = {
   id:
     | 'dashboard'
+    | 'customers'
     | 'orders'
     | 'domains'
     | 'registry'
@@ -100,6 +110,11 @@ export const AdminShell:
         id: 'dashboard',
         label: 'Overview',
         icon: LayoutDashboard,
+      },
+      {
+        id: 'customers',
+        label: 'Customers',
+        icon: Users,
       },
       {
         id: 'orders',
@@ -345,6 +360,16 @@ export const AdminShell:
               )}
 
               {adminSubView ===
+                'customers' && (
+                <AdminCustomers />
+              )}
+
+              {adminSubView ===
+                'customer_account' && (
+                <AdminCustomerAccount />
+              )}
+
+              {adminSubView ===
                 'registry' && (
                 <AdminRegistryManager />
               )}
@@ -363,6 +388,8 @@ export const AdminShell:
                 'settings' && (
                 <AdminSettings />
               )}
+
+
             </div>
           </main>
         </div>

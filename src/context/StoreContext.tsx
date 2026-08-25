@@ -35,6 +35,16 @@ import {
   paymentRepository,
 } from '../services/PaymentRepository';
 
+import {
+  adminDomainService,
+  AssignDomainInput,
+} from '../services/AdminDomainService';
+
+import {
+  adminAuditService,
+} from '../services/AdminAuditService';
+
+
 interface StoreContextType {
   currentUser: User | null;
   authReady: boolean;
@@ -100,7 +110,10 @@ interface StoreContextType {
   renewDomain: (domainId: string, years: number, paymentGateway?: any) => Promise<void>;
 
   // Admin payment actions
-  approveManualPayment: (paymentId: string) => Promise<void>;
+  approveManualPayment: (
+    paymentId: string,
+    transactionId?: string
+  ) => Promise<void>;
   rejectManualPayment: (
     paymentId: string,
     reason?: string
@@ -118,7 +131,24 @@ interface StoreContextType {
   // Notifications
   notification: { message: string; type: 'success' | 'info' | 'error' } | null;
   showNotification: (message: string, type?: 'success' | 'info' | 'error') => void;
-}
+  
+  assignDomainToCustomer: (
+    input: Omit<
+      AssignDomainInput,
+      'admin'
+    >
+  ) => Promise<Domain>;
+
+  openCustomerAccount: (
+    userId: string
+  ) => Promise<void>;
+
+  adminCustomerId:
+    string | null;
+
+  closeCustomerAccount:
+    () => void;
+  }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
@@ -196,6 +226,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [dashboardSubView, setDashboardSubView] = useState<string>('overview'); // 'overview' | 'domains' | 'billing' | 'account' | 'build_projects' | 'build_deployments' | 'build_databases' | 'develop_keys' | 'develop_webhooks' | 'develop_logs'
   const [registrationModalOpen, setRegistrationModalOpen] = useState<boolean>(false);
   const [pendingRegisterDomain, setPendingRegisterDomain] = useState<string | null>(null);
+  const [adminCustomerId, setAdminCustomerId] = useState<string | null>(null);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
 
   useEffect(() => {
@@ -1455,7 +1486,8 @@ const getDomainOrderDetails = async (
 
   const approveManualPayment =
     async (
-      paymentId: string
+      paymentId: string,
+      transactionId?: string
     ) => {
       if (
         !currentUser ||
@@ -1538,7 +1570,8 @@ const getDomainOrderDetails = async (
           paymentService
             .approveManualPayment(
               payment,
-              currentUser.id
+              currentUser.id,
+              transactionId
             );
 
         const paidOrder =
@@ -1710,7 +1743,8 @@ const getDomainOrderDetails = async (
       const approvedPayment =
         paymentService.approveManualPayment(
           payment,
-          currentUser.id
+          currentUser.id,
+          transactionId
         );
 
       const paidOrder =
@@ -2051,6 +2085,131 @@ const getDomainOrderDetails = async (
     showNotification('Platform settings updated.', 'success');
   };
 
+  const assignDomainToCustomer = async (
+    input: Omit<AssignDomainInput, 'admin'>
+  ): Promise<Domain> => {
+    if (
+      !currentUser ||
+      currentUser.role !== 'super_admin'
+    ) {
+      throw new Error(
+        'Administrator permission required.'
+      );
+    }
+
+    const domain =
+      await adminDomainService.assignDomain({
+        ...input,
+        admin: currentUser,
+      });
+
+    setDomains(
+      (previous) => [
+        domain,
+        ...previous,
+      ]
+    );
+
+    showNotification(
+      `${domain.domain_name} assigned to ${input.customer.email}.`,
+      'success'
+    );
+
+    return domain;
+  };
+
+  const openCustomerAccount = async (
+  userId: string
+): Promise<void> => {
+  if (
+    !currentUser ||
+    currentUser.role !== 'super_admin'
+  ) {
+    showNotification(
+      'Administrator permission required.',
+      'error'
+    );
+
+    return;
+  }
+
+  const customer =
+    users.find(
+      (user) =>
+        user.id === userId
+    );
+
+  if (!customer) {
+    showNotification(
+      'Customer not found.',
+      'error'
+    );
+
+    return;
+  }
+
+  /*
+   * Open the account immediately.
+   * Audit logging must never block navigation.
+   */
+  setAdminCustomerId(
+    customer.id
+  );
+
+  setAdminSubView(
+    'customer_account'
+  );
+
+  /*
+   * Audit separately.
+   */
+  try {
+    await adminAuditService.log({
+      admin_user_id:
+        currentUser.id,
+
+      admin_email:
+        currentUser.email,
+
+      target_user_id:
+        customer.id,
+
+      target_user_email:
+        customer.email,
+
+      action:
+        'CUSTOMER_ACCOUNT_OPENED',
+
+      resource_type:
+        'customer',
+
+      resource_id:
+        customer.id,
+
+      resource_name:
+        customer.email,
+
+      description:
+        `${currentUser.email} opened the customer account for ${customer.email}.`,
+    });
+  } catch (error) {
+    console.error(
+      'Failed to record admin customer access:',
+      error
+    );
+  }
+};
+
+  const closeCustomerAccount = () => {
+    setAdminCustomerId(
+      null
+    );
+
+    setAdminSubView(
+      'customers'
+    );
+  };
+
   return (
     <StoreContext.Provider value={{
       currentUser,
@@ -2093,6 +2252,10 @@ const getDomainOrderDetails = async (
       updateTldPrice,
       syncUpstreamPrices,
       updateSettings,
+      assignDomainToCustomer,
+      openCustomerAccount,
+      adminCustomerId,
+      closeCustomerAccount,
       notification,
       showNotification,
     }}>

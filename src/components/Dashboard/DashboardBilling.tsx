@@ -493,6 +493,16 @@ export const DashboardBilling:
                     selectedReceipt.status
                   }
                 />
+
+                <Detail
+                  label="EcoCash transaction ID"
+                  value={
+                    paymentForOrder(
+                      selectedReceipt.id
+                    )?.transaction_id ||
+                    'Not entered'
+                  }
+                />
               </div>
 
               <div className="mt-4 border-t border-zinc-200 pt-4">

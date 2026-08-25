@@ -191,7 +191,8 @@ export class PaymentService {
    */
   approveManualPayment(
     payment: Payment,
-    adminId: string
+    adminId: string,
+    transactionId = 'Cash received'
   ): Payment {
     const now =
       new Date().toISOString();
@@ -204,6 +205,10 @@ export class PaymentService {
       verified_at: now,
 
       verified_by: adminId,
+
+      transaction_id:
+        transactionId.trim() ||
+        'Cash received',
 
       updated_at: now,
     };
