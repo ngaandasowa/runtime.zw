@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -35,6 +36,18 @@ class PaymentRepository {
       ...(snapshot.data() as Payment),
       id: (snapshot.data() as Payment).id || snapshot.id,
     };
+  }
+
+  async deletePayment(
+    paymentId: string
+  ): Promise<void> {
+    await deleteDoc(
+      doc(
+        db,
+        'payments',
+        paymentId
+      )
+    );
   }
 
   async updatePayment(

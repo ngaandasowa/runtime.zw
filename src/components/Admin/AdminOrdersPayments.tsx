@@ -500,9 +500,12 @@ export const AdminOrdersPayments:
                                 order.status ===
                                 'cancelled'
                                   ? 'cancelled'
-                                  : payment?.status ||
-                                    order.status ||
-                                    'pending'
+                                  : !payment &&
+                                      cancellable
+                                    ? 'payment_missing'
+                                    : payment?.status ||
+                                      order.status ||
+                                      'pending'
                               }
                             />
                           </div>
@@ -539,7 +542,7 @@ export const AdminOrdersPayments:
                                 'ecocash_usd'
                                   ? 'EcoCash USD'
                                   : payment?.gateway ||
-                                    'Not selected'
+                                    'Payment record missing'
                               }
                             />
 
@@ -568,6 +571,13 @@ export const AdminOrdersPayments:
                               order.created_at
                             ).toLocaleString()}
                           </p>
+
+                          {!payment &&
+                            cancellable && (
+                            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
+                              This order has no payment record. It cannot be approved or rejected yet. The customer can open the order and choose <strong>Continue payment</strong> to restore the EcoCash payment record, or the order can be cancelled.
+                            </div>
+                          )}
                         </div>
 
                         <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:flex-col">
@@ -743,10 +753,16 @@ const StatusBadge: React.FC<{
   const cancelled =
     status === 'cancelled';
 
+  const paymentMissing =
+    status ===
+    'payment_missing';
+
   const label =
-    cancelled
-      ? 'Cancelled'
-      : verified
+    paymentMissing
+      ? 'Payment setup required'
+      : cancelled
+        ? 'Cancelled'
+        : verified
         ? 'Verified'
         : rejected
           ? 'Rejected'
@@ -756,9 +772,11 @@ const StatusBadge: React.FC<{
             : 'Awaiting payment';
 
   const classes =
-    cancelled
-      ? 'border-zinc-200 bg-zinc-100 text-zinc-600'
-      : verified
+    paymentMissing
+      ? 'border-amber-200 bg-amber-50 text-amber-700'
+      : cancelled
+        ? 'border-zinc-200 bg-zinc-100 text-zinc-600'
+        : verified
         ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
         : rejected
           ? 'border-zinc-200 bg-zinc-100 text-zinc-700'

@@ -1287,10 +1287,25 @@ const [placedOrder, setPlacedOrder] =
                 <div className="space-y-5">
                   <div>
                     <h3 className="text-sm font-semibold text-zinc-950">
-                      DNS nameservers
+                      Nameservers
                     </h3>
+
                     <p className="mt-1 text-xs leading-5 text-zinc-500">
-                      Use Runtime nameservers or enter your own.
+                      Every domain needs at least two active nameservers. Use the nameservers from your hosting or DNS provider, or keep the Runtime defaults for now.
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-[#3120ff]/15 bg-[#3120ff]/5 p-4">
+                    <p className="text-xs font-semibold text-zinc-950">
+                      About Runtime nameservers
+                    </p>
+
+                    <p className="mt-1.5 text-xs leading-5 text-zinc-600">
+                      Domain registration does not currently include web hosting or self-service DNS hosting. Runtime&apos;s default nameservers keep your domain properly delegated while you decide where to host it.
+                    </p>
+
+                    <p className="mt-2 text-xs leading-5 text-zinc-600">
+                      Already have hosting? Choose your provider&apos;s nameservers below. Need DNS only? Contact Runtime for free manual DNS setup. More DNS tools are coming soon.
                     </p>
                   </div>
 
@@ -1312,7 +1327,11 @@ const [placedOrder, setPlacedOrder] =
 
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-zinc-950">
-                          Runtime nameservers
+                          Use Runtime defaults
+                        </p>
+
+                        <p className="mt-1 text-xs leading-5 text-zinc-500">
+                          Good if you do not have hosting or DNS nameservers yet.
                         </p>
 
                         <div className="mt-2 space-y-1">
@@ -1348,10 +1367,11 @@ const [placedOrder, setPlacedOrder] =
                       <Globe2 className="mt-0.5 h-5 w-5 shrink-0 text-[#3120ff]" />
                       <div>
                         <p className="text-sm font-semibold text-zinc-950">
-                          Custom nameservers
+                          Use my hosting / DNS nameservers
                         </p>
-                        <p className="mt-1 text-xs text-zinc-500">
-                          Use nameservers supplied by another hosting or DNS provider.
+
+                        <p className="mt-1 text-xs leading-5 text-zinc-500">
+                          Recommended when your hosting or DNS provider has already given you nameservers.
                         </p>
                       </div>
                     </div>
@@ -1434,8 +1454,8 @@ const [placedOrder, setPlacedOrder] =
                       label="Nameservers"
                       value={
                         useDefaultNameservers
-                          ? 'Runtime nameservers'
-                          : 'Custom nameservers'
+                          ? 'Runtime defaults'
+                          : 'Hosting / DNS nameservers'
                       }
                     />
 

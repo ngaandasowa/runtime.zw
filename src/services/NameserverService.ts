@@ -1,9 +1,7 @@
 export class NameserverService {
   private defaultNameservers: string[] = [
-    'ns1.runtime.co.zw',
-    'ns2.runtime.co.zw',
-    'ns3.runtime.co.zw',
-    'ns4.runtime.co.zw',
+    'ns1.ngaatec.com',
+    'ns2.ngaatec.com',
   ];
 
   getDefaultNameservers(): string[] {

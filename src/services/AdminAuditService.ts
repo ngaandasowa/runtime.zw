@@ -20,7 +20,9 @@ export type AdminAuditAction =
   | 'DOMAIN_RENEWAL_DATE_CHANGED'
   | 'CUSTOMER_PROFILE_CHANGED'
   | 'PAYMENT_APPROVED'
-  | 'PAYMENT_REJECTED';
+  | 'PAYMENT_REJECTED'
+  | 'ORDER_CANCELLED'
+  | 'ORDER_DELETED';
 
 export interface AdminAuditLog {
   id?: string;

@@ -30,6 +30,7 @@ export const DashboardBilling:
       domains,
       renewDomain,
       cancelOrder,
+      createPaymentForOrder,
       showNotification,
     } = useStore();
 
@@ -50,6 +51,13 @@ export const DashboardBilling:
     const [
       cancellingOrderId,
       setCancellingOrderId,
+    ] = useState<
+      string | null
+    >(null);
+
+    const [
+      startingPaymentOrderId,
+      setStartingPaymentOrderId,
     ] = useState<
       string | null
     >(null);
@@ -189,6 +197,38 @@ export const DashboardBilling:
           );
         }
       };
+
+    const continuePayment =
+      async (
+        order: Order
+      ) => {
+        setStartingPaymentOrderId(
+          order.id
+        );
+
+        try {
+          await createPaymentForOrder(
+            order.id
+          );
+
+          showNotification(
+            'Payment details are ready. Open the order to continue.',
+            'success'
+          );
+        } catch (error) {
+          showNotification(
+            error instanceof Error
+              ? error.message
+              : 'Unable to prepare payment.',
+            'error'
+          );
+        } finally {
+          setStartingPaymentOrderId(
+            null
+          );
+        }
+      };
+
 
     const canCancelOrder = (
       order: Order
@@ -499,6 +539,30 @@ export const DashboardBilling:
                           />
 
                           <div className="flex items-center gap-3">
+                            {!payment &&
+                              canCancelOrder(
+                                order
+                              ) && (
+                              <button
+                                type="button"
+                                disabled={
+                                  startingPaymentOrderId ===
+                                  order.id
+                                }
+                                onClick={() =>
+                                  continuePayment(
+                                    order
+                                  )
+                                }
+                                className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#3120ff] transition hover:text-[#2819d9] disabled:opacity-50"
+                              >
+                                {startingPaymentOrderId ===
+                                order.id
+                                  ? 'Preparing...'
+                                  : 'Continue payment'}
+                              </button>
+                            )}
+
                             {canCancelOrder(
                               order
                             ) && (
@@ -598,10 +662,17 @@ export const DashboardBilling:
                     selectedReceipt.status ===
                     'cancelled'
                       ? 'cancelled'
-                      : paymentForOrder(
+                      : !paymentForOrder(
                           selectedReceipt.id
-                        )?.status ||
-                        selectedReceipt.status
+                        ) &&
+                        canCancelOrder(
+                          selectedReceipt
+                        )
+                        ? 'payment_setup_required'
+                        : paymentForOrder(
+                            selectedReceipt.id
+                          )?.status ||
+                          selectedReceipt.status
                   }
                 />
 
@@ -667,6 +738,32 @@ export const DashboardBilling:
                 </span>
               </div>
 
+              {!paymentForOrder(
+                selectedReceipt.id
+              ) &&
+                canCancelOrder(
+                  selectedReceipt
+                ) && (
+                <button
+                  type="button"
+                  disabled={
+                    startingPaymentOrderId ===
+                    selectedReceipt.id
+                  }
+                  onClick={() =>
+                    continuePayment(
+                      selectedReceipt
+                    )
+                  }
+                  className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-[#3120ff] px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-[#2819d9] disabled:opacity-50"
+                >
+                  {startingPaymentOrderId ===
+                  selectedReceipt.id
+                    ? 'Preparing payment...'
+                    : 'Continue to payment'}
+                </button>
+              )}
+
               {canCancelOrder(
                 selectedReceipt
               ) && (
@@ -711,6 +808,18 @@ const PaymentStatus: React.FC<{
       <StatusText
         label="Paid"
         tone="success"
+      />
+    );
+  }
+
+  if (
+    status ===
+    'payment_setup_required'
+  ) {
+    return (
+      <StatusText
+        label="Payment setup required"
+        tone="info"
       />
     );
   }

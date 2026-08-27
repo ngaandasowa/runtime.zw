@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteDoc,
   doc,
   getDocs,
   query,
@@ -63,6 +64,18 @@ class DomainRepository {
           (item.data() as Domain).id ||
           item.id,
       })
+    );
+  }
+
+  async deleteDomain(
+    domainId: string
+  ): Promise<void> {
+    await deleteDoc(
+      doc(
+        db,
+        'domains',
+        domainId
+      )
     );
   }
 

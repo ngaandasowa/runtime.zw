@@ -44,6 +44,14 @@ import {
   adminAuditService,
 } from '../services/AdminAuditService';
 
+import {
+  emailNotificationService,
+} from '../services/EmailNotificationService';
+
+import {
+  checkoutRepository,
+} from '../services/CheckoutRepository';
+
 
 interface StoreContextType {
   currentUser: User | null;
@@ -127,6 +135,10 @@ interface StoreContextType {
   deleteOrder: (
     orderId: string
   ) => Promise<void>;
+
+  createPaymentForOrder: (
+    orderId: string
+  ) => Promise<Payment>;
 
   // Admin Registry actions
   submitRegistryRequest: (requestId: string) => Promise<void>;
@@ -799,17 +811,19 @@ const getDomainOrderDetails = async (
      * No registry request is created here.
      * No order is marked paid here.
      */
-    await orderRepository.createOrder(
-      order
-    );
-
-    await paymentRepository.createPayment(
-      payment
-    );
-
-    await domainRepository.createDomain(
-      pendingDomain
-    );
+    /*
+     * Atomic checkout write.
+     *
+     * Order + payment + pending domain are committed together.
+     * Firestore will never leave only part of a registration
+     * behind if one of these writes fails.
+     */
+    await checkoutRepository
+      .createDomainRegistration(
+        order,
+        payment,
+        pendingDomain
+      );
 
     setOrders((prev) => [
       order,
@@ -825,6 +839,30 @@ const getDomainOrderDetails = async (
       pendingDomain,
       ...prev,
     ]);
+
+    emailNotificationService.notifyQuietly(
+      'domain_order_created',
+      {
+        email:
+          currentUser.email,
+
+        name:
+          ownerDetails.full_name ||
+          currentUser.name,
+
+        orderReference:
+          order.reference,
+
+        paymentReference:
+          payment.reference,
+
+        domainName:
+          pendingDomain.domain_name,
+
+        amount:
+          order.total,
+      }
+    );
 
     showNotification(
       `Order ${order.reference} created. Complete your payment to start registration.`,
@@ -904,6 +942,23 @@ const getDomainOrderDetails = async (
       ]);
     }
 
+    emailNotificationService.notifyQuietly(
+      'nameserver_change_requested',
+      {
+        email:
+          domain.user_email,
+
+        name:
+          domain.owner_details
+            ?.full_name,
+
+        domainName:
+          domain.domain_name,
+
+        nameservers,
+      }
+    );
+
     showNotification(
       'Nameserver change request received.',
       'success'
@@ -976,6 +1031,24 @@ const getDomainOrderDetails = async (
         ...prev,
       ]);
     }
+
+    emailNotificationService.notifyQuietly(
+      'domain_modify_requested',
+      {
+        email:
+          domain.user_email,
+
+        name:
+          updatedOwner.full_name ||
+          domain.owner_details
+            ?.full_name,
+
+        domainName:
+          domain.domain_name,
+
+        nameservers,
+      }
+    );
 
     showNotification(
       'Domain update request received.',
@@ -1057,6 +1130,21 @@ const getDomainOrderDetails = async (
         ...prev,
       ]);
     }
+
+    emailNotificationService.notifyQuietly(
+      'domain_delete_requested',
+      {
+        email:
+          domain.user_email,
+
+        name:
+          domain.owner_details
+            ?.full_name,
+
+        domainName:
+          domain.domain_name,
+      }
+    );
 
     showNotification(
       `Cancellation request for ${domain.domain_name} has been received.`,
@@ -1156,6 +1244,20 @@ const getDomainOrderDetails = async (
       newDomain,
       ...prev,
     ]);
+
+    emailNotificationService.notifyQuietly(
+      'domain_transfer_requested',
+      {
+        email:
+          currentUser.email,
+
+        name:
+          currentUser.name,
+
+        domainName:
+          normalizedDomain,
+      }
+    );
 
     showNotification(
       `Transfer request for ${normalizedDomain} has been received.`,
@@ -1282,6 +1384,31 @@ const getDomainOrderDetails = async (
           'error'
         );
       });
+
+    if (
+      status === 'active'
+    ) {
+      emailNotificationService.notifyQuietly(
+        'domain_activated',
+        {
+          email:
+            domain.user_email,
+
+          name:
+            domain.owner_details
+              ?.full_name,
+
+          domainName:
+            domain.domain_name,
+
+          registeredAt:
+            updated.registered_at,
+
+          renewalDate:
+            updated.expires_at,
+        }
+      );
+    }
 
     showNotification(
       status === 'active'
@@ -1467,13 +1594,15 @@ const getDomainOrderDetails = async (
    * - extend expiry
    * - change domain status
    */
-  await orderRepository.createOrder(
-    order
-  );
-
-  await paymentRepository.createPayment(
-    payment
-  );
+  /*
+   * Keep renewal order + payment consistent as well.
+   * Both documents are created, or neither is.
+   */
+  await checkoutRepository
+    .createOrderPayment(
+      order,
+      payment
+    );
 
   setOrders((prev) => [
     order,
@@ -1484,6 +1613,31 @@ const getDomainOrderDetails = async (
     payment,
     ...prev,
   ]);
+
+  emailNotificationService.notifyQuietly(
+    'renewal_order_created',
+    {
+      email:
+        currentUser.email,
+
+      name:
+        currentUser.name,
+
+      orderReference:
+        order.reference,
+
+      paymentReference:
+        payment.reference,
+
+      domainName:
+        domain.domain_name,
+
+      amount:
+        total,
+
+      years,
+    }
+  );
 
   showNotification(
     `Renewal order ${order.reference} created. Pay $${total.toFixed(
@@ -1542,6 +1696,15 @@ const getDomainOrderDetails = async (
       if (!order) {
         throw new Error(
           'The order linked to this payment was not found.'
+        );
+      }
+
+      if (
+        order.status ===
+        'cancelled'
+      ) {
+        throw new Error(
+          'This order was cancelled and cannot be paid or activated. The customer must place a new order.'
         );
       }
 
@@ -1727,6 +1890,35 @@ const getDomainOrderDetails = async (
           )
         );
 
+        emailNotificationService.notifyQuietly(
+          'renewal_completed',
+          {
+            email:
+              domain.user_email,
+
+            name:
+              domain.owner_details
+                ?.full_name,
+
+            orderReference:
+              order.reference,
+
+            paymentReference:
+              approvedPayment.reference,
+
+            domainName:
+              domain.domain_name,
+
+            amount:
+              approvedPayment.amount,
+
+            years,
+
+            renewalDate:
+              updatedDomain.expires_at,
+          }
+        );
+
         showNotification(
           `${domain.domain_name} renewed until ${newExpiry.toLocaleDateString()}.`,
           'success'
@@ -1890,6 +2082,30 @@ const getDomainOrderDetails = async (
         }
       }
 
+      emailNotificationService.notifyQuietly(
+        'payment_approved',
+        {
+          email:
+            domain.user_email,
+
+          name:
+            domain.owner_details
+              ?.full_name,
+
+          orderReference:
+            order.reference,
+
+          paymentReference:
+            approvedPayment.reference,
+
+          domainName:
+            domain.domain_name,
+
+          amount:
+            approvedPayment.amount,
+        }
+      );
+
       showNotification(
         `Payment approved for ${domain.domain_name}. Registration can now be processed.`,
         'success'
@@ -1945,6 +2161,68 @@ const getDomainOrderDetails = async (
         )
       );
 
+      const rejectedOrder =
+        orders.find(
+          (item) =>
+            item.id ===
+            payment.order_id
+        );
+
+      const rejectedDomain =
+        rejectedOrder
+          ? domains.find(
+              (item) =>
+                (item as any)
+                  .order_id ===
+                  rejectedOrder.id ||
+                item.id ===
+                  (rejectedOrder as any)
+                    .domain_id
+            )
+          : undefined;
+
+      if (
+        rejectedOrder
+      ) {
+        emailNotificationService.notifyQuietly(
+          'payment_rejected',
+          {
+            email:
+              rejectedDomain
+                ?.user_email ||
+              rejectedOrder
+                .user_email,
+
+            name:
+              rejectedDomain
+                ?.owner_details
+                ?.full_name,
+
+            orderReference:
+              rejectedOrder
+                .reference,
+
+            paymentReference:
+              rejected.reference,
+
+            domainName:
+              rejectedDomain
+                ?.domain_name ||
+              rejectedOrder
+                .items?.[0]
+                ?.reference_id ||
+              'Runtime order',
+
+            amount:
+              rejected.amount,
+
+            reason:
+              reason ||
+              'Payment could not be verified.',
+          }
+        );
+      }
+
       showNotification(
         'Payment marked as not verified.',
         'info'
@@ -1965,6 +2243,144 @@ const getDomainOrderDetails = async (
    *
    * It does not directly mutate payments or domain records.
    */
+  const createPaymentForOrder = async (
+    orderId: string
+  ): Promise<Payment> => {
+    if (!currentUser) {
+      throw new Error(
+        'You must be signed in to continue payment.'
+      );
+    }
+
+    if (
+      currentUser.role ===
+      'super_admin'
+    ) {
+      throw new Error(
+        'The customer must continue payment from their own account.'
+      );
+    }
+
+    const order =
+      orders.find(
+        (item) =>
+          item.id ===
+          orderId
+      );
+
+    if (!order) {
+      throw new Error(
+        'Order not found.'
+      );
+    }
+
+    const ownsOrder =
+      order.user_id ===
+        currentUser.id ||
+      order.user_email ===
+        currentUser.email;
+
+    if (!ownsOrder) {
+      throw new Error(
+        'You cannot create a payment for this order.'
+      );
+    }
+
+    if (
+      ![
+        'pending',
+        'unpaid',
+        'payment_pending',
+      ].includes(
+        String(order.status)
+      )
+    ) {
+      if (
+        order.status ===
+        'cancelled'
+      ) {
+        throw new Error(
+          'This order was cancelled. Please place a new order.'
+        );
+      }
+
+      throw new Error(
+        'A new payment cannot be created for this order.'
+      );
+    }
+
+    /*
+     * Check Firestore as well as local state so a stale
+     * browser cannot accidentally create a duplicate
+     * payment for the same order.
+     */
+    const storedPayments =
+      await paymentRepository
+        .getPaymentsForOrder(
+          order.id
+        );
+
+    const existingPayment =
+      storedPayments.find(
+        (item) =>
+          item.status !==
+          'rejected'
+      );
+
+    if (existingPayment) {
+      setPayments(
+        (previous) => {
+          const alreadyLoaded =
+            previous.some(
+              (item) =>
+                item.id ===
+                existingPayment.id
+            );
+
+          return alreadyLoaded
+            ? previous
+            : [
+                existingPayment,
+                ...previous,
+              ];
+        }
+      );
+
+      return existingPayment;
+    }
+
+    const payment =
+      await paymentService
+        .processCheckout(
+          order.id,
+          order.total,
+          order.currency ||
+            'USD',
+          order.user_id,
+          'ecocash_usd'
+        );
+
+    await paymentRepository
+      .createPayment(
+        payment
+      );
+
+    setPayments(
+      (previous) => [
+        payment,
+        ...previous,
+      ]
+    );
+
+    showNotification(
+      `Payment setup restored for order ${order.reference}.`,
+      'success'
+    );
+
+    return payment;
+  };
+
+
   const cancelOrder = async (
     orderId: string
   ): Promise<void> => {
@@ -2082,6 +2498,73 @@ const getDomainOrderDetails = async (
         )
     );
 
+    if (isAdmin) {
+      await adminAuditService.log({
+        admin_user_id:
+          currentUser.id,
+
+        admin_email:
+          currentUser.email,
+
+        target_user_id:
+          order.user_id,
+
+        target_user_email:
+          order.user_email,
+
+        action:
+          'ORDER_CANCELLED',
+
+        resource_type:
+          'order',
+
+        resource_id:
+          order.id,
+
+        resource_name:
+          order.reference,
+
+        before: {
+          status:
+            order.status,
+        },
+
+        after: {
+          status:
+            'cancelled',
+        },
+
+        description:
+          `Order ${order.reference} was cancelled by an administrator.`,
+      });
+    }
+
+    emailNotificationService.notifyQuietly(
+      'order_cancelled',
+      {
+        email:
+          order.user_email,
+
+        name:
+          users.find(
+            (user) =>
+              user.id ===
+              order.user_id
+          )?.name,
+
+        orderReference:
+          order.reference,
+
+        domainName:
+          order.items?.[0]
+            ?.reference_id ||
+          'Runtime order',
+
+        amount:
+          order.total,
+      }
+    );
+
     showNotification(
       `Order ${order.reference} cancelled.`,
       'success'
@@ -2123,10 +2606,121 @@ const getDomainOrderDetails = async (
       );
     }
 
+    /*
+     * A cancelled registration order can leave its pending
+     * domain/payment records behind. Remove those linked
+     * abandoned records before deleting the order.
+     *
+     * This is intentionally limited to pending registration
+     * domains. Renewal orders must never delete the real domain.
+     */
+    const linkedDomain =
+      domains.find(
+        (item) =>
+          (item as any).order_id ===
+            order.id
+      );
+
+    const linkedPayments =
+      payments.filter(
+        (item) =>
+          item.order_id ===
+          order.id
+      );
+
+    if (
+      linkedDomain &&
+      linkedDomain.status ===
+        'pending_payment'
+    ) {
+      await domainRepository
+        .deleteDomain(
+          linkedDomain.id
+        );
+    }
+
+    for (
+      const linkedPayment
+      of linkedPayments
+    ) {
+      await paymentRepository
+        .deletePayment(
+          linkedPayment.id
+        );
+    }
+
+    await adminAuditService.log({
+      admin_user_id:
+        currentUser.id,
+
+      admin_email:
+        currentUser.email,
+
+      target_user_id:
+        order.user_id,
+
+      target_user_email:
+        order.user_email,
+
+      action:
+        'ORDER_DELETED',
+
+      resource_type:
+        'order',
+
+      resource_id:
+        order.id,
+
+      resource_name:
+        order.reference,
+
+      before: {
+        status:
+          order.status,
+
+        linked_domain:
+          linkedDomain
+            ?.domain_name,
+
+        linked_payments:
+          linkedPayments.map(
+            (item) =>
+              item.reference
+          ),
+      },
+
+      description:
+        `Cancelled order ${order.reference} was permanently deleted by an administrator.`,
+    });
+
     await orderRepository
       .deleteOrder(
         order.id
       );
+
+    if (
+      linkedDomain &&
+      linkedDomain.status ===
+        'pending_payment'
+    ) {
+      setDomains(
+        (previous) =>
+          previous.filter(
+            (item) =>
+              item.id !==
+              linkedDomain.id
+          )
+      );
+    }
+
+    setPayments(
+      (previous) =>
+        previous.filter(
+          (item) =>
+            item.order_id !==
+            order.id
+        )
+    );
 
     setOrders(
       (previous) =>
@@ -2138,7 +2732,11 @@ const getDomainOrderDetails = async (
     );
 
     showNotification(
-      `Order ${order.reference} deleted.`,
+      linkedDomain &&
+      linkedDomain.status ===
+        'pending_payment'
+        ? `Order ${order.reference} and its abandoned domain request were deleted.`
+        : `Order ${order.reference} deleted.`,
       'success'
     );
   };
@@ -2243,6 +2841,50 @@ const getDomainOrderDetails = async (
       return d;
     }));
 
+    if (
+      target.action === 'N' ||
+      target.action === 'T'
+    ) {
+      const activatedDomain =
+        domains.find(
+          (item) =>
+            item.id ===
+              target.domain_id ||
+            item.domain_name ===
+              target.domain_name
+        );
+
+      if (
+        activatedDomain
+      ) {
+        emailNotificationService.notifyQuietly(
+          'domain_activated',
+          {
+            email:
+              activatedDomain
+                .user_email,
+
+            name:
+              activatedDomain
+                .owner_details
+                ?.full_name,
+
+            domainName:
+              activatedDomain
+                .domain_name,
+
+            registeredAt:
+              activatedDomain
+                .registered_at,
+
+            renewalDate:
+              activatedDomain
+                .expires_at,
+          }
+        );
+      }
+    }
+
     showNotification(`Domain update for ${target.domain_name} completed.`, 'success');
   };
 
@@ -2310,6 +2952,28 @@ const getDomainOrderDetails = async (
         domain,
         ...previous,
       ]
+    );
+
+    emailNotificationService.notifyQuietly(
+      'domain_assigned',
+      {
+        email:
+          domain.user_email,
+
+        name:
+          domain.owner_details
+            ?.full_name ||
+          input.customer.name,
+
+        domainName:
+          domain.domain_name,
+
+        registeredAt:
+          domain.registered_at,
+
+        renewalDate:
+          domain.expires_at,
+      }
     );
 
     showNotification(
@@ -2450,6 +3114,7 @@ const getDomainOrderDetails = async (
       rejectManualPayment,
       cancelOrder,
       deleteOrder,
+      createPaymentForOrder,
       submitRegistryRequest,
       confirmRegistryRequest,
       createManualRegistryRequest,

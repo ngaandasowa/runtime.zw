@@ -1,27 +1,138 @@
-type OrderCreatedTemplateData = {
-  name: string;
-  orderReference: string;
+export type EmailEvent =
+  | 'domain_order_created'
+  | 'renewal_order_created'
+  | 'order_cancelled'
+  | 'payment_approved'
+  | 'payment_rejected'
+  | 'renewal_completed'
+  | 'domain_activated'
+  | 'domain_assigned'
+  | 'nameserver_change_requested'
+  | 'domain_modify_requested'
+  | 'domain_delete_requested'
+  | 'domain_transfer_requested';
+
+export type EmailEventData = {
+  email: string;
+  name?: string;
+  orderReference?: string;
+  paymentReference?: string;
   domainName: string;
-  amount: number;
+  amount?: number;
+  years?: number;
+  renewalDate?: string;
+  registeredAt?: string;
+  reason?: string;
+  nameservers?: string[];
 };
 
-const escapeHtml = (value: string) =>
-  value
+export type BuiltEmail = {
+  subject: string;
+  html: string;
+};
+
+const escapeHtml = (
+  value: string
+) =>
+  String(value)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 
-export const orderCreatedTemplate = ({
-  name,
-  orderReference,
-  domainName,
-  amount,
-}: OrderCreatedTemplateData) => {
-  const safeName = escapeHtml(name);
-  const safeOrder = escapeHtml(orderReference);
-  const safeDomain = escapeHtml(domainName);
+const money = (
+  value?: number
+) =>
+  typeof value === 'number'
+    ? `$${value.toFixed(2)} USD`
+    : undefined;
+
+const dateText = (
+  value?: string
+) => {
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed =
+    new Date(value);
+
+  if (
+    Number.isNaN(
+      parsed.getTime()
+    )
+  ) {
+    return value;
+  }
+
+  return parsed
+    .toLocaleDateString(
+      'en',
+      {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      }
+    );
+};
+
+const row = (
+  label: string,
+  value?: string
+) => {
+  if (!value) {
+    return '';
+  }
+
+  return `
+    <tr>
+      <td style="
+        padding:11px 14px;
+        border-top:1px solid #f4f4f5;
+        color:#71717a;
+        font-size:12px;
+      ">
+        ${escapeHtml(label)}
+      </td>
+
+      <td
+        align="right"
+        style="
+          padding:11px 14px;
+          border-top:1px solid #f4f4f5;
+          color:#18181b;
+          font-size:13px;
+          font-weight:700;
+        "
+      >
+        ${escapeHtml(value)}
+      </td>
+    </tr>
+  `;
+};
+
+const layout = ({
+  title,
+  intro,
+  data,
+  note,
+}: {
+  title: string;
+  intro: string;
+  data: EmailEventData;
+  note?: string;
+}) => {
+  const safeName =
+    escapeHtml(
+      data.name?.trim() ||
+      'there'
+    );
+
+  const nsText =
+    data.nameservers?.length
+      ? data.nameservers.join(', ')
+      : undefined;
 
   return `
     <!doctype html>
@@ -42,7 +153,6 @@ export const orderCreatedTemplate = ({
         >
           <tr>
             <td align="center">
-
               <table
                 width="100%"
                 cellspacing="0"
@@ -70,10 +180,10 @@ export const orderCreatedTemplate = ({
                   <td style="padding:0 28px 28px;">
                     <h1 style="
                       margin:0;
-                      font-size:24px;
-                      line-height:1.25;
+                      font-size:23px;
+                      line-height:1.3;
                     ">
-                      Your order has been created
+                      ${escapeHtml(title)}
                     </h1>
 
                     <p style="
@@ -82,7 +192,7 @@ export const orderCreatedTemplate = ({
                       line-height:1.7;
                       color:#52525b;
                     ">
-                      Hi ${safeName}, your domain order has been received.
+                      Hi ${safeName}, ${escapeHtml(intro)}
                     </p>
 
                     <table
@@ -95,73 +205,84 @@ export const orderCreatedTemplate = ({
                         border:1px solid #e4e4e7;
                       "
                     >
-                      <tr>
-                        <td style="padding:12px 14px;color:#71717a;font-size:12px;">
-                          Domain
-                        </td>
+                      ${row(
+                        'Domain',
+                        data.domainName
+                      )}
 
-                        <td align="right" style="padding:12px 14px;font-size:13px;font-weight:700;">
-                          ${safeDomain}
-                        </td>
-                      </tr>
+                      ${row(
+                        'Order',
+                        data.orderReference
+                      )}
 
-                      <tr>
-                        <td style="padding:12px 14px;border-top:1px solid #f4f4f5;color:#71717a;font-size:12px;">
-                          Order
-                        </td>
+                      ${row(
+                        'Payment',
+                        data.paymentReference
+                      )}
 
-                        <td align="right" style="padding:12px 14px;border-top:1px solid #f4f4f5;font-size:13px;font-weight:700;">
-                          ${safeOrder}
-                        </td>
-                      </tr>
+                      ${row(
+                        'Amount',
+                        money(data.amount)
+                      )}
 
-                      <tr>
-                        <td style="padding:12px 14px;border-top:1px solid #f4f4f5;color:#71717a;font-size:12px;">
-                          Amount
-                        </td>
+                      ${row(
+                        'Period',
+                        data.years
+                          ? `${data.years} ${
+                              data.years === 1
+                                ? 'year'
+                                : 'years'
+                            }`
+                          : undefined
+                      )}
 
-                        <td align="right" style="padding:12px 14px;border-top:1px solid #f4f4f5;font-size:13px;font-weight:700;color:#3120ff;">
-                          $${amount.toFixed(2)} USD
-                        </td>
-                      </tr>
+                      ${row(
+                        'Registered',
+                        dateText(
+                          data.registeredAt
+                        )
+                      )}
+
+                      ${row(
+                        'Next renewal',
+                        dateText(
+                          data.renewalDate
+                        )
+                      )}
+
+                      ${row(
+                        'Nameservers',
+                        nsText
+                      )}
+
+                      ${row(
+                        'Reason',
+                        data.reason
+                      )}
                     </table>
 
-                    <div style="
-                      margin-top:24px;
-                      padding:16px;
-                      background:#3120ff0d;
-                      border:1px solid #3120ff26;
-                    ">
-                      <p style="
-                        margin:0;
-                        font-size:13px;
-                        font-weight:700;
-                      ">
-                        EcoCash USD
-                      </p>
-
-                      <p style="
-                        margin:8px 0 0;
-                        font-size:13px;
-                        line-height:1.7;
-                        color:#52525b;
-                      ">
-                        Send the exact amount to:
-                        <br />
-                        <strong>0783827570</strong>
-                        <br />
-                        Ngaavongwe Ndasowampange
-                      </p>
-                    </div>
+                    ${
+                      note
+                        ? `
+                          <p style="
+                            margin:20px 0 0;
+                            font-size:13px;
+                            line-height:1.7;
+                            color:#52525b;
+                          ">
+                            ${escapeHtml(note)}
+                          </p>
+                        `
+                        : ''
+                    }
 
                     <p style="
-                      margin:20px 0 0;
-                      font-size:13px;
+                      margin:22px 0 0;
+                      font-size:12px;
                       line-height:1.7;
-                      color:#52525b;
+                      color:#a1a1aa;
                     ">
-                      After payment, send your screenshot to Runtime on WhatsApp.
-                      Registration will begin after payment is verified.
+                      If you did not request this action, contact Runtime support.
                     </p>
                   </td>
                 </tr>
@@ -177,11 +298,228 @@ export const orderCreatedTemplate = ({
                   </td>
                 </tr>
               </table>
-
             </td>
           </tr>
         </table>
       </body>
     </html>
   `;
+};
+
+const customerContent = (
+  event: EmailEvent
+): {
+  subject: (
+    data: EmailEventData
+  ) => string;
+  title: string;
+  intro: string;
+  note?: string;
+} => {
+  switch (event) {
+    case 'domain_order_created':
+      return {
+        subject: (data) =>
+          `Order ${data.orderReference || ''} received`.trim(),
+        title:
+          'Your domain order has been created',
+        intro:
+          'we received your domain order.',
+        note:
+          'Complete the payment shown in your Runtime account. Registration starts after payment is verified.',
+      };
+
+    case 'renewal_order_created':
+      return {
+        subject: (data) =>
+          `Renewal order ${data.orderReference || ''} created`.trim(),
+        title:
+          'Your renewal order has been created',
+        intro:
+          'your domain renewal order is ready for payment.',
+        note:
+          'Your current expiry date will only be extended after payment is verified.',
+      };
+
+    case 'order_cancelled':
+      return {
+        subject: (data) =>
+          `Order ${data.orderReference || ''} cancelled`.trim(),
+        title:
+          'Your order has been cancelled',
+        intro:
+          'the order below has been cancelled.',
+      };
+
+    case 'payment_approved':
+      return {
+        subject: () =>
+          'Payment verified',
+        title:
+          'Your payment has been verified',
+        intro:
+          'we verified your payment. Domain processing can now continue.',
+      };
+
+    case 'payment_rejected':
+      return {
+        subject: () =>
+          'Payment could not be verified',
+        title:
+          'Your payment needs attention',
+        intro:
+          'we could not verify the submitted payment.',
+        note:
+          'Please check the reason above and contact Runtime if you need assistance.',
+      };
+
+    case 'renewal_completed':
+      return {
+        subject: (data) =>
+          `${data.domainName} renewed`,
+        title:
+          'Your domain has been renewed',
+        intro:
+          'your renewal is complete.',
+      };
+
+    case 'domain_activated':
+      return {
+        subject: (data) =>
+          `${data.domainName} is now active`,
+        title:
+          'Your domain is active',
+        intro:
+          'your domain registration has been completed.',
+      };
+
+    case 'domain_assigned':
+      return {
+        subject: (data) =>
+          `${data.domainName} added to your account`,
+        title:
+          'A domain has been added to your account',
+        intro:
+          'Runtime has assigned the domain below to your account.',
+      };
+
+    case 'nameserver_change_requested':
+      return {
+        subject: (data) =>
+          `Nameserver request received for ${data.domainName}`,
+        title:
+          'Nameserver change request received',
+        intro:
+          'we received your nameserver change request.',
+        note:
+          'The requested nameservers will be processed according to the domain registry workflow.',
+      };
+
+    case 'domain_modify_requested':
+      return {
+        subject: (data) =>
+          `Domain update received for ${data.domainName}`,
+        title:
+          'Domain details update received',
+        intro:
+          'we received your domain details update request.',
+      };
+
+    case 'domain_delete_requested':
+      return {
+        subject: (data) =>
+          `Cancellation request received for ${data.domainName}`,
+        title:
+          'Domain cancellation request received',
+        intro:
+          'we received your request to cancel this domain.',
+        note:
+          'The domain is not considered cancelled until the cancellation process is completed.',
+      };
+
+    case 'domain_transfer_requested':
+      return {
+        subject: (data) =>
+          `Transfer request received for ${data.domainName}`,
+        title:
+          'Domain transfer request received',
+        intro:
+          'we received your domain transfer request.',
+        note:
+          'Runtime will process the transfer and update the domain status when the next step is completed.',
+      };
+  }
+};
+
+export const buildCustomerEmail = (
+  event: EmailEvent,
+  data: EmailEventData
+): BuiltEmail => {
+  const content =
+    customerContent(event);
+
+  return {
+    subject:
+      content.subject(data),
+
+    html:
+      layout({
+        title:
+          content.title,
+        intro:
+          content.intro,
+        data,
+        note:
+          content.note,
+      }),
+  };
+};
+
+const adminEvents =
+  new Set<EmailEvent>([
+    'domain_order_created',
+    'renewal_order_created',
+    'order_cancelled',
+    'nameserver_change_requested',
+    'domain_modify_requested',
+    'domain_delete_requested',
+    'domain_transfer_requested',
+  ]);
+
+export const buildAdminEmail = (
+  event: EmailEvent,
+  data: EmailEventData
+): BuiltEmail | null => {
+  if (
+    !adminEvents.has(event)
+  ) {
+    return null;
+  }
+
+  const eventLabel =
+    event
+      .replace(/_/g, ' ')
+      .replace(
+        /\b\w/g,
+        (character) =>
+          character.toUpperCase()
+      );
+
+  return {
+    subject:
+      `[Runtime] ${eventLabel}: ${data.domainName}`,
+
+    html:
+      layout({
+        title:
+          eventLabel,
+        intro:
+          `a customer action requires visibility in Runtime. Customer: ${data.email}.`,
+        data: {
+          ...data,
+          name:
+            'Runtime Admin',
+        },
+      }),
+  };
 };

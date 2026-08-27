@@ -3,40 +3,58 @@ import {
 } from './mailer';
 
 import {
-  orderCreatedTemplate,
+  buildAdminEmail,
+  buildCustomerEmail,
+  EmailEvent,
+  EmailEventData,
 } from './templates';
 
-type OrderCreatedEmailData = {
-  email: string;
-  name: string;
-  orderReference: string;
-  domainName: string;
-  amount: number;
-};
-
 class EmailService {
-  async sendOrderCreated(
-    data: OrderCreatedEmailData
-  ) {
-    const html =
-      orderCreatedTemplate({
-        name: data.name,
-        orderReference:
-          data.orderReference,
-        domainName:
-          data.domainName,
-        amount:
-          data.amount,
-      });
+  async sendEvent(
+    event: EmailEvent,
+    data: EmailEventData
+  ): Promise<void> {
+    const customer =
+      buildCustomerEmail(
+        event,
+        data
+      );
 
     await sendMail({
-      to: data.email,
+      to:
+        data.email,
 
       subject:
-        `Order ${data.orderReference} received`,
+        customer.subject,
 
-      html,
+      html:
+        customer.html,
     });
+
+    const admin =
+      buildAdminEmail(
+        event,
+        data
+      );
+
+    const adminEmail =
+      process.env.ADMIN_NOTIFICATION_EMAIL;
+
+    if (
+      admin &&
+      adminEmail
+    ) {
+      await sendMail({
+        to:
+          adminEmail,
+
+        subject:
+          admin.subject,
+
+        html:
+          admin.html,
+      });
+    }
   }
 }
 

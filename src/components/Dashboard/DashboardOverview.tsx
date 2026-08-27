@@ -48,22 +48,65 @@ export const DashboardOverview:
           currentUser?.id
       );
 
-    const activeCount =
+    /*
+     * A cancelled order must never keep a pending domain
+     * looking like it still needs payment.
+     *
+     * If an admin permanently deletes the order, the
+     * orphaned pending-payment domain is also hidden from
+     * the overview until backend cleanup removes it.
+     */
+    const visibleDomains =
       userDomains.filter(
+        (domain) => {
+          if (
+            domain.status !==
+            'pending_payment'
+          ) {
+            return true;
+          }
+
+          const orderId =
+            (domain as any)
+              .order_id as
+              | string
+              | undefined;
+
+          if (!orderId) {
+            return true;
+          }
+
+          const linkedOrder =
+            userOrders.find(
+              (order) =>
+                order.id ===
+                orderId
+            );
+
+          return Boolean(
+            linkedOrder &&
+            linkedOrder.status !==
+              'cancelled'
+          );
+        }
+      );
+
+    const activeCount =
+      visibleDomains.filter(
         (domain) =>
           domain.status ===
           'active'
       ).length;
 
     const awaitingPayment =
-      userDomains.filter(
+      visibleDomains.filter(
         (domain) =>
           domain.status ===
           'pending_payment'
       ).length;
 
     const processingCount =
-      userDomains.filter(
+      visibleDomains.filter(
         (domain) =>
           domain.status ===
             'pending_registration' ||
@@ -81,7 +124,7 @@ export const DashboardOverview:
       ).length;
 
     const recentDomains =
-      [...userDomains]
+      [...visibleDomains]
         .sort(
           (a, b) =>
             new Date(

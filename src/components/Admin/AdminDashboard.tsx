@@ -41,9 +41,42 @@ export const AdminDashboard:
 
     const awaitingPayment =
       domains.filter(
-        (domain) =>
-          domain.status ===
-          'pending_payment'
+        (domain) => {
+          if (
+            domain.status !==
+            'pending_payment'
+          ) {
+            return false;
+          }
+
+          const orderId =
+            (domain as any)
+              .order_id as
+              | string
+              | undefined;
+
+          if (!orderId) {
+            return true;
+          }
+
+          const linkedOrder =
+            orders.find(
+              (order) =>
+                order.id ===
+                orderId
+            );
+
+          /*
+           * Cancelled orders and pending-domain records
+           * whose order was permanently deleted are not
+           * awaiting payment anymore.
+           */
+          return Boolean(
+            linkedOrder &&
+            linkedOrder.status !==
+              'cancelled'
+          );
+        }
       ).length;
 
     const processingDomains =
@@ -59,11 +92,41 @@ export const AdminDashboard:
 
     const pendingPayments =
       payments.filter(
-        (payment) =>
-          payment.status ===
-            'pending' ||
-          payment.status ===
-            'pending_verification'
+        (payment) => {
+          const isPending =
+            payment.status ===
+              'pending' ||
+            payment.status ===
+              'pending_verification';
+
+          if (!isPending) {
+            return false;
+          }
+
+          const orderId =
+            payment.order_id;
+
+          if (!orderId) {
+            return true;
+          }
+
+          const linkedOrder =
+            orders.find(
+              (order) =>
+                order.id ===
+                orderId
+            );
+
+          /*
+           * Do not count a pending payment against a
+           * cancelled or permanently deleted order.
+           */
+          return Boolean(
+            linkedOrder &&
+            linkedOrder.status !==
+              'cancelled'
+          );
+        }
       ).length;
 
     const verifiedPayments =
@@ -295,8 +358,12 @@ export const AdminDashboard:
 
                         <PaymentBadge
                           status={
-                            payment?.status ||
-                            'pending'
+                            order.status ===
+                            'cancelled'
+                              ? 'cancelled'
+                              : payment?.status ||
+                                order.status ||
+                                'pending'
                           }
                         />
                       </div>
@@ -374,6 +441,10 @@ const PaymentBadge: React.FC<{
     status ===
     'rejected';
 
+  const cancelled =
+    status ===
+    'cancelled';
+
   return (
     <span
       className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${
@@ -381,14 +452,18 @@ const PaymentBadge: React.FC<{
           ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
           : rejected
             ? 'border-rose-200 bg-rose-50 text-rose-700'
-            : 'border-[#3120ff]/20 bg-[#3120ff]/5 text-[#3120ff]'
+            : cancelled
+              ? 'border-zinc-200 bg-zinc-100 text-zinc-600'
+              : 'border-[#3120ff]/20 bg-[#3120ff]/5 text-[#3120ff]'
       }`}
     >
       {verified
         ? 'Verified'
         : rejected
           ? 'Rejected'
-          : 'Pending'}
+          : cancelled
+            ? 'Cancelled'
+            : 'Pending'}
     </span>
   );
 };
