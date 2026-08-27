@@ -10,6 +10,7 @@ import {
   FileText,
   Receipt,
   X,
+  XCircle,
 } from 'lucide-react';
 
 import {
@@ -28,6 +29,7 @@ export const DashboardBilling:
       payments,
       domains,
       renewDomain,
+      cancelOrder,
       showNotification,
     } = useStore();
 
@@ -41,6 +43,13 @@ export const DashboardBilling:
     const [
       renewingDomainId,
       setRenewingDomainId,
+    ] = useState<
+      string | null
+    >(null);
+
+    const [
+      cancellingOrderId,
+      setCancellingOrderId,
     ] = useState<
       string | null
     >(null);
@@ -180,6 +189,79 @@ export const DashboardBilling:
           );
         }
       };
+
+    const canCancelOrder = (
+      order: Order
+    ) =>
+      [
+        'pending',
+        'unpaid',
+        'payment_pending',
+      ].includes(
+        String(order.status)
+      );
+
+
+    const cancelCustomerOrder =
+      async (
+        order: Order
+      ) => {
+        if (
+          !canCancelOrder(order)
+        ) {
+          return;
+        }
+
+        const confirmed =
+          window.confirm(
+            `Cancel order ${order.reference}? This action cannot be undone from your account.`
+          );
+
+        if (!confirmed) {
+          return;
+        }
+
+        setCancellingOrderId(
+          order.id
+        );
+
+        try {
+          await cancelOrder(
+            order.id
+          );
+
+          if (
+            selectedReceipt?.id ===
+            order.id
+          ) {
+            setSelectedReceipt(
+              (previous) =>
+                previous
+                  ? {
+                      ...previous,
+                      status:
+                        'cancelled' as any,
+                      updated_at:
+                        new Date()
+                          .toISOString(),
+                    }
+                  : previous
+            );
+          }
+        } catch (error) {
+          showNotification(
+            error instanceof Error
+              ? error.message
+              : 'Unable to cancel this order.',
+            'error'
+          );
+        } finally {
+          setCancellingOrderId(
+            null
+          );
+        }
+      };
+
 
     return (
       <div className="space-y-8">
@@ -416,18 +498,44 @@ export const DashboardBilling:
                             }
                           />
 
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setSelectedReceipt(
-                                order
-                              )
-                            }
-                            className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-700"
-                          >
-                            <FileText className="h-3.5 w-3.5 text-[#3120ff]" />
-                            View
-                          </button>
+                          <div className="flex items-center gap-3">
+                            {canCancelOrder(
+                              order
+                            ) && (
+                              <button
+                                type="button"
+                                disabled={
+                                  cancellingOrderId ===
+                                  order.id
+                                }
+                                onClick={() =>
+                                  cancelCustomerOrder(
+                                    order
+                                  )
+                                }
+                                className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-500 transition hover:text-zinc-900 disabled:opacity-50"
+                              >
+                                <XCircle className="h-3.5 w-3.5" />
+                                {cancellingOrderId ===
+                                order.id
+                                  ? 'Cancelling...'
+                                  : 'Cancel'}
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSelectedReceipt(
+                                  order
+                                )
+                              }
+                              className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-700"
+                            >
+                              <FileText className="h-3.5 w-3.5 text-[#3120ff]" />
+                              View
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -487,10 +595,13 @@ export const DashboardBilling:
                 <Detail
                   label="Status"
                   value={
-                    paymentForOrder(
-                      selectedReceipt.id
-                    )?.status ||
-                    selectedReceipt.status
+                    selectedReceipt.status ===
+                    'cancelled'
+                      ? 'cancelled'
+                      : paymentForOrder(
+                          selectedReceipt.id
+                        )?.status ||
+                        selectedReceipt.status
                   }
                 />
 
@@ -555,6 +666,31 @@ export const DashboardBilling:
                   }
                 </span>
               </div>
+
+              {canCancelOrder(
+                selectedReceipt
+              ) && (
+                <button
+                  type="button"
+                  disabled={
+                    cancellingOrderId ===
+                    selectedReceipt.id
+                  }
+                  onClick={() =>
+                    cancelCustomerOrder(
+                      selectedReceipt
+                    )
+                  }
+                  className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 px-4 py-2.5 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50"
+                >
+                  <XCircle className="h-4 w-4" />
+
+                  {cancellingOrderId ===
+                  selectedReceipt.id
+                    ? 'Cancelling order...'
+                    : 'Cancel order'}
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -575,6 +711,17 @@ const PaymentStatus: React.FC<{
       <StatusText
         label="Paid"
         tone="success"
+      />
+    );
+  }
+
+  if (
+    status === 'cancelled'
+  ) {
+    return (
+      <StatusText
+        label="Cancelled"
+        tone="neutral"
       />
     );
   }

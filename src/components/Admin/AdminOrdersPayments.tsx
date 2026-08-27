@@ -8,6 +8,7 @@ import {
   Clock3,
   CreditCard,
   Search,
+  Trash2,
   XCircle,
 } from 'lucide-react';
 
@@ -23,6 +24,8 @@ export const AdminOrdersPayments:
       domains,
       approveManualPayment,
       rejectManualPayment,
+      cancelOrder,
+      deleteOrder,
       showNotification,
     } = useStore();
 
@@ -38,12 +41,20 @@ export const AdminOrdersPayments:
       'ALL' |
       'pending' |
       'verified' |
-      'rejected'
+      'rejected' |
+      'cancelled'
     >('ALL');
 
     const [
       busyPaymentId,
       setBusyPaymentId,
+    ] = useState<
+      string | null
+    >(null);
+
+    const [
+      busyOrderId,
+      setBusyOrderId,
     ] = useState<
       string | null
     >(null);
@@ -129,14 +140,28 @@ export const AdminOrdersPayments:
 
           if (
             statusFilter ===
+            'cancelled'
+          ) {
+            return (
+              order.status ===
+              'cancelled'
+            );
+          }
+
+          if (
+            statusFilter ===
             'pending'
           ) {
             return (
-              !payment ||
-              payment.status ===
-                'pending' ||
-              payment.status ===
-                'pending_verification'
+              order.status !==
+                'cancelled' &&
+              (
+                !payment ||
+                payment.status ===
+                  'pending' ||
+                payment.status ===
+                  'pending_verification'
+              )
             );
           }
 
@@ -161,6 +186,13 @@ export const AdminOrdersPayments:
         (payment) =>
           payment.status ===
           'verified'
+      ).length;
+
+    const cancelledCount =
+      orders.filter(
+        (order) =>
+          order.status ===
+          'cancelled'
       ).length;
 
     const approve = async (
@@ -246,6 +278,90 @@ export const AdminOrdersPayments:
       }
     };
 
+    const canCancelOrder = (
+      status: string
+    ) =>
+      [
+        'pending',
+        'unpaid',
+        'payment_pending',
+      ].includes(status);
+
+
+    const cancelAdminOrder =
+      async (
+        orderId: string,
+        reference: string
+      ) => {
+        const confirmed =
+          window.confirm(
+            `Cancel order ${reference}?`
+          );
+
+        if (!confirmed) {
+          return;
+        }
+
+        setBusyOrderId(
+          orderId
+        );
+
+        try {
+          await cancelOrder(
+            orderId
+          );
+        } catch (error) {
+          showNotification(
+            error instanceof Error
+              ? error.message
+              : 'Unable to cancel order.',
+            'error'
+          );
+        } finally {
+          setBusyOrderId(
+            null
+          );
+        }
+      };
+
+
+    const deleteAdminOrder =
+      async (
+        orderId: string,
+        reference: string
+      ) => {
+        const confirmed =
+          window.confirm(
+            `Permanently delete cancelled order ${reference}? This cannot be undone.`
+          );
+
+        if (!confirmed) {
+          return;
+        }
+
+        setBusyOrderId(
+          orderId
+        );
+
+        try {
+          await deleteOrder(
+            orderId
+          );
+        } catch (error) {
+          showNotification(
+            error instanceof Error
+              ? error.message
+              : 'Unable to delete order.',
+            'error'
+          );
+        } finally {
+          setBusyOrderId(
+            null
+          );
+        }
+      };
+
+
     return (
       <div className="space-y-6">
 
@@ -259,7 +375,7 @@ export const AdminOrdersPayments:
           </p>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Metric
             label="Orders"
             value={orders.length}
@@ -273,6 +389,11 @@ export const AdminOrdersPayments:
           <Metric
             label="Verified"
             value={verifiedCount}
+          />
+
+          <Metric
+            label="Cancelled"
+            value={cancelledCount}
           />
         </div>
 
@@ -303,6 +424,7 @@ export const AdminOrdersPayments:
                   | 'pending'
                   | 'verified'
                   | 'rejected'
+                  | 'cancelled'
               )
             }
             className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs outline-none"
@@ -322,6 +444,10 @@ export const AdminOrdersPayments:
             <option value="rejected">
               Rejected
             </option>
+
+            <option value="cancelled">
+              Cancelled orders
+            </option>
           </select>
         </div>
 
@@ -340,11 +466,22 @@ export const AdminOrdersPayments:
                   domain,
                 }) => {
                   const pending =
-                    !payment ||
-                    payment.status ===
-                      'pending' ||
-                    payment.status ===
-                      'pending_verification';
+                    order.status !==
+                      'cancelled' &&
+                    (
+                      !payment ||
+                      payment.status ===
+                        'pending' ||
+                      payment.status ===
+                        'pending_verification'
+                    );
+
+                  const cancellable =
+                    canCancelOrder(
+                      String(
+                        order.status
+                      )
+                    );
 
                   return (
                     <div
@@ -360,8 +497,12 @@ export const AdminOrdersPayments:
 
                             <StatusBadge
                               status={
-                                payment?.status ||
-                                'pending'
+                                order.status ===
+                                'cancelled'
+                                  ? 'cancelled'
+                                  : payment?.status ||
+                                    order.status ||
+                                    'pending'
                               }
                             />
                           </div>
@@ -469,6 +610,53 @@ export const AdminOrdersPayments:
                               </>
                             )}
 
+                          {cancellable && (
+                            <button
+                              type="button"
+                              disabled={
+                                busyOrderId ===
+                                order.id
+                              }
+                              onClick={() =>
+                                cancelAdminOrder(
+                                  order.id,
+                                  order.reference
+                                )
+                              }
+                              className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50"
+                            >
+                              <XCircle className="h-4 w-4" />
+                              {busyOrderId ===
+                              order.id
+                                ? 'Cancelling...'
+                                : 'Cancel Order'}
+                            </button>
+                          )}
+
+                          {order.status ===
+                            'cancelled' && (
+                            <button
+                              type="button"
+                              disabled={
+                                busyOrderId ===
+                                order.id
+                              }
+                              onClick={() =>
+                                deleteAdminOrder(
+                                  order.id,
+                                  order.reference
+                                )
+                              }
+                              className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              {busyOrderId ===
+                              order.id
+                                ? 'Deleting...'
+                                : 'Delete Order'}
+                            </button>
+                          )}
+
                           {payment?.status ===
                             'verified' && (
                             <div className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs font-bold text-emerald-700">
@@ -552,22 +740,29 @@ const StatusBadge: React.FC<{
   const rejected =
     status === 'rejected';
 
+  const cancelled =
+    status === 'cancelled';
+
   const label =
-    verified
-      ? 'Verified'
-      : rejected
-        ? 'Rejected'
-        : status ===
-            'pending_verification'
-          ? 'Awaiting verification'
-          : 'Awaiting payment';
+    cancelled
+      ? 'Cancelled'
+      : verified
+        ? 'Verified'
+        : rejected
+          ? 'Rejected'
+          : status ===
+              'pending_verification'
+            ? 'Awaiting verification'
+            : 'Awaiting payment';
 
   const classes =
-    verified
-      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-      : rejected
-        ? 'border-rose-200 bg-rose-50 text-rose-700'
-        : 'border-[#3120ff]/20 bg-[#3120ff]/5 text-[#3120ff]';
+    cancelled
+      ? 'border-zinc-200 bg-zinc-100 text-zinc-600'
+      : verified
+        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+        : rejected
+          ? 'border-zinc-200 bg-zinc-100 text-zinc-700'
+          : 'border-[#3120ff]/20 bg-[#3120ff]/5 text-[#3120ff]';
 
   return (
     <span

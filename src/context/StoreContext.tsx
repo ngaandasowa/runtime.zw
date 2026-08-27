@@ -119,6 +119,15 @@ interface StoreContextType {
     reason?: string
   ) => Promise<void>;
 
+  // Order actions
+  cancelOrder: (
+    orderId: string
+  ) => Promise<void>;
+
+  deleteOrder: (
+    orderId: string
+  ) => Promise<void>;
+
   // Admin Registry actions
   submitRegistryRequest: (requestId: string) => Promise<void>;
   confirmRegistryRequest: (requestId: string) => void;
@@ -1942,6 +1951,199 @@ const getDomainOrderDetails = async (
       );
     };
 
+
+  /*
+   * ----------------------------------------------------------
+   * ORDER CANCELLATION / DELETION
+   * ----------------------------------------------------------
+   *
+   * Customer cancellation intentionally updates ONLY the order.
+   * This matches the current Firestore rule which permits a
+   * customer to change only:
+   *   status -> cancelled
+   *   updated_at
+   *
+   * It does not directly mutate payments or domain records.
+   */
+  const cancelOrder = async (
+    orderId: string
+  ): Promise<void> => {
+    if (!currentUser) {
+      throw new Error(
+        'You must be signed in to cancel an order.'
+      );
+    }
+
+    const order =
+      orders.find(
+        (item) =>
+          item.id === orderId
+      );
+
+    if (!order) {
+      throw new Error(
+        'Order not found.'
+      );
+    }
+
+    const isAdmin =
+      currentUser.role ===
+      'super_admin';
+
+    const ownsOrder =
+      order.user_id ===
+        currentUser.id ||
+      order.user_email ===
+        currentUser.email;
+
+    if (
+      !isAdmin &&
+      !ownsOrder
+    ) {
+      throw new Error(
+        'You cannot cancel this order.'
+      );
+    }
+
+    const cancellableStatuses = [
+      'pending',
+      'unpaid',
+      'payment_pending',
+    ];
+
+    if (
+      !cancellableStatuses.includes(
+        String(order.status)
+      )
+    ) {
+      if (
+        order.status ===
+        'cancelled'
+      ) {
+        throw new Error(
+          'This order is already cancelled.'
+        );
+      }
+
+      if (
+        order.status ===
+        'paid'
+      ) {
+        throw new Error(
+          'Paid orders cannot be cancelled directly. Please contact support.'
+        );
+      }
+
+      throw new Error(
+        'This order cannot be cancelled.'
+      );
+    }
+
+    const now =
+      new Date()
+        .toISOString();
+
+    /*
+     * IMPORTANT:
+     * Send only fields allowed by the customer
+     * Firestore update rule.
+     */
+    await orderRepository
+      .updateOrder(
+        order.id,
+        {
+          status:
+            'cancelled' as any,
+
+          updated_at:
+            now,
+        }
+      );
+
+    const cancelledOrder: Order =
+      {
+        ...order,
+
+        status:
+          'cancelled' as any,
+
+        updated_at:
+          now,
+      };
+
+    setOrders(
+      (previous) =>
+        previous.map(
+          (item) =>
+            item.id ===
+            order.id
+              ? cancelledOrder
+              : item
+        )
+    );
+
+    showNotification(
+      `Order ${order.reference} cancelled.`,
+      'success'
+    );
+  };
+
+
+  const deleteOrder = async (
+    orderId: string
+  ): Promise<void> => {
+    if (
+      !currentUser ||
+      currentUser.role !==
+        'super_admin'
+    ) {
+      throw new Error(
+        'Only a super admin can delete orders.'
+      );
+    }
+
+    const order =
+      orders.find(
+        (item) =>
+          item.id === orderId
+      );
+
+    if (!order) {
+      throw new Error(
+        'Order not found.'
+      );
+    }
+
+    if (
+      order.status !==
+      'cancelled'
+    ) {
+      throw new Error(
+        'Only cancelled orders can be permanently deleted.'
+      );
+    }
+
+    await orderRepository
+      .deleteOrder(
+        order.id
+      );
+
+    setOrders(
+      (previous) =>
+        previous.filter(
+          (item) =>
+            item.id !==
+            order.id
+        )
+    );
+
+    showNotification(
+      `Order ${order.reference} deleted.`,
+      'success'
+    );
+  };
+
+
   const submitRegistryRequest = async (requestId: string) => {
     const target = registryRequests.find(r => r.id === requestId);
     if (!target) return;
@@ -2246,6 +2448,8 @@ const getDomainOrderDetails = async (
       renewDomain,
       approveManualPayment,
       rejectManualPayment,
+      cancelOrder,
+      deleteOrder,
       submitRegistryRequest,
       confirmRegistryRequest,
       createManualRegistryRequest,
