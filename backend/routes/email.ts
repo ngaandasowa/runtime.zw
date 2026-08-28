@@ -58,6 +58,12 @@ const adminOnlyEvents =
     'domain_assigned',
   ]);
 
+/*
+ * ----------------------------------------------------------
+ * AUTHENTICATION
+ * ----------------------------------------------------------
+ */
+
 const authenticate =
   async (
     req: AuthenticatedRequest,
@@ -76,9 +82,7 @@ const authenticate =
         return res
           .status(401)
           .json({
-            success:
-              false,
-
+            success: false,
             message:
               'Authentication required.',
           });
@@ -87,35 +91,21 @@ const authenticate =
       const token =
         header.slice(7);
 
-      console.log('[EMAIL AUTH] Starting verifyIdToken');
+      const decoded =
+        await adminAuth
+          .verifyIdToken(
+            token
+          );
 
-const decoded =
-  await adminAuth
-    .verifyIdToken(
-      token
-    );
-
-return res.json({
-  success: true,
-  debug: 'verifyIdToken passed',
-  uid: decoded.uid,
-});
-
-console.log('[EMAIL AUTH] verifyIdToken successful');
-
-console.log('[EMAIL AUTH] Starting Firestore user lookup');
-
-const profile =
-  await adminDb
-    .collection(
-      'users'
-    )
-    .doc(
-      decoded.uid
-    )
-    .get();
-
-console.log('[EMAIL AUTH] Firestore user lookup successful');
+      const profile =
+        await adminDb
+          .collection(
+            'users'
+          )
+          .doc(
+            decoded.uid
+          )
+          .get();
 
       const role =
         profile.exists
@@ -147,14 +137,18 @@ console.log('[EMAIL AUTH] Firestore user lookup successful');
       return res
         .status(401)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             'Invalid authentication token.',
         });
     }
   };
+
+/*
+ * ----------------------------------------------------------
+ * EMAIL NOTIFICATION ENDPOINT
+ * ----------------------------------------------------------
+ */
 
 router.post(
   '/notify',
@@ -171,6 +165,9 @@ router.post(
       } =
         req.body ?? {};
 
+      /*
+       * Validate event.
+       */
       if (
         !event ||
         !supportedEvents.includes(
@@ -180,14 +177,15 @@ router.post(
         return res
           .status(400)
           .json({
-            success:
-              false,
-
+            success: false,
             message:
               'Unknown email event.',
           });
       }
 
+      /*
+       * Validate required email data.
+       */
       if (
         !data ||
         typeof data.email !==
@@ -200,9 +198,7 @@ router.post(
         return res
           .status(400)
           .json({
-            success:
-              false,
-
+            success: false,
             message:
               'Invalid notification payload.',
           });
@@ -215,6 +211,10 @@ router.post(
         runtimeUser.role ===
         'super_admin';
 
+      /*
+       * Certain lifecycle events may only
+       * be triggered by a super admin.
+       */
       if (
         adminOnlyEvents.has(
           event
@@ -224,21 +224,20 @@ router.post(
         return res
           .status(403)
           .json({
-            success:
-              false,
-
+            success: false,
             message:
               'Administrator permission required.',
           });
       }
 
       /*
-       * Normal customers may only trigger mail
-       * to the email address on their own
-       * authenticated Firebase account.
+       * Normal customers may only trigger
+       * notifications for their own
+       * authenticated email address.
        *
-       * Super admins may send lifecycle mail
-       * to customers while processing orders.
+       * Super admins may send lifecycle
+       * notifications to customers while
+       * processing orders.
        */
       if (
         !isSuperAdmin &&
@@ -252,18 +251,24 @@ router.post(
         return res
           .status(403)
           .json({
-            success:
-              false,
-
+            success: false,
             message:
               'You may only send notifications for your own account.',
           });
       }
 
+      /*
+       * Send transactional email.
+       */
+      await emailService
+        .sendEvent(
+          event as EmailEvent,
+          data as EmailEventData
+        );
+
       return res.json({
-  success: true,
-  debug: 'Authentication and authorization passed',
-});
+        success: true,
+      });
     } catch (error) {
       console.error(
         'Email notification failed:',
@@ -273,9 +278,7 @@ router.post(
       return res
         .status(500)
         .json({
-          success:
-            false,
-
+          success: false,
           message:
             'Unable to send notification email.',
         });
