@@ -108,7 +108,7 @@ interface StoreContextType {
     success: boolean;
     domain: Domain;
     order: Order;
-    payment: Payment;
+    payment?: Payment;
   }>;
   updateDomainNameservers: (domainId: string, nameservers: string[]) => void;
   requestDomainModify: (domainId: string, updatedOwner: RegistrantDetails, nameservers: string[]) => void;
@@ -640,243 +640,264 @@ const getDomainOrderDetails = async (
 };
 
   const registerNewDomain = async (
-    domainName: string,
-    registrantType: 'myself' | 'client',
-    ownerDetails: RegistrantDetails,
-    nameservers: string[],
-    gateway: any = 'ecocash_usd'
-  ) => {
-    if (!currentUser) {
+  domainName: string,
+  registrantType: 'myself' | 'client',
+  ownerDetails: RegistrantDetails,
+  nameservers: string[],
+  gateway: any = 'ecocash_usd'
+) => {
+  if (!currentUser) {
+    throw new Error(
+      'You must be signed in to register a domain.'
+    );
+  }
+
+  const normalizedDomain =
+    domainService.cleanDomain(
+      domainName
+    );
+
+  const {
+    tld,
+    registrationPrice,
+    renewalPrice,
+    processingType,
+  } =
+    await getDomainOrderDetails(
+      normalizedDomain
+    );
+
+  /*
+   * Create the unpaid order first.
+   */
+  const order =
+    orderService.createDomainRegistrationOrder(
+      currentUser.id,
+      currentUser.email,
+      normalizedDomain,
+      registrationPrice,
+      'USD'
+    );
+
+  const now =
+    new Date().toISOString();
+
+  /*
+   * PesePay payments are created by the
+   * secure Runtime backend.
+   *
+   * Manual EcoCash payments continue to
+   * be created here.
+   */
+  const payment =
+    gateway === 'pesepay'
+      ? undefined
+      : await paymentService.processCheckout(
+          order.id,
+          registrationPrice,
+          'USD',
+          currentUser.id,
+          gateway
+        );
+
+  /*
+   * Create the pending domain.
+   *
+   * payment_id exists immediately for
+   * manual payments. For PesePay it will
+   * be created by the backend.
+   */
+  const pendingDomain = {
+    id:
+      'dom-' +
+      Math.random()
+        .toString(36)
+        .substring(2, 10),
+
+    domain_name:
+      normalizedDomain,
+
+    tld,
+
+    user_id:
+      currentUser.id,
+
+    user_email:
+      currentUser.email,
+
+    status:
+      'pending_payment',
+
+    nameservers:
+      nameservers.length > 0
+        ? nameservers
+        : [
+            ...settings.default_nameservers,
+          ],
+
+    auto_renew:
+      true,
+
+    renewal_price:
+      renewalPrice,
+
+    currency:
+      'USD',
+
+    registrant_type:
+      registrantType,
+
+    owner_details:
+      ownerDetails,
+
+    processing_type:
+      processingType,
+
+    registration_price:
+      registrationPrice,
+
+    order_id:
+      order.id,
+
+    ...(payment
+      ? {
+          payment_id:
+            payment.id,
+        }
+      : {}),
+
+    history: [
+      {
+        id:
+          'hist-' +
+          Math.random()
+            .toString(36)
+            .substring(2, 9),
+
+        domain_id:
+          normalizedDomain,
+
+        action:
+          'NEW' as const,
+
+        description:
+          `Order ${order.reference} created. Awaiting payment verification.`,
+
+        status:
+          'pending_payment',
+
+        actor:
+          currentUser.email,
+
+        created_at:
+          now,
+      },
+    ],
+
+    created_at:
+      now,
+
+    updated_at:
+      now,
+  } as Domain & {
+    processing_type:
+      'zispa' | 'manual';
+
+    registration_price:
+      number;
+
+    order_id:
+      string;
+
+    payment_id?:
+      string;
+  };
+
+  /*
+   * Persist checkout.
+   *
+   * PesePay:
+   * order + domain only.
+   *
+   * Manual EcoCash:
+   * order + payment + domain.
+   */
+  if (gateway === 'pesepay') {
+    await checkoutRepository
+      .createDomainRegistrationWithoutPayment(
+        order,
+        pendingDomain
+      );
+  } else {
+    if (!payment) {
       throw new Error(
-        'You must be signed in to register a domain.'
+        'Payment could not be created.'
       );
     }
 
-    const normalizedDomain =
-      domainService.cleanDomain(
-        domainName
-      );
-
-    const {
-      tld,
-      registrationPrice,
-      renewalPrice,
-      processingType,
-    } =
-      await getDomainOrderDetails(
-        normalizedDomain
-      );
-
-    /*
-     * The order exists before payment.
-     * It remains pending until an admin
-     * verifies the money received.
-     */
-    const order =
-      orderService.createDomainRegistrationOrder(
-        currentUser.id,
-        currentUser.email,
-        normalizedDomain,
-        registrationPrice,
-        'USD'
-      );
-
-    /*
-     * Creating a payment is NOT payment verification.
-     */
-    const payment =
-      await paymentService.processCheckout(
-        order.id,
-        registrationPrice,
-        'USD',
-        currentUser.id,
-        gateway
-      );
-
-    const now =
-      new Date().toISOString();
-
-    /*
-     * The domain is created immediately so the customer
-     * can see the order in My Domains.
-     *
-     * pending_payment means Runtime has NOT started
-     * registration processing yet.
-     */
-    const pendingDomain = {
-      id:
-        'dom-' +
-        Math.random()
-          .toString(36)
-          .substring(2, 10),
-
-      domain_name:
-        normalizedDomain,
-
-      tld,
-
-      user_id:
-        currentUser.id,
-
-      user_email:
-        currentUser.email,
-
-      status:
-        'pending_payment',
-
-      nameservers:
-        nameservers.length > 0
-          ? nameservers
-          : [
-              ...settings.default_nameservers,
-            ],
-
-      auto_renew:
-        true,
-
-      renewal_price:
-        renewalPrice,
-
-      currency:
-        'USD',
-
-      registrant_type:
-        registrantType,
-
-      owner_details:
-        ownerDetails,
-
-      processing_type:
-        processingType,
-
-      registration_price:
-        registrationPrice,
-
-      order_id:
-        order.id,
-
-      payment_id:
-        payment.id,
-
-      history: [
-        {
-          id:
-            'hist-' +
-            Math.random()
-              .toString(36)
-              .substring(2, 9),
-
-          domain_id:
-            normalizedDomain,
-
-          action:
-            'NEW' as const,
-
-          description:
-            `Order ${order.reference} created. Awaiting payment verification.`,
-
-          status:
-            'pending_payment',
-
-          actor:
-            currentUser.email,
-
-          created_at:
-            now,
-        },
-      ],
-
-      created_at:
-        now,
-
-      updated_at:
-        now,
-    } as Domain & {
-      processing_type:
-        'zispa' | 'manual';
-
-      registration_price:
-        number;
-
-      order_id:
-        string;
-
-      payment_id:
-        string;
-    };
-
-    /*
-     * Persist all three records.
-     *
-     * No registry request is created here.
-     * No order is marked paid here.
-     */
-    /*
-     * Atomic checkout write.
-     *
-     * Order + payment + pending domain are committed together.
-     * Firestore will never leave only part of a registration
-     * behind if one of these writes fails.
-     */
     await checkoutRepository
       .createDomainRegistration(
         order,
         payment,
         pendingDomain
       );
+  }
 
-    setOrders((prev) => [
-      order,
-      ...prev,
-    ]);
+  setOrders((prev) => [
+    order,
+    ...prev,
+  ]);
 
+  if (payment) {
     setPayments((prev) => [
       payment,
       ...prev,
     ]);
+  }
 
-    setDomains((prev) => [
+  setDomains((prev) => [
+    pendingDomain,
+    ...prev,
+  ]);
+
+  emailNotificationService.notifyQuietly(
+    'domain_order_created',
+    {
+      email:
+        currentUser.email,
+
+      name:
+        ownerDetails.full_name ||
+        currentUser.name,
+
+      orderReference:
+        order.reference,
+
+      paymentReference:
+        payment?.reference ||
+        order.reference,
+
+      domainName:
+        pendingDomain.domain_name,
+
+      amount:
+        order.total,
+    }
+  );
+
+  showNotification(
+    `Order ${order.reference} created. Complete your payment to start registration.`,
+    'success'
+  );
+
+  return {
+    success: true,
+    domain:
       pendingDomain,
-      ...prev,
-    ]);
-
-    emailNotificationService.notifyQuietly(
-      'domain_order_created',
-      {
-        email:
-          currentUser.email,
-
-        name:
-          ownerDetails.full_name ||
-          currentUser.name,
-
-        orderReference:
-          order.reference,
-
-        paymentReference:
-          payment.reference,
-
-        domainName:
-          pendingDomain.domain_name,
-
-        amount:
-          order.total,
-      }
-    );
-
-    showNotification(
-      `Order ${order.reference} created. Complete your payment to start registration.`,
-      'success'
-    );
-
-    return {
-      success: true,
-      domain:
-        pendingDomain,
-      order,
-      payment,
-    };
+    order,
+    payment,
   };
+};
 
   const updateDomainNameservers = (
     domainId: string,

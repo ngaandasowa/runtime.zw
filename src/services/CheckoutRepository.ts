@@ -64,6 +64,32 @@ class CheckoutRepository {
     await batch.commit();
   }
 
+  async createDomainRegistrationWithoutPayment(
+  order: Order,
+  domain: Domain
+): Promise<void> {
+  const batch = writeBatch(db);
+
+  batch.set(
+    doc(
+      db,
+      'orders',
+      order.id
+    ),
+    order
+  );
+
+  batch.set(
+    doc(
+      db,
+      'domains',
+      domain.id
+    ),
+    domain
+  );
+
+  await batch.commit();
+}
 
   /*
    * Renewal checkout does not create another domain.

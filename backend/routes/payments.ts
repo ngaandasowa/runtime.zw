@@ -17,6 +17,9 @@ const router = Router();
 const PESEPAY_API_URL =
   'https://api.pesepay.com/api/payments-engine/v2/payments/make-payment';
 
+const PESEPAY_STATUS_URL =
+  'https://api.pesepay.com/api/payments-engine/v1/payments/check-payment';
+
 type RuntimeUser = {
   uid: string;
   email: string;
@@ -236,6 +239,71 @@ const decryptPayload = (
   ) as PesePayTransaction;
 };
 
+const fetchPesePayStatus = async (
+  referenceNumber: string
+): Promise<PesePayTransaction> => {
+  const {
+    integrationKey,
+    encryptionKey,
+  } = getPesePayCredentials();
+
+  const url =
+    `${PESEPAY_STATUS_URL}?referenceNumber=${encodeURIComponent(
+      referenceNumber
+    )}`;
+
+  const response =
+    await fetch(
+      url,
+      {
+        method: 'GET',
+        headers: {
+          authorization:
+            integrationKey,
+          Accept:
+            'application/json',
+        },
+      }
+    );
+
+  let responseBody: any;
+
+  try {
+    responseBody =
+      await response.json();
+  } catch {
+    responseBody = null;
+  }
+
+  if (!response.ok) {
+    console.error(
+      'PesePay status check failed:',
+      response.status,
+      responseBody
+    );
+
+    throw new Error(
+      `PesePay status check failed with HTTP ${response.status}.`
+    );
+  }
+
+  if (
+    !responseBody ||
+    typeof responseBody.payload !==
+      'string' ||
+    !responseBody.payload
+  ) {
+    throw new Error(
+      'PesePay returned an invalid status response.'
+    );
+  }
+
+  return decryptPayload(
+    responseBody.payload,
+    encryptionKey
+  );
+};
+
 /*
  * ----------------------------------------------------------
  * HELPERS
@@ -370,6 +438,321 @@ router.all(
 
       return res.status(200).json({
         success: true,
+      });
+    }
+  }
+);
+
+/*
+ * ----------------------------------------------------------
+ * VERIFY PESEPAY PAYMENT
+ * ----------------------------------------------------------
+ *
+ * Runtime never trusts the browser or callback as proof of
+ * payment. This route asks PesePay for the authoritative
+ * transaction status before changing local payment state.
+ *
+ * Only SUCCESS is treated as paid. Unknown/non-success
+ * statuses remain pending until we explicitly map PesePay's
+ * terminal failure statuses.
+ */
+
+router.post(
+  '/pesepay/verify',
+  authenticate,
+  async (
+    req: AuthenticatedRequest,
+    res: Response
+  ) => {
+    try {
+      const body =
+        req.body ?? {};
+
+      const paymentId =
+        typeof body.paymentId ===
+        'string'
+          ? body.paymentId.trim()
+          : '';
+
+      if (!paymentId) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Payment ID is required.',
+        });
+      }
+
+      const runtimeUser =
+        req.runtimeUser!;
+
+      const paymentRef =
+        adminDb
+          .collection('payments')
+          .doc(paymentId);
+
+      const paymentDoc =
+        await paymentRef.get();
+
+      if (!paymentDoc.exists) {
+        return res.status(404).json({
+          success: false,
+          message:
+            'Payment not found.',
+        });
+      }
+
+      const payment =
+        paymentDoc.data()!;
+
+      const ownsPayment =
+        payment.user_id ===
+          runtimeUser.uid;
+
+      const isAdmin =
+        runtimeUser.role ===
+          'super_admin';
+
+      if (
+        !ownsPayment &&
+        !isAdmin
+      ) {
+        return res.status(403).json({
+          success: false,
+          message:
+            'You may only verify your own payment.',
+        });
+      }
+
+      if (
+        payment.gateway !==
+        'pesepay'
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'This is not a PesePay payment.',
+        });
+      }
+
+      const orderId =
+        String(
+          payment.order_id || ''
+        ).trim();
+
+      const providerReference =
+        String(
+          payment.provider_reference ||
+          ''
+        ).trim();
+
+      if (
+        !orderId ||
+        !providerReference
+      ) {
+        return res.status(409).json({
+          success: false,
+          message:
+            'The PesePay transaction is not ready for verification yet.',
+        });
+      }
+
+      const providerTransaction =
+        await fetchPesePayStatus(
+          providerReference
+        );
+
+      const providerStatus =
+        String(
+          providerTransaction
+            .transactionStatus || ''
+        )
+          .trim()
+          .toUpperCase();
+
+      const providerDescription =
+        String(
+          providerTransaction
+            .transactionStatusDescription ||
+          ''
+        );
+
+      const providerInternalReference =
+        String(
+          providerTransaction
+            .internalReference ||
+          providerReference
+        );
+
+      const now =
+        new Date().toISOString();
+
+      /*
+       * SUCCESS is the only status that can
+       * move money/order state to paid.
+       */
+      if (
+        providerStatus ===
+        'SUCCESS'
+      ) {
+        const result =
+          await adminDb.runTransaction(
+            async (transaction) => {
+              const freshPayment =
+                await transaction.get(
+                  paymentRef
+                );
+
+              if (!freshPayment.exists) {
+                throw new Error(
+                  'Payment disappeared during verification.'
+                );
+              }
+
+              const freshPaymentData =
+                freshPayment.data()!;
+
+              const orderRef =
+                adminDb
+                  .collection('orders')
+                  .doc(
+                    String(
+                      freshPaymentData
+                        .order_id
+                    )
+                  );
+
+              const freshOrder =
+                await transaction.get(
+                  orderRef
+                );
+
+              if (!freshOrder.exists) {
+                throw new Error(
+                  'Order linked to payment was not found.'
+                );
+              }
+
+              const order =
+                freshOrder.data()!;
+
+              if (
+                order.status ===
+                  'cancelled' ||
+                order.status ===
+                  'refunded'
+              ) {
+                throw new Error(
+                  'This order can no longer be marked paid.'
+                );
+              }
+
+              /*
+               * Idempotency:
+               * repeated verification of the same
+               * successful payment is harmless.
+               */
+              transaction.set(
+                paymentRef,
+                {
+                  status:
+                    'verified',
+                  provider_status:
+                    providerStatus,
+                  provider_status_description:
+                    providerDescription,
+                  transaction_id:
+                    providerInternalReference,
+                  verified_at:
+                    freshPaymentData
+                      .verified_at ||
+                    now,
+                  updated_at:
+                    now,
+                },
+                { merge: true }
+              );
+
+              if (
+                order.status !==
+                  'paid' &&
+                order.status !==
+                  'completed'
+              ) {
+                transaction.update(
+                  orderRef,
+                  {
+                    status:
+                      'paid',
+                    paid_at:
+                      order.paid_at ||
+                      now,
+                    updated_at:
+                      now,
+                  }
+                );
+              }
+
+              return {
+                orderId:
+                  orderRef.id,
+              };
+            }
+          );
+
+        return res.json({
+          success: true,
+          verified: true,
+          paymentId,
+          orderId:
+            result.orderId,
+          transactionStatus:
+            providerStatus,
+          transactionStatusDescription:
+            providerDescription,
+        });
+      }
+
+      /*
+       * Do not guess which non-success statuses
+       * are terminal. Keep the payment pending
+       * while recording PesePay's latest status.
+       */
+      await paymentRef.set(
+        {
+          provider_status:
+            providerStatus ||
+            'UNKNOWN',
+          provider_status_description:
+            providerDescription,
+          transaction_id:
+            providerInternalReference,
+          updated_at:
+            now,
+        },
+        { merge: true }
+      );
+
+      return res.json({
+        success: true,
+        verified: false,
+        paymentId,
+        orderId,
+        transactionStatus:
+          providerStatus ||
+          'UNKNOWN',
+        transactionStatusDescription:
+          providerDescription,
+      });
+    } catch (error) {
+      console.error(
+        'PesePay verification error:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          'Unable to verify PesePay payment.',
       });
     }
   }
