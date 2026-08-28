@@ -2,7 +2,7 @@ import 'dotenv/config';
 
 import express from 'express';
 
-import emailRoutes from './routes/email';
+import emailRoutes from './routes/email.js';
 
 const app =
   express();
@@ -22,9 +22,11 @@ app.use(
     next
   ) => {
     const allowedOrigins = [
-      'http://localhost:3000',
-      'http://127.0.0.1:3000',
-    ];
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'https://runtime.co.zw',
+  'https://www.runtime.co.zw',
+];
 
     const origin =
       req.headers.origin;
@@ -83,6 +85,21 @@ app.use(
   express.json()
 );
 
+/*
+ * ----------------------------------------------------------
+ * HEALTH CHECK
+ * ----------------------------------------------------------
+ */
+
+app.get(
+  '/',
+  (_req, res) => {
+    res.json({
+      status: 'ok',
+      service: 'Runtime API',
+    });
+  }
+);
 
 /*
  * ----------------------------------------------------------

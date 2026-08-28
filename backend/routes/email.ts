@@ -8,16 +8,16 @@ import {
 import {
   adminAuth,
   adminDb,
-} from '../firebaseAdmin';
+} from '../firebaseAdmin.js';
 
 import {
   emailService,
-} from '../email/emailService';
+} from '../email/emailService.js';
 
 import {
   EmailEvent,
   EmailEventData,
-} from '../email/templates';
+} from '../email/templates.js';
 
 type RuntimeUser = {
   uid: string;

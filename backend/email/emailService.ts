@@ -1,13 +1,13 @@
 import {
   sendMail,
-} from './mailer';
+} from './mailer.js';
 
 import {
   buildAdminEmail,
   buildCustomerEmail,
   EmailEvent,
   EmailEventData,
-} from './templates';
+} from './templates.js';
 
 class EmailService {
   async sendEvent(
