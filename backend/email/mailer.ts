@@ -1,28 +1,16 @@
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
-export const mailer =
-  nodemailer.createTransport({
-    host:
-      process.env.SMTP_HOST,
+const apiKey =
+  process.env.RESEND_API_KEY;
 
-    port:
-      Number(
-        process.env.SMTP_PORT ||
-          465
-      ),
+if (!apiKey) {
+  throw new Error(
+    'RESEND_API_KEY environment variable is missing'
+  );
+}
 
-    secure:
-      process.env.SMTP_SECURE ===
-      'true',
-
-    auth: {
-      user:
-        process.env.SMTP_USER,
-
-      pass:
-        process.env.SMTP_PASS,
-    },
-  });
+const resend =
+  new Resend(apiKey);
 
 export const sendMail =
   async ({
@@ -34,12 +22,42 @@ export const sendMail =
     subject: string;
     html: string;
   }) => {
-    await mailer.sendMail({
-      from:
-        `"${process.env.MAIL_FROM_NAME || 'Runtime'}" <${process.env.MAIL_FROM_EMAIL}>`,
+    const fromName =
+      process.env.MAIL_FROM_NAME ||
+      'Runtime';
 
-      to,
-      subject,
-      html,
-    });
+    const fromEmail =
+      process.env.MAIL_FROM_EMAIL ||
+      'notifications@runtime.co.zw';
+
+    const {
+      data,
+      error,
+    } =
+      await resend.emails.send({
+        from:
+          `${fromName} <${fromEmail}>`,
+        to: [to],
+        subject,
+        html,
+      });
+
+    if (error) {
+      console.error(
+        'Resend email error:',
+        error
+      );
+
+      throw new Error(
+        error.message ||
+        'Unable to send email through Resend'
+      );
+    }
+
+    console.log(
+      'Email sent through Resend:',
+      data?.id
+    );
+
+    return data;
   };
