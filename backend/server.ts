@@ -1,79 +1,81 @@
 import 'dotenv/config';
 
 import express from 'express';
+import cors from 'cors';
 
 import emailRoutes from './routes/email.js';
 
-const app =
-  express();
-
+const app = express();
 
 /*
  * ----------------------------------------------------------
  * CORS
  * ----------------------------------------------------------
- *
- * Allows the Runtime frontend to call the backend.
  */
-app.use(
-  (
-    req,
-    res,
-    next
-  ) => {
-    const allowedOrigins = [
+
+const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'https://runtime.co.zw',
   'https://www.runtime.co.zw',
 ];
 
-    const origin =
-      req.headers.origin;
+app.use(
+  cors({
+    origin: (
+      origin,
+      callback
+    ) => {
+      /*
+       * Allow requests without an Origin header,
+       * such as server-to-server requests.
+       */
+      if (!origin) {
+        return callback(
+          null,
+          true
+        );
+      }
 
-    if (
-      origin &&
-      allowedOrigins.includes(
-        origin
-      )
-    ) {
-      res.setHeader(
-        'Access-Control-Allow-Origin',
-        origin
+      if (
+        allowedOrigins.includes(
+          origin
+        )
+      ) {
+        return callback(
+          null,
+          true
+        );
+      }
+
+      console.error(
+        `CORS blocked origin: ${origin}`
       );
-    }
 
-    res.setHeader(
-      'Access-Control-Allow-Methods',
-      'GET,POST,PUT,PATCH,DELETE,OPTIONS'
-    );
+      return callback(
+        new Error(
+          `Origin not allowed: ${origin}`
+        )
+      );
+    },
 
-    res.setHeader(
-      'Access-Control-Allow-Headers',
-      'Content-Type, Authorization'
-    );
+    methods: [
+      'GET',
+      'POST',
+      'PUT',
+      'PATCH',
+      'DELETE',
+      'OPTIONS',
+    ],
 
-    res.setHeader(
-      'Access-Control-Allow-Credentials',
-      'true'
-    );
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+    ],
 
-    /*
-     * Browser preflight request.
-     */
-    if (
-      req.method ===
-      'OPTIONS'
-    ) {
-      return res
-        .status(204)
-        .end();
-    }
-
-    next();
-  }
+    credentials: true,
+  })
 );
-
 
 /*
  * ----------------------------------------------------------
@@ -112,6 +114,30 @@ app.use(
   emailRoutes
 );
 
+/*
+ * ----------------------------------------------------------
+ * ERROR HANDLER
+ * ----------------------------------------------------------
+ */
+
+app.use(
+  (
+    error: Error,
+    _req: express.Request,
+    res: express.Response,
+    _next: express.NextFunction
+  ) => {
+    console.error(
+      'Runtime API error:',
+      error
+    );
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+);
 
 /*
  * ----------------------------------------------------------
@@ -127,6 +153,7 @@ const PORT =
 
 app.listen(
   PORT,
+  '0.0.0.0',
   () => {
     console.log(
       `Runtime backend running on port ${PORT}`

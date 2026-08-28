@@ -1,5 +1,6 @@
 import { Router, } from 'express';
 import { adminAuth, adminDb, } from '../firebaseAdmin.js';
+import { emailService, } from '../email/emailService.js';
 const router = Router();
 const supportedEvents = [
     'domain_order_created',
@@ -22,6 +23,11 @@ const adminOnlyEvents = new Set([
     'domain_activated',
     'domain_assigned',
 ]);
+/*
+ * ----------------------------------------------------------
+ * AUTHENTICATION
+ * ----------------------------------------------------------
+ */
 const authenticate = async (req, res, next) => {
     try {
         const header = req.headers.authorization;
@@ -34,21 +40,12 @@ const authenticate = async (req, res, next) => {
             });
         }
         const token = header.slice(7);
-        console.log('[EMAIL AUTH] Starting verifyIdToken');
         const decoded = await adminAuth
             .verifyIdToken(token);
-        return res.json({
-            success: true,
-            debug: 'verifyIdToken passed',
-            uid: decoded.uid,
-        });
-        console.log('[EMAIL AUTH] verifyIdToken successful');
-        console.log('[EMAIL AUTH] Starting Firestore user lookup');
         const profile = await adminDb
             .collection('users')
             .doc(decoded.uid)
             .get();
-        console.log('[EMAIL AUTH] Firestore user lookup successful');
         const role = profile.exists
             ? String(profile.data()
                 ?.role ||
@@ -72,9 +69,17 @@ const authenticate = async (req, res, next) => {
         });
     }
 };
+/*
+ * ----------------------------------------------------------
+ * EMAIL NOTIFICATION ENDPOINT
+ * ----------------------------------------------------------
+ */
 router.post('/notify', authenticate, async (req, res) => {
     try {
         const { event, data, } = req.body ?? {};
+        /*
+         * Validate event.
+         */
         if (!event ||
             !supportedEvents.includes(event)) {
             return res
@@ -84,6 +89,9 @@ router.post('/notify', authenticate, async (req, res) => {
                 message: 'Unknown email event.',
             });
         }
+        /*
+         * Validate required email data.
+         */
         if (!data ||
             typeof data.email !==
                 'string' ||
@@ -101,6 +109,10 @@ router.post('/notify', authenticate, async (req, res) => {
         const runtimeUser = req.runtimeUser;
         const isSuperAdmin = runtimeUser.role ===
             'super_admin';
+        /*
+         * Certain lifecycle events may only
+         * be triggered by a super admin.
+         */
         if (adminOnlyEvents.has(event) &&
             !isSuperAdmin) {
             return res
@@ -111,12 +123,13 @@ router.post('/notify', authenticate, async (req, res) => {
             });
         }
         /*
-         * Normal customers may only trigger mail
-         * to the email address on their own
-         * authenticated Firebase account.
+         * Normal customers may only trigger
+         * notifications for their own
+         * authenticated email address.
          *
-         * Super admins may send lifecycle mail
-         * to customers while processing orders.
+         * Super admins may send lifecycle
+         * notifications to customers while
+         * processing orders.
          */
         if (!isSuperAdmin &&
             data.email
@@ -132,9 +145,13 @@ router.post('/notify', authenticate, async (req, res) => {
                 message: 'You may only send notifications for your own account.',
             });
         }
+        /*
+         * Send transactional email.
+         */
+        await emailService
+            .sendEvent(event, data);
         return res.json({
             success: true,
-            debug: 'Authentication and authorization passed',
         });
     }
     catch (error) {
