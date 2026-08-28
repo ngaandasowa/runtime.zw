@@ -12,28 +12,18 @@ import {
   getFirestore,
 } from 'firebase-admin/firestore';
 
-import {
-  readFileSync,
-} from 'node:fs';
+const serviceAccountJson =
+  process.env.FIREBASE_SERVICE_ACCOUNT;
 
-import {
-  fileURLToPath,
-} from 'node:url';
-
-const serviceAccountPath =
-  fileURLToPath(
-    new URL(
-      './firebase-service-account.json',
-      import.meta.url
-    )
+if (!serviceAccountJson) {
+  throw new Error(
+    'FIREBASE_SERVICE_ACCOUNT environment variable is missing'
   );
+}
 
 const serviceAccount =
   JSON.parse(
-    readFileSync(
-      serviceAccountPath,
-      'utf8'
-    )
+    serviceAccountJson
   );
 
 if (

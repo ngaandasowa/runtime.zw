@@ -1,6 +1,5 @@
 import { Router, } from 'express';
 import { adminAuth, adminDb, } from '../firebaseAdmin.js';
-import { emailService, } from '../email/emailService.js';
 const router = Router();
 const supportedEvents = [
     'domain_order_created',
@@ -35,12 +34,21 @@ const authenticate = async (req, res, next) => {
             });
         }
         const token = header.slice(7);
+        console.log('[EMAIL AUTH] Starting verifyIdToken');
         const decoded = await adminAuth
             .verifyIdToken(token);
+        return res.json({
+            success: true,
+            debug: 'verifyIdToken passed',
+            uid: decoded.uid,
+        });
+        console.log('[EMAIL AUTH] verifyIdToken successful');
+        console.log('[EMAIL AUTH] Starting Firestore user lookup');
         const profile = await adminDb
             .collection('users')
             .doc(decoded.uid)
             .get();
+        console.log('[EMAIL AUTH] Firestore user lookup successful');
         const role = profile.exists
             ? String(profile.data()
                 ?.role ||
@@ -124,10 +132,9 @@ router.post('/notify', authenticate, async (req, res) => {
                 message: 'You may only send notifications for your own account.',
             });
         }
-        await emailService
-            .sendEvent(event, data);
         return res.json({
             success: true,
+            debug: 'Authentication and authorization passed',
         });
     }
     catch (error) {

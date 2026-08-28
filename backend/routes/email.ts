@@ -87,21 +87,35 @@ const authenticate =
       const token =
         header.slice(7);
 
-      const decoded =
-        await adminAuth
-          .verifyIdToken(
-            token
-          );
+      console.log('[EMAIL AUTH] Starting verifyIdToken');
 
-      const profile =
-        await adminDb
-          .collection(
-            'users'
-          )
-          .doc(
-            decoded.uid
-          )
-          .get();
+const decoded =
+  await adminAuth
+    .verifyIdToken(
+      token
+    );
+
+return res.json({
+  success: true,
+  debug: 'verifyIdToken passed',
+  uid: decoded.uid,
+});
+
+console.log('[EMAIL AUTH] verifyIdToken successful');
+
+console.log('[EMAIL AUTH] Starting Firestore user lookup');
+
+const profile =
+  await adminDb
+    .collection(
+      'users'
+    )
+    .doc(
+      decoded.uid
+    )
+    .get();
+
+console.log('[EMAIL AUTH] Firestore user lookup successful');
 
       const role =
         profile.exists
@@ -246,16 +260,10 @@ router.post(
           });
       }
 
-      await emailService
-        .sendEvent(
-          event as EmailEvent,
-          data as EmailEventData
-        );
-
       return res.json({
-        success:
-          true,
-      });
+  success: true,
+  debug: 'Authentication and authorization passed',
+});
     } catch (error) {
       console.error(
         'Email notification failed:',
