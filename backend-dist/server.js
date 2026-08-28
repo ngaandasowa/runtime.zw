@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import emailRoutes from './routes/email.js';
+import paymentRoutes from './routes/payments.js';
 const app = express();
 /*
  * ----------------------------------------------------------
@@ -66,6 +67,7 @@ app.get('/', (_req, res) => {
  * ----------------------------------------------------------
  */
 app.use('/api/email', emailRoutes);
+app.use('/api/payments', paymentRoutes);
 /*
  * ----------------------------------------------------------
  * ERROR HANDLER
