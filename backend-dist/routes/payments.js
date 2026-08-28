@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { adminAuth, adminDb, } from '../firebaseAdmin.js';
 const router = Router();
 const PESEPAY_API_URL = 'https://api.pesepay.com/api/payments-engine/v2/payments/make-payment';
+const PESEPAY_STATUS_URL = 'https://api.pesepay.com/api/payments-engine/v1/payments/check-payment';
 /*
  * ----------------------------------------------------------
  * AUTHENTICATION
@@ -94,6 +95,36 @@ const decryptPayload = (encryptedPayload, encryptionKey) => {
     }
     return JSON.parse(decrypted);
 };
+const fetchPesePayStatus = async (referenceNumber) => {
+    const { integrationKey, encryptionKey, } = getPesePayCredentials();
+    const url = `${PESEPAY_STATUS_URL}?referenceNumber=${encodeURIComponent(referenceNumber)}`;
+    const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+            authorization: integrationKey,
+            Accept: 'application/json',
+        },
+    });
+    let responseBody;
+    try {
+        responseBody =
+            await response.json();
+    }
+    catch {
+        responseBody = null;
+    }
+    if (!response.ok) {
+        console.error('PesePay status check failed:', response.status, responseBody);
+        throw new Error(`PesePay status check failed with HTTP ${response.status}.`);
+    }
+    if (!responseBody ||
+        typeof responseBody.payload !==
+            'string' ||
+        !responseBody.payload) {
+        throw new Error('PesePay returned an invalid status response.');
+    }
+    return decryptPayload(responseBody.payload, encryptionKey);
+};
 /*
  * ----------------------------------------------------------
  * HELPERS
@@ -146,6 +177,144 @@ router.get('/pesepay/status', (_req, res) => {
         });
     }
 });
+const verifyPesePayCallbackPayment = async (paymentId) => {
+    /*
+     * The callback can arrive very quickly. Give initiation a
+     * few seconds to save PesePay's provider reference first.
+     */
+    let paymentDoc = null;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+        paymentDoc =
+            await adminDb
+                .collection('payments')
+                .doc(paymentId)
+                .get();
+        if (paymentDoc.exists &&
+            paymentDoc.data()
+                ?.provider_reference) {
+            break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    if (!paymentDoc ||
+        !paymentDoc.exists) {
+        return false;
+    }
+    const payment = paymentDoc.data();
+    const providerReference = String(payment.provider_reference ||
+        '').trim();
+    const orderId = String(payment.order_id ||
+        '').trim();
+    if (!providerReference ||
+        !orderId) {
+        return false;
+    }
+    const providerTransaction = await fetchPesePayStatus(providerReference);
+    const providerStatus = String(providerTransaction
+        .transactionStatus ||
+        '')
+        .trim()
+        .toUpperCase();
+    const providerDescription = String(providerTransaction
+        .transactionStatusDescription ||
+        '');
+    const now = new Date().toISOString();
+    const paymentRef = adminDb
+        .collection('payments')
+        .doc(paymentId);
+    if (providerStatus !==
+        'SUCCESS') {
+        await paymentRef.set({
+            provider_status: providerStatus ||
+                'UNKNOWN',
+            provider_status_description: providerDescription,
+            updated_at: now,
+        }, { merge: true });
+        return false;
+    }
+    await adminDb.runTransaction(async (transaction) => {
+        const freshPayment = await transaction.get(paymentRef);
+        if (!freshPayment.exists) {
+            return;
+        }
+        const freshPaymentData = freshPayment.data();
+        const orderRef = adminDb
+            .collection('orders')
+            .doc(String(freshPaymentData
+            .order_id));
+        const freshOrder = await transaction.get(orderRef);
+        if (!freshOrder.exists) {
+            return;
+        }
+        const order = freshOrder.data();
+        if (order.status ===
+            'cancelled' ||
+            order.status ===
+                'refunded') {
+            return;
+        }
+        const domainQuery = adminDb
+            .collection('domains')
+            .where('order_id', '==', orderRef.id)
+            .limit(1);
+        const domainSnapshot = await transaction.get(domainQuery);
+        transaction.set(paymentRef, {
+            status: 'verified',
+            provider_status: 'SUCCESS',
+            provider_status_description: providerDescription,
+            transaction_id: providerTransaction
+                .internalReference ||
+                providerReference,
+            verified_at: freshPaymentData
+                .verified_at ||
+                now,
+            updated_at: now,
+        }, { merge: true });
+        if (order.status !==
+            'paid' &&
+            order.status !==
+                'completed') {
+            transaction.update(orderRef, {
+                status: 'paid',
+                paid_at: order.paid_at ||
+                    now,
+                updated_at: now,
+            });
+        }
+        if (!domainSnapshot.empty) {
+            const domainDoc = domainSnapshot.docs[0];
+            const domain = domainDoc.data();
+            const existingHistory = Array.isArray(domain.history)
+                ? domain.history
+                : [];
+            const alreadyRecorded = existingHistory.some((item) => item?.description ===
+                'PesePay payment verified. Domain registration is now being processed.');
+            transaction.set(domainDoc.ref, {
+                status: domain.status ===
+                    'pending_payment'
+                    ? 'pending_registration'
+                    : domain.status,
+                payment_id: paymentId,
+                updated_at: now,
+                history: alreadyRecorded
+                    ? existingHistory
+                    : [
+                        ...existingHistory,
+                        {
+                            id: `hist-pesepay-${paymentId.slice(0, 8)}`,
+                            domain_id: domainDoc.id,
+                            action: 'STATUS_CHANGE',
+                            description: 'PesePay payment verified. Domain registration is now being processed.',
+                            status: 'pending_registration',
+                            actor: 'PesePay',
+                            created_at: now,
+                        },
+                    ],
+            }, { merge: true });
+        }
+    });
+    return true;
+};
 /*
  * ----------------------------------------------------------
  * PESEPAY RESULT CALLBACK
@@ -170,6 +339,7 @@ router.all('/pesepay/result', async (req, res) => {
                 provider_callback_received_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
             }, { merge: true });
+            await verifyPesePayCallbackPayment(paymentId);
         }
         return res.status(200).json({
             success: true,
@@ -179,6 +349,216 @@ router.all('/pesepay/result', async (req, res) => {
         console.error('PesePay result callback error:', error);
         return res.status(200).json({
             success: true,
+        });
+    }
+});
+/*
+ * ----------------------------------------------------------
+ * VERIFY PESEPAY PAYMENT
+ * ----------------------------------------------------------
+ *
+ * Runtime never trusts the browser or callback as proof of
+ * payment. This route asks PesePay for the authoritative
+ * transaction status before changing local payment state.
+ *
+ * Only SUCCESS is treated as paid. Unknown/non-success
+ * statuses remain pending until we explicitly map PesePay's
+ * terminal failure statuses.
+ */
+router.post('/pesepay/verify', authenticate, async (req, res) => {
+    try {
+        const body = req.body ?? {};
+        const paymentId = typeof body.paymentId ===
+            'string'
+            ? body.paymentId.trim()
+            : '';
+        if (!paymentId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Payment ID is required.',
+            });
+        }
+        const runtimeUser = req.runtimeUser;
+        const paymentRef = adminDb
+            .collection('payments')
+            .doc(paymentId);
+        const paymentDoc = await paymentRef.get();
+        if (!paymentDoc.exists) {
+            return res.status(404).json({
+                success: false,
+                message: 'Payment not found.',
+            });
+        }
+        const payment = paymentDoc.data();
+        const ownsPayment = payment.user_id ===
+            runtimeUser.uid;
+        const isAdmin = runtimeUser.role ===
+            'super_admin';
+        if (!ownsPayment &&
+            !isAdmin) {
+            return res.status(403).json({
+                success: false,
+                message: 'You may only verify your own payment.',
+            });
+        }
+        if (payment.gateway !==
+            'pesepay') {
+            return res.status(400).json({
+                success: false,
+                message: 'This is not a PesePay payment.',
+            });
+        }
+        const orderId = String(payment.order_id || '').trim();
+        const providerReference = String(payment.provider_reference ||
+            '').trim();
+        if (!orderId ||
+            !providerReference) {
+            return res.status(409).json({
+                success: false,
+                message: 'The PesePay transaction is not ready for verification yet.',
+            });
+        }
+        const providerTransaction = await fetchPesePayStatus(providerReference);
+        const providerStatus = String(providerTransaction
+            .transactionStatus || '')
+            .trim()
+            .toUpperCase();
+        const providerDescription = String(providerTransaction
+            .transactionStatusDescription ||
+            '');
+        const providerInternalReference = String(providerTransaction
+            .internalReference ||
+            providerReference);
+        const now = new Date().toISOString();
+        /*
+         * SUCCESS is the only status that can
+         * move money/order state to paid.
+         */
+        if (providerStatus ===
+            'SUCCESS') {
+            const result = await adminDb.runTransaction(async (transaction) => {
+                const freshPayment = await transaction.get(paymentRef);
+                if (!freshPayment.exists) {
+                    throw new Error('Payment disappeared during verification.');
+                }
+                const freshPaymentData = freshPayment.data();
+                const orderRef = adminDb
+                    .collection('orders')
+                    .doc(String(freshPaymentData
+                    .order_id));
+                const freshOrder = await transaction.get(orderRef);
+                if (!freshOrder.exists) {
+                    throw new Error('Order linked to payment was not found.');
+                }
+                const order = freshOrder.data();
+                const domainQuery = adminDb
+                    .collection('domains')
+                    .where('order_id', '==', orderRef.id)
+                    .limit(1);
+                const domainSnapshot = await transaction.get(domainQuery);
+                if (order.status ===
+                    'cancelled' ||
+                    order.status ===
+                        'refunded') {
+                    throw new Error('This order can no longer be marked paid.');
+                }
+                /*
+                 * Idempotency:
+                 * repeated verification of the same
+                 * successful payment is harmless.
+                 */
+                transaction.set(paymentRef, {
+                    status: 'verified',
+                    provider_status: providerStatus,
+                    provider_status_description: providerDescription,
+                    transaction_id: providerInternalReference,
+                    verified_at: freshPaymentData
+                        .verified_at ||
+                        now,
+                    updated_at: now,
+                }, { merge: true });
+                if (order.status !==
+                    'paid' &&
+                    order.status !==
+                        'completed') {
+                    transaction.update(orderRef, {
+                        status: 'paid',
+                        paid_at: order.paid_at ||
+                            now,
+                        updated_at: now,
+                    });
+                }
+                if (!domainSnapshot.empty) {
+                    const domainDoc = domainSnapshot.docs[0];
+                    const domain = domainDoc.data();
+                    const existingHistory = Array.isArray(domain.history)
+                        ? domain.history
+                        : [];
+                    const alreadyRecorded = existingHistory.some((item) => item?.description ===
+                        'PesePay payment verified. Domain registration is now being processed.');
+                    transaction.set(domainDoc.ref, {
+                        status: domain.status ===
+                            'pending_payment'
+                            ? 'pending_registration'
+                            : domain.status,
+                        payment_id: paymentId,
+                        updated_at: now,
+                        history: alreadyRecorded
+                            ? existingHistory
+                            : [
+                                ...existingHistory,
+                                {
+                                    id: `hist-pesepay-${paymentId.slice(0, 8)}`,
+                                    domain_id: domainDoc.id,
+                                    action: 'STATUS_CHANGE',
+                                    description: 'PesePay payment verified. Domain registration is now being processed.',
+                                    status: 'pending_registration',
+                                    actor: 'PesePay',
+                                    created_at: now,
+                                },
+                            ],
+                    }, { merge: true });
+                }
+                return {
+                    orderId: orderRef.id,
+                };
+            });
+            return res.json({
+                success: true,
+                verified: true,
+                paymentId,
+                orderId: result.orderId,
+                transactionStatus: providerStatus,
+                transactionStatusDescription: providerDescription,
+            });
+        }
+        /*
+         * Do not guess which non-success statuses
+         * are terminal. Keep the payment pending
+         * while recording PesePay's latest status.
+         */
+        await paymentRef.set({
+            provider_status: providerStatus ||
+                'UNKNOWN',
+            provider_status_description: providerDescription,
+            transaction_id: providerInternalReference,
+            updated_at: now,
+        }, { merge: true });
+        return res.json({
+            success: true,
+            verified: false,
+            paymentId,
+            orderId,
+            transactionStatus: providerStatus ||
+                'UNKNOWN',
+            transactionStatusDescription: providerDescription,
+        });
+    }
+    catch (error) {
+        console.error('PesePay verification error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Unable to verify PesePay payment.',
         });
     }
 });
@@ -303,6 +683,17 @@ router.post('/pesepay/initiate', authenticate, async (req, res) => {
             status: 'payment_pending',
             updated_at: now,
         });
+        const domainSnapshot = await adminDb
+            .collection('domains')
+            .where('order_id', '==', orderId)
+            .limit(1)
+            .get();
+        if (!domainSnapshot.empty) {
+            batch.set(domainSnapshot.docs[0].ref, {
+                payment_id: paymentId,
+                updated_at: now,
+            }, { merge: true });
+        }
         await batch.commit();
         const { integrationKey, encryptionKey, } = getPesePayCredentials();
         const apiBaseUrl = process.env.RUNTIME_API_URL ||

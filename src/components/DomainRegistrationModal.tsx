@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { getAuth } from 'firebase/auth';
 import {
   AlertCircle,
   ArrowLeft,
@@ -84,6 +85,12 @@ const emptyRegistrant = (): RegistrantDetails => ({
 
 const REGISTRATION_DRAFT_KEY = 'runtime_registration_draft';
 
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  (import.meta.env.DEV
+    ? 'http://localhost:4000'
+    : 'https://runtime-api-my3q.onrender.com');
+
 export const DomainRegistrationModal: React.FC = () => {
   const {
     registrationModalOpen,
@@ -131,6 +138,9 @@ export const DomainRegistrationModal: React.FC = () => {
 const [gateway, setGateway] =
   useState<Gateway>('ecocash_usd');
 
+const [pesepayPhone, setPesepayPhone] =
+  useState('');
+
 const [renewPrice, setRenewPrice] =
   useState<number | undefined>(
     undefined
@@ -145,6 +155,9 @@ const [placedOrder, setPlacedOrder] =
     paymentReference: string;
     amount: number;
     domain: string;
+    gateway: Gateway;
+    paymentId?: string;
+    transactionStatus?: string;
   } | null>(null);
 
   const selectedDomain = availabilityResult?.domain || '';
@@ -234,6 +247,7 @@ const [placedOrder, setPlacedOrder] =
     setCustomNameservers(['', '', '', '']);
     setNameserverError(null);
     setGateway('ecocash_usd');
+    setPesepayPhone('');
     setRenewPrice(undefined);
     setIsProcessing(false);
     setPlacedOrder(null);
@@ -403,6 +417,20 @@ const [placedOrder, setPlacedOrder] =
 
     fillFromAccount();
   }, [registrantType, currentUser, registrationModalOpen]);
+
+  useEffect(() => {
+    if (
+      registrationModalOpen &&
+      currentUser?.phone &&
+      !pesepayPhone.trim()
+    ) {
+      setPesepayPhone(currentUser.phone);
+    }
+  }, [
+    registrationModalOpen,
+    currentUser,
+    pesepayPhone,
+  ]);
 
   const searchDomains = async (
     event: React.FormEvent
@@ -598,6 +626,96 @@ const [placedOrder, setPlacedOrder] =
     proposed_usage: '',
   });
 
+  const postAuthenticated = async (
+    path: string,
+    body: Record<string, unknown>
+  ) => {
+    const authUser =
+      getAuth().currentUser;
+
+    if (!authUser) {
+      throw new Error(
+        'Your session has expired. Please sign in again.'
+      );
+    }
+
+    const token =
+      await authUser.getIdToken();
+
+    const response =
+      await fetch(
+        `${API_BASE_URL}${path}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type':
+              'application/json',
+            Authorization:
+              `Bearer ${token}`,
+          },
+          body:
+            JSON.stringify(body),
+        }
+      );
+
+    let responseBody: any = null;
+
+    try {
+      responseBody =
+        await response.json();
+    } catch {
+      // Keep the generic error below.
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        responseBody?.message ||
+        `Payment request failed (${response.status}).`
+      );
+    }
+
+    return responseBody;
+  };
+
+  const verifyPesePayPayment = async (
+    paymentId: string
+  ) => {
+    return postAuthenticated(
+      '/api/payments/pesepay/verify',
+      { paymentId }
+    );
+  };
+
+  const waitForPesePayVerification = async (
+    paymentId: string
+  ) => {
+    const maxAttempts = 40;
+
+    for (
+      let attempt = 0;
+      attempt < maxAttempts;
+      attempt += 1
+    ) {
+      const result =
+        await verifyPesePayPayment(
+          paymentId
+        );
+
+      if (result?.verified) {
+        return result;
+      }
+
+      await new Promise((resolve) =>
+        window.setTimeout(
+          resolve,
+          3000
+        )
+      );
+    }
+
+    return null;
+  };
+
   const completeOrder = async () => {
     if (
       !availabilityResult ||
@@ -660,11 +778,12 @@ const [placedOrder, setPlacedOrder] =
     }
 
     if (
-      gateway === 'pesepay'
+      gateway === 'pesepay' &&
+      !pesepayPhone.trim()
     ) {
       showNotification(
-        'PesePay will be available once the secure server integration is connected.',
-        'info'
+        'Enter the EcoCash phone number you want to pay with.',
+        'error'
       );
       return;
     }
@@ -682,8 +801,118 @@ const [placedOrder, setPlacedOrder] =
             ? registrantDetails
             : basicOwnerDetails(),
           finalNameservers(),
-          'ecocash_usd'
+          gateway
         );
+
+      if (gateway === 'pesepay') {
+        const initiation =
+          await postAuthenticated(
+            '/api/payments/pesepay/initiate',
+            {
+              orderId:
+                result.order.id,
+              customerPhoneNumber:
+                pesepayPhone.trim(),
+            }
+          );
+
+        const paymentId =
+          String(
+            initiation?.paymentId ||
+            ''
+          );
+
+        if (!paymentId) {
+          throw new Error(
+            'Runtime could not create the PesePay transaction.'
+          );
+        }
+
+        const transaction =
+          initiation?.transaction ||
+          {};
+
+        setPlacedOrder({
+          orderReference:
+            result.order.reference,
+          paymentReference:
+            String(
+              transaction.referenceNumber ||
+              paymentId
+            ),
+          amount:
+            result.order.total,
+          domain:
+            result.domain.domain_name,
+          gateway:
+            'pesepay',
+          paymentId,
+          transactionStatus:
+            String(
+              transaction.transactionStatus ||
+              'INITIATED'
+            ),
+        });
+
+        sessionStorage.removeItem(
+          REGISTRATION_DRAFT_KEY
+        );
+
+        /*
+         * Some PesePay methods can require a hosted
+         * confirmation page. Follow PesePay's response
+         * rather than assuming every payment is seamless.
+         */
+        if (
+          transaction.redirectRequired &&
+          transaction.redirectUrl
+        ) {
+          window.location.assign(
+            String(
+              transaction.redirectUrl
+            )
+          );
+          return;
+        }
+
+        setStep('instructions');
+
+        showNotification(
+          'Payment request sent. Confirm the EcoCash payment on your phone.',
+          'info'
+        );
+
+        const verified =
+          await waitForPesePayVerification(
+            paymentId
+          );
+
+        if (verified?.verified) {
+          setPlacedOrder(
+            (previous) =>
+              previous
+                ? {
+                    ...previous,
+                    transactionStatus:
+                      'SUCCESS',
+                  }
+                : previous
+          );
+
+          showNotification(
+            'Payment confirmed successfully.',
+            'success'
+          );
+        }
+
+        return;
+      }
+
+      if (!result.payment) {
+        throw new Error(
+          'Manual payment could not be created.'
+        );
+      }
 
       setPlacedOrder({
         orderReference:
@@ -694,6 +923,8 @@ const [placedOrder, setPlacedOrder] =
           result.payment.amount,
         domain:
           result.domain.domain_name,
+        gateway:
+          'ecocash_usd',
       });
 
       sessionStorage.removeItem(
@@ -810,7 +1041,9 @@ const [placedOrder, setPlacedOrder] =
           ? 'Nameservers'
           : step === 'payment'
             ? 'Review and payment'
-            : 'EcoCash USD payment';
+            : placedOrder?.gateway === 'pesepay'
+              ? 'PesePay payment'
+              : 'EcoCash USD payment';
 
   if (!registrationModalOpen) {
     return null;
@@ -1495,8 +1728,7 @@ const [placedOrder, setPlacedOrder] =
                           'pesepay'
                         }
                         title="PesePay"
-                        description="Online payment coming shortly."
-                        disabled
+                        description="Pay securely with EcoCash through PesePay."
                         onClick={() =>
                           setGateway(
                             'pesepay'
@@ -1518,6 +1750,32 @@ const [placedOrder, setPlacedOrder] =
                       </p>
                     </div>
                   )}
+
+                  {gateway ===
+                    'pesepay' && (
+                    <div className="space-y-3 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                      <div>
+                        <p className="text-sm font-semibold text-zinc-950">
+                          Pay with PesePay
+                        </p>
+                        <p className="mt-2 text-xs leading-5 text-zinc-500">
+                          Enter the EcoCash number that should receive the payment prompt. Runtime will only mark the order paid after PesePay confirms the transaction.
+                        </p>
+                      </div>
+
+                      <Field
+                        label="EcoCash phone number"
+                        required
+                        value={
+                          pesepayPhone
+                        }
+                        placeholder="0771234567"
+                        onChange={
+                          setPesepayPhone
+                        }
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1534,11 +1792,23 @@ const [placedOrder, setPlacedOrder] =
 
                       <div>
                         <h3 className="text-base font-bold text-zinc-950">
-                          Order created
+                          {placedOrder.gateway ===
+                          'pesepay'
+                            ? placedOrder.transactionStatus ===
+                              'SUCCESS'
+                              ? 'Payment confirmed'
+                              : 'Payment requested'
+                            : 'Order created'}
                         </h3>
 
                         <p className="mt-1 text-xs leading-5 text-zinc-500">
-                          Your domain is now visible in My Domains as awaiting payment. Registration will only start after the payment is verified.
+                          {placedOrder.gateway ===
+                          'pesepay'
+                            ? placedOrder.transactionStatus ===
+                              'SUCCESS'
+                              ? 'PesePay confirmed your payment. Runtime can now continue processing your domain registration.'
+                              : 'Confirm the EcoCash payment prompt on your phone. Runtime will verify the transaction directly with PesePay.'
+                            : 'Your domain is now visible in My Domains as awaiting payment. Registration will only start after the payment is verified.'}
                         </p>
                       </div>
                     </div>
@@ -1561,16 +1831,41 @@ const [placedOrder, setPlacedOrder] =
                       mono
                     />
 
-                    <SummaryRow
-                      label="Send Money to"
-                      value="0783827570"
-                      mono
-                    />
+                    {placedOrder.gateway ===
+                    'ecocash_usd' ? (
+                      <>
+                        <SummaryRow
+                          label="Send Money to"
+                          value="0783827570"
+                          mono
+                        />
 
-                    <SummaryRow
-                      label="EcoCash name"
-                      value="Ngaavongwe Ndasowampange"
-                    />
+                        <SummaryRow
+                          label="EcoCash name"
+                          value="Ngaavongwe Ndasowampange"
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <SummaryRow
+                          label="PesePay reference"
+                          value={
+                            placedOrder.paymentReference
+                          }
+                          mono
+                        />
+
+                        <SummaryRow
+                          label="Status"
+                          value={
+                            placedOrder.transactionStatus ===
+                            'SUCCESS'
+                              ? 'Paid'
+                              : 'Awaiting confirmation'
+                          }
+                        />
+                      </>
+                    )}
 
                     <div className="flex items-center justify-between gap-4 bg-zinc-50 px-4 py-4">
                       <span className="text-sm font-semibold text-zinc-950">
@@ -1587,25 +1882,94 @@ const [placedOrder, setPlacedOrder] =
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
-                    <p className="text-sm font-semibold text-zinc-950">
-                      After you pay
-                    </p>
+                  {placedOrder.gateway ===
+                  'ecocash_usd' ? (
+                    <>
+                      <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                        <p className="text-sm font-semibold text-zinc-950">
+                          After you pay
+                        </p>
 
-                    <p className="mt-2 text-xs leading-5 text-zinc-500">
-                      Send the EcoCash payment screenshot to Runtime on WhatsApp. An admin will confirm the payment after checking that the money was received.
-                    </p>
-                  </div>
+                        <p className="mt-2 text-xs leading-5 text-zinc-500">
+                          Send the EcoCash payment screenshot to Runtime on WhatsApp. An admin will confirm the payment after checking that the money was received.
+                        </p>
+                      </div>
 
-                  <button
-                    type="button"
-                    onClick={
-                      openPaymentWhatsApp
-                    }
-                    className="flex w-full items-center justify-center rounded-xl bg-[#3120ff] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#2819d9]"
-                  >
-                    Send Screenshot on WhatsApp
-                  </button>
+                      <button
+                        type="button"
+                        onClick={
+                          openPaymentWhatsApp
+                        }
+                        className="flex w-full items-center justify-center rounded-xl bg-[#3120ff] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#2819d9]"
+                      >
+                        Send Screenshot on WhatsApp
+                      </button>
+                    </>
+                  ) : (
+                    placedOrder.transactionStatus !==
+                      'SUCCESS' &&
+                    placedOrder.paymentId && (
+                      <button
+                        type="button"
+                        disabled={
+                          isProcessing
+                        }
+                        onClick={async () => {
+                          setIsProcessing(
+                            true
+                          );
+
+                          try {
+                            const verified =
+                              await verifyPesePayPayment(
+                                placedOrder.paymentId!
+                              );
+
+                            if (
+                              verified?.verified
+                            ) {
+                              setPlacedOrder(
+                                (previous) =>
+                                  previous
+                                    ? {
+                                        ...previous,
+                                        transactionStatus:
+                                          'SUCCESS',
+                                      }
+                                    : previous
+                              );
+
+                              showNotification(
+                                'Payment confirmed successfully.',
+                                'success'
+                              );
+                            } else {
+                              showNotification(
+                                'Payment is not confirmed yet. Complete the EcoCash prompt and try again.',
+                                'info'
+                              );
+                            }
+                          } catch (error) {
+                            showNotification(
+                              error instanceof Error
+                                ? error.message
+                                : 'Unable to check payment status.',
+                              'error'
+                            );
+                          } finally {
+                            setIsProcessing(
+                              false
+                            );
+                          }
+                        }}
+                        className="flex w-full items-center justify-center rounded-xl bg-[#3120ff] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#2819d9] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {isProcessing
+                          ? 'Checking payment...'
+                          : 'Check Payment Status'}
+                      </button>
+                    )
+                  )}
 
                   <button
                     type="button"
@@ -1682,7 +2046,9 @@ const [placedOrder, setPlacedOrder] =
                       ) : (
                         <>
                           <Lock className="h-4 w-4" />
-                          Place Order
+                          {gateway === 'pesepay'
+                            ? 'Pay with PesePay'
+                            : 'Place Order'}
                         </>
                       )}
                     </button>

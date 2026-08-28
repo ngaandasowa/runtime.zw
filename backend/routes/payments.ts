@@ -391,6 +391,293 @@ router.get(
   }
 );
 
+const verifyPesePayCallbackPayment = async (
+  paymentId: string
+) => {
+  /*
+   * The callback can arrive very quickly. Give initiation a
+   * few seconds to save PesePay's provider reference first.
+   */
+  let paymentDoc:
+    FirebaseFirestore.DocumentSnapshot | null =
+      null;
+
+  for (
+    let attempt = 0;
+    attempt < 5;
+    attempt += 1
+  ) {
+    paymentDoc =
+      await adminDb
+        .collection('payments')
+        .doc(paymentId)
+        .get();
+
+    if (
+      paymentDoc.exists &&
+      paymentDoc.data()
+        ?.provider_reference
+    ) {
+      break;
+    }
+
+    await new Promise((resolve) =>
+      setTimeout(
+        resolve,
+        1000
+      )
+    );
+  }
+
+  if (
+    !paymentDoc ||
+    !paymentDoc.exists
+  ) {
+    return false;
+  }
+
+  const payment =
+    paymentDoc.data()!;
+
+  const providerReference =
+    String(
+      payment.provider_reference ||
+      ''
+    ).trim();
+
+  const orderId =
+    String(
+      payment.order_id ||
+      ''
+    ).trim();
+
+  if (
+    !providerReference ||
+    !orderId
+  ) {
+    return false;
+  }
+
+  const providerTransaction =
+    await fetchPesePayStatus(
+      providerReference
+    );
+
+  const providerStatus =
+    String(
+      providerTransaction
+        .transactionStatus ||
+      ''
+    )
+      .trim()
+      .toUpperCase();
+
+  const providerDescription =
+    String(
+      providerTransaction
+        .transactionStatusDescription ||
+      ''
+    );
+
+  const now =
+    new Date().toISOString();
+
+  const paymentRef =
+    adminDb
+      .collection('payments')
+      .doc(paymentId);
+
+  if (
+    providerStatus !==
+    'SUCCESS'
+  ) {
+    await paymentRef.set(
+      {
+        provider_status:
+          providerStatus ||
+          'UNKNOWN',
+        provider_status_description:
+          providerDescription,
+        updated_at:
+          now,
+      },
+      { merge: true }
+    );
+
+    return false;
+  }
+
+  await adminDb.runTransaction(
+    async (transaction) => {
+      const freshPayment =
+        await transaction.get(
+          paymentRef
+        );
+
+      if (!freshPayment.exists) {
+        return;
+      }
+
+      const freshPaymentData =
+        freshPayment.data()!;
+
+      const orderRef =
+        adminDb
+          .collection('orders')
+          .doc(
+            String(
+              freshPaymentData
+                .order_id
+            )
+          );
+
+      const freshOrder =
+        await transaction.get(
+          orderRef
+        );
+
+      if (!freshOrder.exists) {
+        return;
+      }
+
+      const order =
+        freshOrder.data()!;
+
+      if (
+        order.status ===
+          'cancelled' ||
+        order.status ===
+          'refunded'
+      ) {
+        return;
+      }
+
+      const domainQuery =
+        adminDb
+          .collection('domains')
+          .where(
+            'order_id',
+            '==',
+            orderRef.id
+          )
+          .limit(1);
+
+      const domainSnapshot =
+        await transaction.get(
+          domainQuery
+        );
+
+      transaction.set(
+        paymentRef,
+        {
+          status:
+            'verified',
+          provider_status:
+            'SUCCESS',
+          provider_status_description:
+            providerDescription,
+          transaction_id:
+            providerTransaction
+              .internalReference ||
+            providerReference,
+          verified_at:
+            freshPaymentData
+              .verified_at ||
+            now,
+          updated_at:
+            now,
+        },
+        { merge: true }
+      );
+
+      if (
+        order.status !==
+          'paid' &&
+        order.status !==
+          'completed'
+      ) {
+        transaction.update(
+          orderRef,
+          {
+            status:
+              'paid',
+            paid_at:
+              order.paid_at ||
+              now,
+            updated_at:
+              now,
+          }
+        );
+      }
+
+      if (!domainSnapshot.empty) {
+        const domainDoc =
+          domainSnapshot.docs[0];
+
+        const domain =
+          domainDoc.data();
+
+        const existingHistory =
+          Array.isArray(
+            domain.history
+          )
+            ? domain.history
+            : [];
+
+        const alreadyRecorded =
+          existingHistory.some(
+            (item: any) =>
+              item?.description ===
+              'PesePay payment verified. Domain registration is now being processed.'
+          );
+
+        transaction.set(
+          domainDoc.ref,
+          {
+            status:
+              domain.status ===
+              'pending_payment'
+                ? 'pending_registration'
+                : domain.status,
+            payment_id:
+              paymentId,
+            updated_at:
+              now,
+            history:
+              alreadyRecorded
+                ? existingHistory
+                : [
+                    ...existingHistory,
+                    {
+                      id:
+                        `hist-pesepay-${paymentId.slice(
+                          0,
+                          8
+                        )}`,
+                      domain_id:
+                        domainDoc.id,
+                      action:
+                        'STATUS_CHANGE',
+                      description:
+                        'PesePay payment verified. Domain registration is now being processed.',
+                      status:
+                        'pending_registration',
+                      actor:
+                        'PesePay',
+                      created_at:
+                        now,
+                    },
+                  ],
+          },
+          { merge: true }
+        );
+      }
+    }
+  );
+
+  return true;
+};
+
 /*
  * ----------------------------------------------------------
  * PESEPAY RESULT CALLBACK
@@ -425,6 +712,10 @@ router.all(
             },
             { merge: true }
           );
+
+        await verifyPesePayCallbackPayment(
+          paymentId
+        );
       }
 
       return res.status(200).json({
@@ -635,6 +926,21 @@ router.post(
               const order =
                 freshOrder.data()!;
 
+              const domainQuery =
+                adminDb
+                  .collection('domains')
+                  .where(
+                    'order_id',
+                    '==',
+                    orderRef.id
+                  )
+                  .limit(1);
+
+              const domainSnapshot =
+                await transaction.get(
+                  domainQuery
+                );
+
               if (
                 order.status ===
                   'cancelled' ||
@@ -689,6 +995,69 @@ router.post(
                     updated_at:
                       now,
                   }
+                );
+              }
+
+              if (!domainSnapshot.empty) {
+                const domainDoc =
+                  domainSnapshot.docs[0];
+
+                const domain =
+                  domainDoc.data();
+
+                const existingHistory =
+                  Array.isArray(
+                    domain.history
+                  )
+                    ? domain.history
+                    : [];
+
+                const alreadyRecorded =
+                  existingHistory.some(
+                    (item: any) =>
+                      item?.description ===
+                      'PesePay payment verified. Domain registration is now being processed.'
+                  );
+
+                transaction.set(
+                  domainDoc.ref,
+                  {
+                    status:
+                      domain.status ===
+                      'pending_payment'
+                        ? 'pending_registration'
+                        : domain.status,
+                    payment_id:
+                      paymentId,
+                    updated_at:
+                      now,
+                    history:
+                      alreadyRecorded
+                        ? existingHistory
+                        : [
+                            ...existingHistory,
+                            {
+                              id:
+                                `hist-pesepay-${paymentId.slice(
+                                  0,
+                                  8
+                                )}`,
+                              domain_id:
+                                domainDoc.id,
+                              action:
+                                'STATUS_CHANGE',
+                              description:
+                                'PesePay payment verified. Domain registration is now being processed.',
+                              status:
+                                'pending_registration',
+                              actor:
+                                'PesePay',
+                              created_at:
+                                now,
+                            },
+                          ],
+                  },
+                  { merge: true }
                 );
               }
 
@@ -969,6 +1338,30 @@ router.post(
           updated_at: now,
         }
       );
+
+      const domainSnapshot =
+        await adminDb
+          .collection('domains')
+          .where(
+            'order_id',
+            '==',
+            orderId
+          )
+          .limit(1)
+          .get();
+
+      if (!domainSnapshot.empty) {
+        batch.set(
+          domainSnapshot.docs[0].ref,
+          {
+            payment_id:
+              paymentId,
+            updated_at:
+              now,
+          },
+          { merge: true }
+        );
+      }
 
       await batch.commit();
 
