@@ -4,11 +4,32 @@ import nodeFetch from 'node-fetch';
 import { adminAuth, adminDb, } from '../firebaseAdmin.js';
 import { settleOrderPayment, } from '../services/PaymentSettlementService.js';
 import { settleWalletTopup, } from '../services/WalletTopupSettlementService.js';
+import { applyRuntimeCreditToOrder, } from '../services/CreditOrderPaymentService.js';
 const router = Router();
 const PESEPAY_MAKE_PAYMENT_URL = 'https://api.pesepay.com/api/payments-engine/v2/payments/make-payment';
 const PESEPAY_INITIATE_URL = 'https://api.pesepay.com/api/payments-engine/v1/payments/initiate';
 const PESEPAY_METHODS_URL = 'https://api.pesepay.com/api/payments-engine/v1/payment-methods/for-currency';
 const PESEPAY_STATUS_URL = 'https://api.pesepay.com/api/payments-engine/v1/payments/check-payment';
+const money = (value) => Math.round((Number(value) + Number.EPSILON) *
+    100) / 100;
+const getOrderPaymentTotals = async (orderId, orderTotal) => {
+    const snapshot = await adminDb
+        .collection('payments')
+        .where('order_id', '==', orderId)
+        .get();
+    const amountPaid = money(snapshot.docs
+        .filter((doc) => doc.data().status ===
+        'verified')
+        .reduce((total, doc) => total +
+        Number(doc.data().amount ||
+            0), 0));
+    const total = money(orderTotal);
+    return {
+        amountPaid: Math.min(total, amountPaid),
+        amountDue: money(Math.max(0, total -
+            amountPaid)),
+    };
+};
 /*
  * ----------------------------------------------------------
  * AUTHENTICATION
@@ -923,6 +944,142 @@ router.post('/wallet/ecocash', authenticate, async (req, res) => {
 });
 /*
  * ----------------------------------------------------------
+ * ORDER PAYMENT SUMMARY
+ * ----------------------------------------------------------
+ */
+router.get('/order/:orderId/payment-summary', authenticate, async (req, res) => {
+    try {
+        const orderId = String(req.params.orderId ||
+            '').trim();
+        const runtimeUser = req.runtimeUser;
+        const orderDoc = await adminDb
+            .collection('orders')
+            .doc(orderId)
+            .get();
+        if (!orderDoc.exists) {
+            return res.status(404).json({
+                success: false,
+                message: 'Order not found.',
+            });
+        }
+        const order = orderDoc.data();
+        if (order.user_id !==
+            runtimeUser.uid) {
+            return res.status(403).json({
+                success: false,
+                message: 'You may only view your own order.',
+            });
+        }
+        const total = money(Number(order.total || 0));
+        const paymentTotals = await getOrderPaymentTotals(orderId, total);
+        const walletDoc = await adminDb
+            .collection('wallets')
+            .doc(runtimeUser.uid)
+            .get();
+        const walletBalance = money(Number(walletDoc.exists
+            ? walletDoc.data()
+                ?.balance || 0
+            : 0));
+        return res.json({
+            success: true,
+            order: {
+                id: orderId,
+                reference: order.reference,
+                total,
+                currency: String(order.currency ||
+                    'USD').toUpperCase(),
+                status: order.status,
+                amountPaid: paymentTotals
+                    .amountPaid,
+                amountDue: paymentTotals
+                    .amountDue,
+            },
+            wallet: {
+                balance: walletBalance,
+                currency: 'USD',
+                applicableAmount: money(Math.min(walletBalance, paymentTotals
+                    .amountDue)),
+            },
+        });
+    }
+    catch (error) {
+        console.error('Order payment summary error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Unable to load payment summary.',
+        });
+    }
+});
+/*
+ * ----------------------------------------------------------
+ * APPLY RUNTIME CREDIT TO ORDER
+ * ----------------------------------------------------------
+ *
+ * The wallet debit, immutable ledger entry, internal verified
+ * payment, order state, and full-payment fulfillment happen
+ * in one Firestore transaction.
+ */
+router.post('/order/runtime-credit', authenticate, async (req, res) => {
+    try {
+        const orderId = typeof req.body?.orderId ===
+            'string'
+            ? req.body.orderId.trim()
+            : '';
+        const requestedAmount = req.body?.amount ===
+            undefined
+            ? undefined
+            : Number(req.body.amount);
+        if (!orderId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Order ID is required.',
+            });
+        }
+        if (requestedAmount !==
+            undefined &&
+            (!Number.isFinite(requestedAmount) ||
+                requestedAmount <= 0)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Runtime Credit amount must be greater than zero.',
+            });
+        }
+        const runtimeUser = req.runtimeUser;
+        const result = await applyRuntimeCreditToOrder({
+            orderId,
+            userId: runtimeUser.uid,
+            actor: runtimeUser.email ||
+                runtimeUser.uid,
+            requestedAmount,
+        });
+        return res.json({
+            success: true,
+            ...result,
+        });
+    }
+    catch (error) {
+        console.error('Runtime Credit order payment error:', error);
+        const message = error instanceof Error
+            ? error.message
+            : 'Unable to apply Runtime Credit.';
+        const status = message ===
+            'Order not found.'
+            ? 404
+            : message.includes('own order')
+                ? 403
+                : message.includes('already fully paid') ||
+                    message.includes('can no longer be paid') ||
+                    message.includes('do not have Runtime Credit')
+                    ? 409
+                    : 400;
+        return res.status(status).json({
+            success: false,
+            message,
+        });
+    }
+});
+/*
+ * ----------------------------------------------------------
  * CREATE / RETRY MANUAL ECOCASH PAYMENT FOR EXISTING ORDER
  * ----------------------------------------------------------
  *
@@ -978,12 +1135,19 @@ router.post('/order/ecocash', authenticate, async (req, res) => {
                 message: 'This order can no longer be paid.',
             });
         }
-        const amount = Number(order.total);
-        if (!Number.isFinite(amount) ||
-            amount <= 0) {
+        const orderTotal = money(Number(order.total));
+        if (!Number.isFinite(orderTotal) ||
+            orderTotal <= 0) {
             return res.status(400).json({
                 success: false,
                 message: 'This order has an invalid amount.',
+            });
+        }
+        const { amountDue: amount, } = await getOrderPaymentTotals(orderId, orderTotal);
+        if (amount <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'This order has already been fully paid.',
             });
         }
         const existingPayments = await adminDb
@@ -1000,12 +1164,24 @@ router.post('/order/ecocash', authenticate, async (req, res) => {
                         'pending_verification'));
         });
         if (activeManual) {
-            return res.json({
-                success: true,
-                paymentId: activeManual.id,
-                payment: activeManual.data(),
-                reused: true,
-            });
+            const activeData = activeManual.data();
+            if (money(Number(activeData.amount ||
+                0)) === amount) {
+                return res.json({
+                    success: true,
+                    paymentId: activeManual.id,
+                    payment: activeData,
+                    reused: true,
+                });
+            }
+            await activeManual.ref.set({
+                status: 'failed',
+                rejection_reason: 'Payment amount changed after Runtime Credit was applied.',
+                replaced_at: new Date()
+                    .toISOString(),
+                updated_at: new Date()
+                    .toISOString(),
+            }, { merge: true });
         }
         const now = new Date()
             .toISOString();
@@ -1427,13 +1603,20 @@ router.post('/pesepay/initiate', authenticate, async (req, res) => {
                 await staleBatch.commit();
             }
         }
-        const amount = Number(order.total);
+        const orderTotal = money(Number(order.total));
+        const { amountDue: amount, } = await getOrderPaymentTotals(orderId, orderTotal);
         const currency = String(order.currency || 'USD').toUpperCase();
-        if (!Number.isFinite(amount) ||
-            amount <= 0) {
+        if (!Number.isFinite(orderTotal) ||
+            orderTotal <= 0) {
             return res.status(400).json({
                 success: false,
                 message: 'This order has an invalid payment amount.',
+            });
+        }
+        if (amount <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'This order has already been fully paid.',
             });
         }
         if (currency !== 'USD') {

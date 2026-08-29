@@ -1,22 +1,24 @@
 import { adminDb, } from '../firebaseAdmin.js';
 import { fulfillPaidOrder, } from './OrderFulfillmentService.js';
+const money = (value) => Math.round((Number(value) + Number.EPSILON) *
+    100) / 100;
 /*
  * ----------------------------------------------------------
  * PAYMENT SETTLEMENT
  * ----------------------------------------------------------
  *
- * One authoritative path for:
+ * Supports both full and split payments.
  *
- *   Payment -> verified
- *   Order   -> paid
- *   Order   -> fulfillment
+ * Example:
+ *   Order total       $16
+ *   Runtime Credit    $10 verified
+ *   PesePay            $6 verified
+ *   ----------------------
+ *   Amount paid       $16 -> order paid + fulfillment
  *
- * Providers are responsible only for proving that money was
- * received. Once that proof exists, they call this service.
- *
- * The transaction makes settlement idempotent: repeated
- * PesePay callbacks/browser checks cannot charge or fulfill
- * the order twice.
+ * A provider payment is verified independently, but the order
+ * is only marked paid when verified order payments collectively
+ * cover the order total.
  */
 export const settleOrderPayment = async ({ paymentId, actor, providerStatus, providerStatusDescription, transactionId, }) => {
     const paymentRef = adminDb
@@ -36,7 +38,13 @@ export const settleOrderPayment = async ({ paymentId, actor, providerStatus, pro
         const orderRef = adminDb
             .collection('orders')
             .doc(orderId);
-        const orderDoc = await transaction.get(orderRef);
+        const paymentQuery = adminDb
+            .collection('payments')
+            .where('order_id', '==', orderId);
+        const [orderDoc, paymentSnapshot,] = await Promise.all([
+            transaction.get(orderRef),
+            transaction.get(paymentQuery),
+        ]);
         if (!orderDoc.exists) {
             throw new Error('Order linked to payment was not found.');
         }
@@ -47,18 +55,38 @@ export const settleOrderPayment = async ({ paymentId, actor, providerStatus, pro
                 'refunded') {
             throw new Error('This order can no longer be marked paid.');
         }
+        const orderTotal = money(Number(order.total || 0));
+        if (!Number.isFinite(orderTotal) ||
+            orderTotal <= 0) {
+            throw new Error('Order has an invalid total.');
+        }
+        const otherVerifiedTotal = paymentSnapshot.docs
+            .filter((doc) => doc.id !==
+            paymentId &&
+            doc.data().status ===
+                'verified')
+            .reduce((total, doc) => total +
+            Number(doc.data().amount ||
+                0), 0);
+        const currentAmount = money(Number(payment.amount || 0));
+        if (!Number.isFinite(currentAmount) ||
+            currentAmount <= 0) {
+            throw new Error('Payment has an invalid amount.');
+        }
+        const amountPaid = money(Math.min(orderTotal, otherVerifiedTotal +
+            currentAmount));
+        const amountDue = money(Math.max(0, orderTotal -
+            amountPaid));
+        const fullyPaid = amountDue <= 0;
         const alreadySettled = payment.status ===
             'verified' &&
-            (order.status ===
-                'paid' ||
-                order.status ===
-                    'completed');
-        /*
-         * Merge provider metadata instead of replacing it.
-         * This keeps the service reusable for manual EcoCash
-         * and Runtime Credit, where some provider fields may
-         * not exist.
-         */
+            (fullyPaid
+                ? (order.status ===
+                    'paid' ||
+                    order.status ===
+                        'completed')
+                : order.status ===
+                    'payment_pending');
         transaction.set(paymentRef, {
             status: 'verified',
             ...(providerStatus
@@ -82,34 +110,47 @@ export const settleOrderPayment = async ({ paymentId, actor, providerStatus, pro
             rejection_reason: null,
             updated_at: now,
         }, { merge: true });
-        if (order.status !==
-            'paid' &&
-            order.status !==
-                'completed') {
-            transaction.set(orderRef, {
-                status: 'paid',
-                paid_at: order.paid_at ||
+        transaction.set(orderRef, {
+            status: fullyPaid
+                ? 'paid'
+                : 'payment_pending',
+            amount_paid: amountPaid,
+            amount_due: amountDue,
+            ...(fullyPaid
+                ? {
+                    paid_at: order.paid_at ||
+                        now,
+                }
+                : {}),
+            updated_at: now,
+        }, { merge: true });
+        let fulfillment = {
+            handled: false,
+            itemType: String(order.purpose ||
+                order.metadata
+                    ?.purpose ||
+                order.items?.[0]
+                    ?.item_type ||
+                ''),
+        };
+        if (fullyPaid) {
+            fulfillment =
+                await fulfillPaidOrder({
+                    transaction,
+                    orderRef,
+                    order,
+                    paymentId,
                     now,
-                updated_at: now,
-            }, { merge: true });
+                    actor,
+                });
         }
-        /*
-         * Fulfillment is itself expected to be idempotent.
-         * Calling it here means every future provider gets
-         * identical post-payment behaviour.
-         */
-        const fulfillment = await fulfillPaidOrder({
-            transaction,
-            orderRef,
-            order,
-            paymentId,
-            now,
-            actor,
-        });
         return {
             paymentId,
             orderId,
             alreadySettled,
+            fullyPaid,
+            amountPaid,
+            amountDue,
             fulfillment,
         };
     });

@@ -133,7 +133,9 @@ export const AdminDashboard:
       payments.filter(
         (payment) =>
           payment.status ===
-          'verified'
+            'verified' &&
+          payment.gateway !==
+            'runtime_credit'
       );
 
     const now =

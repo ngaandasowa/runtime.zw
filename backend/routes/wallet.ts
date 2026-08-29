@@ -92,6 +92,75 @@ const authenticate = async (
 };
 
 router.get(
+  '/admin/:userId',
+  authenticate,
+  async (
+    req: AuthenticatedRequest,
+    res: Response
+  ) => {
+    try {
+      if (
+        req.runtimeUser?.role !==
+        'super_admin'
+      ) {
+        return res.status(403).json({
+          success: false,
+          message:
+            'Super admin access required.',
+        });
+      }
+
+      const userId =
+        String(
+          req.params.userId || ''
+        ).trim();
+
+      if (!userId) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Customer ID is required.',
+        });
+      }
+
+      const userDoc =
+        await adminDb
+          .collection('users')
+          .doc(userId)
+          .get();
+
+      if (!userDoc.exists) {
+        return res.status(404).json({
+          success: false,
+          message:
+            'Customer not found.',
+        });
+      }
+
+      const wallet =
+        await walletService
+          .getWallet(userId);
+
+      return res.json({
+        success: true,
+        wallet,
+      });
+    } catch (error) {
+      console.error(
+        'Admin customer wallet load failed:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          'Unable to load customer Runtime Credit.',
+      });
+    }
+  }
+);
+
+router.get(
   '/me',
   authenticate,
   async (

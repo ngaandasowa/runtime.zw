@@ -1,4 +1,5 @@
 import React, {
+  useEffect,
   useMemo,
   useState,
 } from 'react';
@@ -8,6 +9,7 @@ import {
   CalendarDays,
   CreditCard,
   Globe2,
+  WalletCards,
   Mail,
   Phone,
   Plus,
@@ -73,6 +75,122 @@ export const AdminCustomerAccount:
       assignOpen,
       setAssignOpen,
     ] = useState(false);
+
+
+    const [
+      creditBalance,
+      setCreditBalance,
+    ] = useState(0);
+
+    const [
+      creditLoading,
+      setCreditLoading,
+    ] = useState(false);
+
+    const [
+      creditError,
+      setCreditError,
+    ] = useState<string | null>(
+      null
+    );
+
+
+    const API_BASE_URL =
+      import.meta.env
+        .VITE_API_BASE_URL ||
+      '';
+
+    useEffect(() => {
+      let cancelled = false;
+
+      const loadCredit =
+        async () => {
+          if (!adminCustomerId) {
+            setCreditBalance(0);
+            return;
+          }
+
+          try {
+            setCreditLoading(true);
+            setCreditError(null);
+
+            const {
+              auth,
+            } =
+              await import(
+                '../../firebase/firebase'
+              );
+
+            const token =
+              await auth.currentUser
+                ?.getIdToken();
+
+            if (!token) {
+              throw new Error(
+                'Authentication required.'
+              );
+            }
+
+            const response =
+              await fetch(
+                `${API_BASE_URL}/api/wallet/admin/${encodeURIComponent(
+                  adminCustomerId
+                )}`,
+                {
+                  headers: {
+                    Authorization:
+                      `Bearer ${token}`,
+                  },
+                }
+              );
+
+            const result =
+              await response.json();
+
+            if (
+              !response.ok ||
+              result?.success ===
+                false
+            ) {
+              throw new Error(
+                result?.message ||
+                  'Unable to load Runtime Credit.'
+              );
+            }
+
+            if (!cancelled) {
+              setCreditBalance(
+                Number(
+                  result?.wallet
+                    ?.balance || 0
+                )
+              );
+            }
+          } catch (error) {
+            if (!cancelled) {
+              setCreditBalance(0);
+              setCreditError(
+                error instanceof Error
+                  ? error.message
+                  : 'Unable to load Runtime Credit.'
+              );
+            }
+          } finally {
+            if (!cancelled) {
+              setCreditLoading(false);
+            }
+          }
+        };
+
+      void loadCredit();
+
+      return () => {
+        cancelled = true;
+      };
+    }, [
+      adminCustomerId,
+      API_BASE_URL,
+    ]);
 
 
     const customer =
@@ -315,7 +433,7 @@ export const AdminCustomerAccount:
 
 
         {/* STATS */}
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
 
           <StatCard
             label="Domains"
@@ -349,7 +467,25 @@ export const AdminCustomerAccount:
             icon={CreditCard}
           />
 
+          <StatCard
+            label="Runtime Credit"
+            value={
+              creditLoading
+                ? '...'
+                : `$${creditBalance.toFixed(
+                    2
+                  )}`
+            }
+            icon={WalletCards}
+          />
+
         </div>
+
+        {creditError && (
+          <p className="text-xs text-rose-600">
+            Runtime Credit could not be loaded: {creditError}
+          </p>
+        )}
 
 
         {/* DOMAINS */}

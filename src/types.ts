@@ -97,6 +97,7 @@ export interface Order {
 }
 
 export type PaymentGateway =
+  | 'runtime_credit'
   | 'ecocash_usd'
   | 'pesepay'
   | 'paynow'

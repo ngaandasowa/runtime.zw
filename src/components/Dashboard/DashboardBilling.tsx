@@ -130,6 +130,22 @@ export const DashboardBilling:
       null
     );
 
+    const [
+      orderPaymentSummary,
+      setOrderPaymentSummary,
+    ] = useState<{
+      total: number;
+      amountPaid: number;
+      amountDue: number;
+      walletBalance: number;
+      applicableCredit: number;
+    } | null>(null);
+
+    const [
+      applyingOrderCredit,
+      setApplyingOrderCredit,
+    ] = useState(false);
+
     const API_BASE_URL =
       import.meta.env.VITE_API_BASE_URL ||
       (import.meta.env.DEV
@@ -303,6 +319,137 @@ export const DashboardBilling:
         }
       };
 
+    const loadOrderPaymentSummary =
+      async (
+        orderId: string
+      ) => {
+        const result =
+          await authenticatedRequest(
+            `/api/payments/order/${encodeURIComponent(
+              orderId
+            )}/payment-summary`
+          );
+
+        const next = {
+          total:
+            Number(
+              result?.order?.total ||
+              0
+            ),
+          amountPaid:
+            Number(
+              result?.order
+                ?.amountPaid ||
+              0
+            ),
+          amountDue:
+            Number(
+              result?.order
+                ?.amountDue ||
+              0
+            ),
+          walletBalance:
+            Number(
+              result?.wallet
+                ?.balance ||
+              0
+            ),
+          applicableCredit:
+            Number(
+              result?.wallet
+                ?.applicableAmount ||
+              0
+            ),
+        };
+
+        setOrderPaymentSummary(
+          next
+        );
+
+        setWalletBalance(
+          next.walletBalance
+        );
+
+        return next;
+      };
+
+    const applyRuntimeCreditToOrder =
+      async () => {
+        if (!paymentOrder) {
+          return;
+        }
+
+        setApplyingOrderCredit(
+          true
+        );
+
+        setPaymentModalError(
+          null
+        );
+
+        setPaymentModalMessage(
+          null
+        );
+
+        try {
+          const result =
+            await authenticatedRequest(
+              '/api/payments/order/runtime-credit',
+              {
+                method: 'POST',
+                body:
+                  JSON.stringify({
+                    orderId:
+                      paymentOrder.id,
+                  }),
+              }
+            );
+
+          setPaymentModalMessage(
+            result?.fullyPaid
+              ? 'Runtime Credit paid this order in full.'
+              : `$${Number(
+                  result?.appliedAmount ||
+                  0
+                ).toFixed(
+                  2
+                )} Runtime Credit applied. $${Number(
+                  result?.amountDue ||
+                  0
+                ).toFixed(
+                  2
+                )} remains to pay.`
+          );
+
+          const summary =
+            await loadOrderPaymentSummary(
+              paymentOrder.id
+            );
+
+          if (
+            result?.fullyPaid ||
+            summary.amountDue <= 0
+          ) {
+            window.setTimeout(
+              () =>
+                window.location
+                  .reload(),
+              700
+            );
+          }
+        } catch (error) {
+          setPaymentModalError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to apply Runtime Credit.'
+          );
+        } finally {
+          setApplyingOrderCredit(
+            false
+          );
+        }
+      };
+
     const openPaymentModal =
       async (
         order: Order
@@ -340,6 +487,22 @@ export const DashboardBilling:
         setPesePayMethodsLoading(
           false
         );
+
+        setOrderPaymentSummary(
+          null
+        );
+
+        try {
+          await loadOrderPaymentSummary(
+            order.id
+          );
+        } catch (error) {
+          setPaymentModalError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to load payment summary.'
+          );
+        }
       };
 
     const checkPesePayAttempt =
@@ -442,7 +605,10 @@ export const DashboardBilling:
                 '',
                 `Order: ${paymentOrder.reference}`,
                 `Item: ${itemDescription}`,
-                `Amount: $${paymentOrder.total.toFixed(2)} ${paymentOrder.currency || 'USD'}`,
+                `Amount: $${Number(
+                  orderPaymentSummary?.amountDue ??
+                  paymentOrder.total
+                ).toFixed(2)} ${paymentOrder.currency || 'USD'}`,
                 '',
                 'I am attaching my payment screenshot for verification.',
               ].join('\n')
@@ -2120,7 +2286,10 @@ export const DashboardBilling:
                     Pay order
                   </h2>
                   <p className="mt-1 text-xs text-zinc-500">
-                    {paymentOrder.reference} · ${paymentOrder.total.toFixed(2)} {paymentOrder.currency || 'USD'}
+                    {paymentOrder.reference} · ${Number(
+                      orderPaymentSummary?.amountDue ??
+                      paymentOrder.total
+                    ).toFixed(2)} due · {paymentOrder.currency || 'USD'}
                   </p>
                 </div>
 
@@ -2142,6 +2311,65 @@ export const DashboardBilling:
               </div>
 
               <div className="space-y-5 p-5">
+                {orderPaymentSummary && (
+                  <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-xs font-semibold text-zinc-700">
+                          Runtime Credit
+                        </p>
+
+                        <p className="mt-1 text-sm font-bold text-zinc-950">
+                          ${orderPaymentSummary.walletBalance.toFixed(2)} available
+                        </p>
+
+                        {orderPaymentSummary.amountPaid > 0 && (
+                          <p className="mt-1 text-[11px] text-zinc-500">
+                            ${orderPaymentSummary.amountPaid.toFixed(2)} already applied to this order.
+                          </p>
+                        )}
+                      </div>
+
+                      {orderPaymentSummary.applicableCredit > 0 &&
+                        orderPaymentSummary.amountDue > 0 && (
+                        <button
+                          type="button"
+                          disabled={
+                            applyingOrderCredit ||
+                            paymentModalBusy
+                          }
+                          onClick={() =>
+                            void applyRuntimeCreditToOrder()
+                          }
+                          className="shrink-0 rounded-lg bg-[#3120ff] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#2819d9] disabled:opacity-50"
+                        >
+                          {applyingOrderCredit
+                            ? 'Applying...'
+                            : `Apply $${orderPaymentSummary.applicableCredit.toFixed(2)}`}
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between border-t border-zinc-200 pt-3">
+                      <span className="text-xs text-zinc-500">
+                        Remaining to pay
+                      </span>
+
+                      <span className="text-sm font-bold text-zinc-950">
+                        ${orderPaymentSummary.amountDue.toFixed(2)}
+                      </span>
+                    </div>
+
+                    {orderPaymentSummary.walletBalance > 0 &&
+                      orderPaymentSummary.walletBalance <
+                        orderPaymentSummary.amountDue && (
+                        <p className="mt-2 text-[11px] leading-4 text-zinc-500">
+                          Apply your available credit first, then choose another payment method for the remaining balance.
+                        </p>
+                      )}
+                  </div>
+                )}
+
                 <div>
                   <p className="mb-2 text-xs font-semibold text-zinc-700">
                     Choose how to pay
@@ -2336,7 +2564,10 @@ export const DashboardBilling:
                           Amount
                         </span>
                         <span className="text-lg font-bold text-[#3120ff]">
-                          ${paymentOrder.total.toFixed(2)} {paymentOrder.currency || 'USD'}
+                          ${Number(
+                            orderPaymentSummary?.amountDue ??
+                            paymentOrder.total
+                          ).toFixed(2)} {paymentOrder.currency || 'USD'}
                         </span>
                       </div>
                     </div>
@@ -2389,8 +2620,13 @@ export const DashboardBilling:
                     }
                     disabled={
                       paymentModalBusy ||
+                      applyingOrderCredit ||
                       pesePayMethodsLoading ||
-                      !pesePayMethodCode
+                      !pesePayMethodCode ||
+                      Number(
+                        orderPaymentSummary?.amountDue ??
+                        paymentOrder.total
+                      ) <= 0
                     }
                     className="flex w-full items-center justify-center rounded-xl bg-[#3120ff] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#2819d9] disabled:cursor-not-allowed disabled:opacity-50"
                   >
