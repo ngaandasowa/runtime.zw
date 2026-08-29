@@ -1159,6 +1159,118 @@ export const DashboardBilling:
         ]
       );
 
+    const userPayments =
+      useMemo(
+        () => {
+          const userOrderIds =
+            new Set(
+              userOrders.map(
+                (order) => order.id
+              )
+            );
+
+          return payments
+            .filter(
+              (payment) =>
+                payment.user_id ===
+                  currentUser?.id ||
+                (
+                  Boolean(
+                    payment.order_id
+                  ) &&
+                  userOrderIds.has(
+                    String(
+                      payment.order_id
+                    )
+                  )
+                )
+            )
+            .sort(
+              (a, b) =>
+                new Date(
+                  b.created_at || ''
+                ).getTime() -
+                new Date(
+                  a.created_at || ''
+                ).getTime()
+            );
+        },
+        [
+          payments,
+          currentUser?.id,
+          userOrders,
+        ]
+      );
+
+    const orderReferenceForPayment =
+      (orderId?: string) => {
+        if (!orderId) {
+          return null;
+        }
+
+        return (
+          userOrders.find(
+            (order) =>
+              order.id === orderId
+          )?.reference ||
+          null
+        );
+      };
+
+    const paymentMethodLabel =
+      (payment: any) => {
+        if (
+          payment.gateway ===
+          'runtime_credit'
+        ) {
+          return 'Runtime Credit';
+        }
+
+        if (
+          payment.gateway ===
+          'ecocash_usd'
+        ) {
+          return 'EcoCash USD';
+        }
+
+        if (
+          payment.gateway ===
+          'pesepay'
+        ) {
+          return 'PesePay';
+        }
+
+        return String(
+          payment.gateway ||
+            'Payment'
+        )
+          .replace(/_/g, ' ')
+          .replace(
+            /\b\w/g,
+            (letter) =>
+              letter.toUpperCase()
+          );
+      };
+
+    const paymentPurposeLabel =
+      (payment: any) => {
+        if (
+          payment.purpose ===
+          'wallet_topup'
+        ) {
+          return 'Runtime Credit top-up';
+        }
+
+        const orderReference =
+          orderReferenceForPayment(
+            payment.order_id
+          );
+
+        return orderReference
+          ? `Order ${orderReference}`
+          : 'Order payment';
+      };
+
     const userDomains =
       useMemo(
         () =>
@@ -1446,7 +1558,7 @@ export const DashboardBilling:
           </h1>
 
           <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-500">
-            View your orders, payment status and domain renewal dates.
+            View your orders, payments, Runtime Credit activity and domain renewal dates.
           </p>
         </div>
 
@@ -1781,6 +1893,119 @@ export const DashboardBilling:
                       </div>
                     );
                   }
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* PAYMENTS */}
+        <section>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-bold text-zinc-950">
+                Payment history
+              </h2>
+
+              <p className="mt-0.5 text-xs text-zinc-500">
+                All payment attempts, verified payments and Runtime Credit activity.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-zinc-500">
+                {userPayments.length}
+              </span>
+              <WalletCards className="h-4 w-4 text-[#3120ff]" />
+            </div>
+          </div>
+
+          <div className="border-y border-zinc-200 bg-white sm:rounded-xl sm:border">
+            {userPayments.length ===
+            0 ? (
+              <p className="px-4 py-8 text-sm text-zinc-500">
+                No payments yet.
+              </p>
+            ) : (
+              <div className="divide-y divide-zinc-100">
+                {userPayments.map(
+                  (payment) => (
+                    <div
+                      key={
+                        payment.id
+                      }
+                      className="px-4 py-4 sm:px-5"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <p className="truncate font-mono text-xs font-bold text-[#3120ff]">
+                            {payment.reference ||
+                              payment.id}
+                          </p>
+
+                          <p className="mt-1 text-sm font-semibold text-zinc-900">
+                            {paymentPurposeLabel(
+                              payment
+                            )}
+                          </p>
+
+                          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-zinc-500">
+                            <span>
+                              {paymentMethodLabel(
+                                payment
+                              )}
+                            </span>
+
+                            <span>
+                              {new Date(
+                                payment.created_at ||
+                                  ''
+                              ).toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="shrink-0 text-right">
+                          <p className="text-sm font-bold text-zinc-950">
+                            $
+                            {Number(
+                              payment.amount ||
+                                0
+                            ).toFixed(2)}
+                          </p>
+
+                          <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">
+                            {payment.currency ||
+                              'USD'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                        <PaymentStatus
+                          status={
+                            payment.status
+                          }
+                        />
+
+                        <div className="min-w-0 text-right text-[11px] text-zinc-500">
+                          {payment.transaction_id && (
+                            <p className="max-w-55 truncate font-mono">
+                              Transaction{' '}
+                              {payment.transaction_id}
+                            </p>
+                          )}
+
+                          {payment.wallet_transaction_id && (
+                            <p className="max-w-55 truncate font-mono">
+                              Credit record{' '}
+                              {payment.wallet_transaction_id}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )
                 )}
               </div>
             )}
