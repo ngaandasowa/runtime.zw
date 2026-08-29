@@ -5,6 +5,7 @@ import cors from 'cors';
 
 import emailRoutes from './routes/email.js';
 import paymentRoutes from './routes/payments.js';
+import walletRoutes from './routes/wallet.js';
 
 const app = express();
 
@@ -118,6 +119,11 @@ app.use(
 app.use(
   '/api/payments',
   paymentRoutes
+);
+
+app.use(
+  '/api/wallet',
+  walletRoutes
 );
 
 /*
