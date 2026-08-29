@@ -349,7 +349,7 @@ export const WhoisLookup: React.FC = () => {
               </div>
 
               {!result.checkingFailed && (
-                result.isAvailable ? (
+                result.isAvailable && result.registrationEligible !== false ? (
                   <button
                     type="button"
                     onClick={() =>
@@ -363,7 +363,7 @@ export const WhoisLookup: React.FC = () => {
 
                     <ArrowRight className="h-4 w-4" />
                   </button>
-                ) : (
+                ) : result.isAvailable ? null : (
                   <button
                     type="button"
                     onClick={() =>
@@ -392,7 +392,11 @@ export const WhoisLookup: React.FC = () => {
                   </h2>
 
                   <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-zinc-500">
-                    This domain does not currently have a registered WHOIS record and can be registered.
+                    {result.registrationEligible === false
+                      ? result.eligibilityReason || 'This domain is not eligible for registration.'
+                      : result.registryApprovalRequired
+                        ? 'No existing registration was found. You may apply to register this .co.zw domain. Registration remains subject to ZISPA terms and requirements.'
+                        : 'This domain does not currently have a registered WHOIS record and is available for registration.'}
                   </p>
 
                   {result.price !==

@@ -41,6 +41,9 @@ export type DomainAvailabilityResult = {
   reason?: string;
   price?: number;
   checkingFailed?: boolean;
+  registrationEligible?: boolean;
+  eligibilityReason?: string;
+  registryApprovalRequired?: boolean;
   whois?: WhoisDetails;
 };
 
@@ -49,6 +52,29 @@ export type DomainPricingRow = {
   register?: number;
   renew?: number;
   transfer?: number;
+};
+
+
+export const getCoZwRegistrationEligibility = (rawDomain: string) => {
+  const domain = rawDomain.trim().toLowerCase().replace(/\.$/, '');
+
+  if (!domain.endsWith('.co.zw')) {
+    return { eligible: true, registryApprovalRequired: false };
+  }
+
+  const label = domain.slice(0, -'.co.zw'.length);
+
+  // Operational ZISPA restriction communicated to Runtime:
+  // one- and two-character .co.zw names are not accepted for registration.
+  if (label.length < 3) {
+    return {
+      eligible: false,
+      registryApprovalRequired: true,
+      reason: '.co.zw domain names must contain at least 3 characters before .co.zw.',
+    };
+  }
+
+  return { eligible: true, registryApprovalRequired: true };
 };
 
 const API_BASE =
@@ -1686,15 +1712,23 @@ class DomainService {
         };
       }
 
+      const eligibility = getCoZwRegistrationEligibility(domain);
+
       return {
         domain,
-        isAvailable:
-          availability,
+        isAvailable: availability,
         price,
         whois,
-
+        registrationEligible: availability ? eligibility.eligible : false,
+        eligibilityReason: availability ? eligibility.reason : undefined,
+        registryApprovalRequired:
+          availability && eligibility.registryApprovalRequired,
         reason: availability
-          ? 'Available for registration'
+          ? eligibility.eligible
+            ? eligibility.registryApprovalRequired
+              ? 'Available to apply for registration'
+              : 'Available for registration'
+            : eligibility.reason
           : 'Already registered',
       };
     } catch (error) {

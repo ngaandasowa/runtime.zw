@@ -475,7 +475,7 @@ const whatsappRegistration = (
                   }`}
                 >
                   <div className="flex min-w-0 items-start gap-3">
-                    {result.isAvailable ? (
+                    {result.isAvailable && result.registrationEligible !== false ? (
                       <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
                     ) : (
                       <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-zinc-400" />
@@ -490,18 +490,23 @@ const whatsappRegistration = (
 
                       <p
                         className={`mt-1 text-sm ${
-                          result.isAvailable
+                          result.isAvailable && result.registrationEligible !== false
                             ? 'text-emerald-600'
                             : 'text-zinc-500'
                         }`}
                       >
                         {result.checkingFailed
                           ? result.reason
-                          : result.isAvailable
-                            ? 'Available for registration'
+                          : result.isAvailable && result.registrationEligible === false
+                            ? result.eligibilityReason || 'Not eligible for registration'
+                            : result.isAvailable
+                            ? result.registryApprovalRequired
+                              ? 'Available to apply for registration'
+                              : 'Available for registration'
                             : 'Already registered. If you own this domain, you can transfer it to us.'}
                       </p>
                       {result.isAvailable &&
+                        result.registrationEligible !== false &&
                         requiresAssistedRegistration(
                           result.domain
                         ) && (
@@ -518,6 +523,7 @@ const whatsappRegistration = (
                   {!result.checkingFailed && (
                     <div className="flex shrink-0 items-center justify-between gap-4 sm:justify-end">
                       {result.isAvailable &&
+                        result.registrationEligible !== false &&
                         result.price !==
                           undefined && (
                           <div className="text-right">
@@ -534,7 +540,7 @@ const whatsappRegistration = (
                           </div>
                         )}
 
-                      {result.isAvailable ? (
+                      {result.isAvailable && result.registrationEligible !== false ? (
                         requiresAssistedRegistration(
                           result.domain
                         ) ? (
@@ -564,6 +570,8 @@ const whatsappRegistration = (
                             <ArrowRight className="h-4 w-4" />
                           </button>
                         )
+                      ) : result.isAvailable ? (
+                        <span className="text-xs font-medium text-zinc-500">Not registerable</span>
                       ) : (
                         <button
                           type="button"

@@ -19,6 +19,7 @@ import { useStore } from '../context/StoreContext';
 import {
   domainService,
   DomainAvailabilityResult,
+  getCoZwRegistrationEligibility,
 } from '../services/DomainService';
 import { nameserverService } from '../services/NameserverService';
 import { RegistrantDetails, RegistrantType } from '../types';
@@ -214,6 +215,7 @@ const [renewPrice, setRenewPrice] =
 
 const [isProcessing, setIsProcessing] =
   useState(false);
+const [acceptedCoZwTerms, setAcceptedCoZwTerms] = useState(false);
 
 const [placedOrder, setPlacedOrder] =
   useState<{
@@ -325,6 +327,7 @@ const [placedOrder, setPlacedOrder] =
     setPesepayPhone('');
     setRenewPrice(undefined);
     setIsProcessing(false);
+    setAcceptedCoZwTerms(false);
     setPlacedOrder(null);
   };
 
@@ -438,6 +441,15 @@ const [placedOrder, setPlacedOrder] =
         if (!result.isAvailable) {
           setSearchError(
             `${result.domain} is no longer available for registration.`
+          );
+          setStep('search');
+          return;
+        }
+
+        if (result.registrationEligible === false) {
+          setSearchError(
+            result.eligibilityReason ||
+              `${result.domain} is not eligible for registration.`
           );
           setStep('search');
           return;
@@ -564,7 +576,8 @@ const [placedOrder, setPlacedOrder] =
   ) => {
     if (
       result.checkingFailed ||
-      !result.isAvailable
+      !result.isAvailable ||
+      result.registrationEligible === false
     ) {
       return;
     }
@@ -1053,9 +1066,32 @@ const [placedOrder, setPlacedOrder] =
       return;
     }
 
+    const coZwEligibility = getCoZwRegistrationEligibility(
+      availabilityResult.domain
+    );
+
+    if (!coZwEligibility.eligible) {
+      showNotification(
+        coZwEligibility.reason || 'This .co.zw domain is not eligible for registration.',
+        'error'
+      );
+      return;
+    }
+
     if (price === undefined) {
       showNotification(
         'Domain pricing is currently unavailable.',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      availabilityResult.domain.toLowerCase().endsWith('.co.zw') &&
+      !acceptedCoZwTerms
+    ) {
+      showNotification(
+        'Please confirm the .co.zw registration terms before placing the order.',
         'error'
       );
       return;
@@ -1612,7 +1648,7 @@ const [placedOrder, setPlacedOrder] =
                             >
                               {result.checkingFailed ? (
                                 <AlertCircle className="h-5 w-5 shrink-0 text-amber-500" />
-                              ) : result.isAvailable ? (
+                              ) : result.isAvailable && result.registrationEligible !== false ? (
                                 <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
                               ) : (
                                 <AlertCircle className="h-5 w-5 shrink-0 text-zinc-400" />
@@ -1627,7 +1663,9 @@ const [placedOrder, setPlacedOrder] =
                                   {result.checkingFailed
                                     ? result.reason ||
                                       'Unable to check'
-                                    : result.isAvailable
+                                    : result.isAvailable && result.registrationEligible === false
+                                      ? result.eligibilityReason || 'Not eligible for registration'
+                                      : result.isAvailable
                                       ? resultPrice !==
                                         undefined
                                         ? `$${resultPrice.toFixed(
@@ -1639,6 +1677,7 @@ const [placedOrder, setPlacedOrder] =
                               </div>
 
                               {result.isAvailable &&
+                                result.registrationEligible !== false &&
                                 !result.checkingFailed && (
                                   <button
                                     type="button"
@@ -2175,6 +2214,26 @@ const [placedOrder, setPlacedOrder] =
                     </div>
                   </div>
 
+                  {selectedDomain.toLowerCase().endsWith('.co.zw') && (
+                    <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                      <p className="text-sm font-semibold text-zinc-950">
+                        .co.zw registration terms
+                      </p>
+                      <p className="mt-2 text-xs leading-5 text-zinc-600">
+                        By placing this order, you confirm that the information provided is correct, that you have the right to use this domain name, and that its registration and use will not infringe another party's rights or be used for an unlawful purpose. Registration remains subject to ZISPA's terms and requirements.
+                      </p>
+                      <label className="mt-3 flex cursor-pointer items-start gap-3 text-xs leading-5 text-zinc-700">
+                        <input
+                          type="checkbox"
+                          checked={acceptedCoZwTerms}
+                          onChange={(event) => setAcceptedCoZwTerms(event.target.checked)}
+                          className="mt-0.5 h-4 w-4 rounded border-zinc-300 accent-[#3120ff]"
+                        />
+                        <span>I confirm the information I provided is correct and I agree to the applicable .co.zw registration terms.</span>
+                      </label>
+                    </div>
+                  )}
+
                   <div>
                     <h3 className="mb-3 text-sm font-semibold text-zinc-950">
                       Payment method
@@ -2562,7 +2621,8 @@ const [placedOrder, setPlacedOrder] =
                       onClick={completeOrder}
                       disabled={
                         isProcessing ||
-                        price === undefined
+                        price === undefined ||
+                        (selectedDomain.toLowerCase().endsWith('.co.zw') && !acceptedCoZwTerms)
                       }
                       className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#3120ff] px-4 text-sm font-semibold text-white transition hover:bg-[#2819d9] disabled:cursor-not-allowed disabled:opacity-50 sm:px-5"
                     >
