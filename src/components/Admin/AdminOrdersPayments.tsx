@@ -41,6 +41,7 @@ export const AdminOrdersPayments:
       'ALL' |
       'pending' |
       'verified' |
+      'failed' |
       'rejected' |
       'cancelled'
     >('ALL');
@@ -72,12 +73,37 @@ export const AdminOrdersPayments:
               ).getTime()
           )
           .map((order) => {
+            /*
+             * An order can have multiple payment attempts.
+             * Always use the newest attempt for the row/action
+             * state. Using payments.find() kept showing the
+             * first failed PesePay attempt even after the
+             * customer selected another payment method.
+             */
+            const paymentAttempts =
+              payments
+                .filter(
+                  (item) =>
+                    item.order_id ===
+                    order.id
+                )
+                .sort(
+                  (a, b) =>
+                    new Date(
+                      b.created_at ||
+                        b.updated_at ||
+                        0
+                    ).getTime() -
+                    new Date(
+                      a.created_at ||
+                        a.updated_at ||
+                        0
+                    ).getTime()
+                );
+
             const payment =
-              payments.find(
-                (item) =>
-                  item.order_id ===
-                  order.id
-              ) || null;
+              paymentAttempts[0] ||
+              null;
 
             const domain =
               domains.find(
@@ -90,6 +116,7 @@ export const AdminOrdersPayments:
             return {
               order,
               payment,
+              paymentAttempts,
               domain,
             };
           });
@@ -423,6 +450,7 @@ export const AdminOrdersPayments:
                   | 'ALL'
                   | 'pending'
                   | 'verified'
+                  | 'failed'
                   | 'rejected'
                   | 'cancelled'
               )
@@ -439,6 +467,10 @@ export const AdminOrdersPayments:
 
             <option value="verified">
               Verified
+            </option>
+
+            <option value="failed">
+              Failed attempts
             </option>
 
             <option value="rejected">
@@ -463,6 +495,7 @@ export const AdminOrdersPayments:
                 ({
                   order,
                   payment,
+                  paymentAttempts,
                   domain,
                 }) => {
                   const pending =
@@ -474,6 +507,28 @@ export const AdminOrdersPayments:
                         'pending' ||
                       payment.status ===
                         'pending_verification'
+                    );
+
+                  /*
+                   * Approve / Reject are manual verification
+                   * actions. A failed PesePay result is provider-
+                   * authoritative and must not be manually turned
+                   * into a successful PesePay payment. If the
+                   * customer retries with manual EcoCash, that new
+                   * payment becomes the latest attempt and these
+                   * actions appear automatically.
+                   */
+                  const manualActionable =
+                    Boolean(
+                      payment &&
+                      payment.gateway ===
+                        'ecocash_usd' &&
+                      (
+                        payment.status ===
+                          'pending' ||
+                        payment.status ===
+                          'pending_verification'
+                      )
                     );
 
                   const cancellable =
@@ -572,17 +627,31 @@ export const AdminOrdersPayments:
                             ).toLocaleString()}
                           </p>
 
+                          {paymentAttempts.length > 1 && (
+                            <p className="mt-1 text-[11px] text-zinc-400">
+                              {paymentAttempts.length}{' '}
+                              payment attempts. Showing the latest attempt.
+                            </p>
+                          )}
+
                           {!payment &&
                             cancellable && (
-                            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
+                            <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-xs leading-5 text-zinc-700">
                               This order has no payment record. It cannot be approved or rejected yet. The customer can open the order and choose <strong>Continue payment</strong> to restore the EcoCash payment record, or the order can be cancelled.
                             </div>
                           )}
                         </div>
 
                         <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:flex-col">
+                          {payment?.status ===
+                            'failed' && (
+                            <div className="max-w-56 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs leading-5 text-rose-700">
+                              This payment attempt failed. The order is still open and the customer can try another payment method.
+                            </div>
+                          )}
+
                           {payment &&
-                            pending && (
+                            manualActionable && (
                               <>
                                 <button
                                   type="button"
@@ -747,6 +816,9 @@ const StatusBadge: React.FC<{
   const verified =
     status === 'verified';
 
+  const failed =
+    status === 'failed';
+
   const rejected =
     status === 'rejected';
 
@@ -764,23 +836,27 @@ const StatusBadge: React.FC<{
         ? 'Cancelled'
         : verified
         ? 'Verified'
-        : rejected
-          ? 'Rejected'
-          : status ===
+        : failed
+          ? 'Payment failed'
+          : rejected
+            ? 'Rejected'
+            : status ===
               'pending_verification'
             ? 'Awaiting verification'
             : 'Awaiting payment';
 
   const classes =
     paymentMissing
-      ? 'border-amber-200 bg-amber-50 text-amber-700'
+      ? 'border-zinc-200 bg-zinc-50 text-zinc-700'
       : cancelled
         ? 'border-zinc-200 bg-zinc-100 text-zinc-600'
         : verified
         ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-        : rejected
-          ? 'border-zinc-200 bg-zinc-100 text-zinc-700'
-          : 'border-[#3120ff]/20 bg-[#3120ff]/5 text-[#3120ff]';
+        : failed
+          ? 'border-rose-200 bg-rose-50 text-rose-700'
+          : rejected
+            ? 'border-zinc-200 bg-zinc-100 text-zinc-700'
+            : 'border-[#3120ff]/20 bg-[#3120ff]/5 text-[#3120ff]';
 
   return (
     <span

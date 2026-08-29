@@ -11,8 +11,9 @@ import { adminDb, } from '../firebaseAdmin.js';
  * current domain-registration behaviour without attempting
  * to migrate renewals/cloud/credits at the same time.
  */
-const getPrimaryItemType = (order) => String(order.items?.[0]?.item_type ||
+const getPrimaryItemType = (order) => String(order.purpose ||
     order.metadata?.purpose ||
+    order.items?.[0]?.item_type ||
     '')
     .trim()
     .toLowerCase();
@@ -72,6 +73,91 @@ const fulfillDomainRegistration = async ({ transaction, orderRef, paymentId, now
         resourceId: domainDoc.id,
     };
 };
+const fulfillDomainRenewal = async ({ transaction, order, paymentId, now, actor = 'Runtime', }) => {
+    const domainId = String(order.domain_id ||
+        order.metadata?.domain_id ||
+        '').trim();
+    if (!domainId) {
+        return {
+            handled: false,
+            itemType: 'domain_renewal',
+        };
+    }
+    const domainRef = adminDb
+        .collection('domains')
+        .doc(domainId);
+    const domainDoc = await transaction.get(domainRef);
+    if (!domainDoc.exists) {
+        return {
+            handled: false,
+            itemType: 'domain_renewal',
+        };
+    }
+    const domain = domainDoc.data();
+    const existingHistory = Array.isArray(domain.history)
+        ? domain.history
+        : [];
+    /*
+     * Settlement can be reached more than once (for example,
+     * callback + browser verification). The payment ID is the
+     * idempotency key: one paid renewal payment extends the
+     * domain exactly once.
+     */
+    const historyId = `hist-renewal-${paymentId.slice(0, 12)}`;
+    const alreadyRenewed = existingHistory.some((item) => item?.id === historyId ||
+        item?.payment_id === paymentId);
+    if (alreadyRenewed) {
+        return {
+            handled: true,
+            itemType: 'domain_renewal',
+            resourceType: 'domain',
+            resourceId: domainDoc.id,
+        };
+    }
+    const years = Math.max(1, Number(order.renewal_years ||
+        order.metadata?.renewal_years ||
+        order.items?.[0]?.quantity ||
+        1) || 1);
+    const currentTime = new Date(now);
+    const existingExpiry = domain.expires_at
+        ? new Date(domain.expires_at)
+        : null;
+    const baseDate = existingExpiry &&
+        !Number.isNaN(existingExpiry.getTime()) &&
+        existingExpiry.getTime() >
+            currentTime.getTime()
+        ? new Date(existingExpiry)
+        : new Date(currentTime);
+    const newExpiry = new Date(baseDate);
+    newExpiry.setFullYear(newExpiry.getFullYear() +
+        years);
+    transaction.set(domainRef, {
+        status: 'active',
+        expires_at: newExpiry.toISOString(),
+        updated_at: now,
+        history: [
+            ...existingHistory,
+            {
+                id: historyId,
+                domain_id: domainDoc.id,
+                action: 'RENEWAL',
+                description: `Renewal payment confirmed. Domain renewed for ${years} ${years === 1
+                    ? 'year'
+                    : 'years'}.`,
+                status: 'confirmed',
+                actor,
+                payment_id: paymentId,
+                created_at: now,
+            },
+        ],
+    }, { merge: true });
+    return {
+        handled: true,
+        itemType: 'domain_renewal',
+        resourceType: 'domain',
+        resourceId: domainDoc.id,
+    };
+};
 export const fulfillPaidOrder = async (input) => {
     const itemType = getPrimaryItemType(input.order);
     switch (itemType) {
@@ -83,6 +169,7 @@ export const fulfillPaidOrder = async (input) => {
          * behaviour or alter their existing flows.
          */
         case 'domain_renewal':
+            return fulfillDomainRenewal(input);
         case 'domain_transfer':
         case 'cloud_compute':
         case 'database':

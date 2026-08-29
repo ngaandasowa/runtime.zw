@@ -14,8 +14,8 @@ import {
 } from '../firebaseAdmin.js';
 
 import {
-  fulfillPaidOrder,
-} from '../services/OrderFulfillmentService.js';
+  settleOrderPayment,
+} from '../services/PaymentSettlementService.js';
 
 const router = Router();
 
@@ -825,122 +825,23 @@ const settlePesePayPayment = async (
     paymentState ===
     'success'
   ) {
+    /*
+     * PesePay's job ends after it proves SUCCESS.
+     * The generic settlement service owns all local money,
+     * order and fulfillment state from this point onward.
+     */
     const result =
-      await adminDb.runTransaction(
-        async (transaction) => {
-          const freshPayment =
-            await transaction.get(
-              paymentRef
-            );
-
-          if (!freshPayment.exists) {
-            throw new Error(
-              'Payment disappeared during verification.'
-            );
-          }
-
-          const freshPaymentData =
-            freshPayment.data()!;
-
-          const orderRef =
-            adminDb
-              .collection('orders')
-              .doc(
-                String(
-                  freshPaymentData
-                    .order_id
-                )
-              );
-
-          const freshOrder =
-            await transaction.get(
-              orderRef
-            );
-
-          if (!freshOrder.exists) {
-            throw new Error(
-              'Order linked to payment was not found.'
-            );
-          }
-
-          const order =
-            freshOrder.data()!;
-
-          if (
-            order.status ===
-              'cancelled' ||
-            order.status ===
-              'refunded'
-          ) {
-            throw new Error(
-              'This order can no longer be marked paid.'
-            );
-          }
-
-          transaction.set(
-            paymentRef,
-            {
-              status:
-                'verified',
-              provider_status:
-                providerStatus ||
-                'SUCCESS',
-              provider_status_description:
-                providerDescription,
-              transaction_id:
-                providerInternalReference,
-              verified_at:
-                freshPaymentData
-                  .verified_at ||
-                now,
-              rejection_reason:
-                null,
-              updated_at:
-                now,
-            },
-            { merge: true }
-          );
-
-          if (
-            order.status !==
-              'paid' &&
-            order.status !==
-              'completed'
-          ) {
-            transaction.update(
-              orderRef,
-              {
-                status:
-                  'paid',
-                paid_at:
-                  order.paid_at ||
-                  now,
-                updated_at:
-                  now,
-              }
-            );
-          }
-
-          /*
-           * Payment settlement ends with the order becoming
-           * paid. Product-specific work is delegated to the
-           * fulfillment layer.
-           */
-          await fulfillPaidOrder({
-            transaction,
-            orderRef,
-            order,
-            paymentId,
-            now,
-            actor: 'PesePay',
-          });
-
-          return {
-            orderId:
-              orderRef.id,
-          };
-        }
-      );
+      await settleOrderPayment({
+        paymentId,
+        actor: 'PesePay',
+        providerStatus:
+          providerStatus ||
+          'SUCCESS',
+        providerStatusDescription:
+          providerDescription,
+        transactionId:
+          providerInternalReference,
+      });
 
     return {
       verified: true,
@@ -1264,6 +1165,338 @@ router.post(
         success: false,
         message:
           'Unable to verify PesePay payment.',
+      });
+    }
+  }
+);
+
+
+
+/*
+ * ----------------------------------------------------------
+ * ADMIN MANUAL PAYMENT VERIFICATION
+ * ----------------------------------------------------------
+ *
+ * Manual EcoCash is the only gateway an administrator may
+ * approve/reject here. Provider-authoritative PesePay attempts
+ * must continue through PesePay verification instead.
+ */
+
+router.post(
+  '/admin/manual/approve',
+  authenticate,
+  async (
+    req: AuthenticatedRequest,
+    res: Response
+  ) => {
+    try {
+      const runtimeUser =
+        req.runtimeUser!;
+
+      if (
+        runtimeUser.role !==
+        'super_admin'
+      ) {
+        return res.status(403).json({
+          success: false,
+          message:
+            'Super admin permission required.',
+        });
+      }
+
+      const paymentId =
+        typeof req.body?.paymentId ===
+        'string'
+          ? req.body.paymentId.trim()
+          : '';
+
+      const transactionId =
+        typeof req.body?.transactionId ===
+        'string'
+          ? req.body.transactionId.trim()
+          : '';
+
+      if (!paymentId) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Payment ID is required.',
+        });
+      }
+
+      const paymentDoc =
+        await adminDb
+          .collection('payments')
+          .doc(paymentId)
+          .get();
+
+      if (!paymentDoc.exists) {
+        return res.status(404).json({
+          success: false,
+          message:
+            'Payment not found.',
+        });
+      }
+
+      const payment =
+        paymentDoc.data()!;
+
+      if (
+        payment.gateway !==
+        'ecocash_usd'
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Only manual EcoCash USD payments can be approved manually.',
+        });
+      }
+
+      if (
+        payment.status ===
+        'rejected' ||
+        payment.status ===
+        'failed'
+      ) {
+        return res.status(409).json({
+          success: false,
+          message:
+            'This payment attempt is no longer awaiting verification. The customer should create a new payment attempt.',
+        });
+      }
+
+      const result =
+        await settleOrderPayment({
+          paymentId,
+          actor:
+            runtimeUser.email ||
+            runtimeUser.uid,
+          providerStatus:
+            'MANUALLY_VERIFIED',
+          providerStatusDescription:
+            'Manual EcoCash USD payment verified by Runtime administrator.',
+          transactionId:
+            transactionId ||
+            undefined,
+        });
+
+      return res.json({
+        success: true,
+        ...result,
+      });
+    } catch (error) {
+      console.error(
+        'Manual payment approval error:',
+        error
+      );
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Unable to approve payment.';
+
+      const status =
+        message === 'Payment not found.'
+          ? 404
+          : message.includes(
+              'can no longer be marked paid'
+            )
+            ? 409
+            : 500;
+
+      return res.status(status).json({
+        success: false,
+        message,
+      });
+    }
+  }
+);
+
+router.post(
+  '/admin/manual/reject',
+  authenticate,
+  async (
+    req: AuthenticatedRequest,
+    res: Response
+  ) => {
+    try {
+      const runtimeUser =
+        req.runtimeUser!;
+
+      if (
+        runtimeUser.role !==
+        'super_admin'
+      ) {
+        return res.status(403).json({
+          success: false,
+          message:
+            'Super admin permission required.',
+        });
+      }
+
+      const paymentId =
+        typeof req.body?.paymentId ===
+        'string'
+          ? req.body.paymentId.trim()
+          : '';
+
+      const reason =
+        typeof req.body?.reason ===
+        'string' &&
+        req.body.reason.trim()
+          ? req.body.reason.trim()
+          : 'Payment could not be verified.';
+
+      if (!paymentId) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Payment ID is required.',
+        });
+      }
+
+      const paymentRef =
+        adminDb
+          .collection('payments')
+          .doc(paymentId);
+
+      const now =
+        new Date().toISOString();
+
+      const result =
+        await adminDb.runTransaction(
+          async (transaction) => {
+            const paymentDoc =
+              await transaction.get(
+                paymentRef
+              );
+
+            if (!paymentDoc.exists) {
+              throw new Error(
+                'Payment not found.'
+              );
+            }
+
+            const payment =
+              paymentDoc.data()!;
+
+            if (
+              payment.gateway !==
+              'ecocash_usd'
+            ) {
+              throw new Error(
+                'Only manual EcoCash USD payments can be rejected manually.'
+              );
+            }
+
+            if (
+              payment.status ===
+              'verified'
+            ) {
+              throw new Error(
+                'A verified payment cannot be rejected.'
+              );
+            }
+
+            const orderId =
+              String(
+                payment.order_id || ''
+              ).trim();
+
+            if (!orderId) {
+              throw new Error(
+                'Payment is not linked to an order.'
+              );
+            }
+
+            const orderRef =
+              adminDb
+                .collection('orders')
+                .doc(orderId);
+
+            const orderDoc =
+              await transaction.get(
+                orderRef
+              );
+
+            if (!orderDoc.exists) {
+              throw new Error(
+                'Order linked to payment was not found.'
+              );
+            }
+
+            const order =
+              orderDoc.data()!;
+
+            transaction.set(
+              paymentRef,
+              {
+                status: 'rejected',
+                rejection_reason:
+                  reason,
+                rejected_at:
+                  payment.rejected_at ||
+                  now,
+                rejected_by:
+                  runtimeUser.uid,
+                updated_at: now,
+              },
+              { merge: true }
+            );
+
+            /*
+             * Rejecting one attempt does not cancel the order.
+             * The customer remains free to try another method.
+             */
+            if (
+              order.status ===
+              'payment_pending'
+            ) {
+              transaction.set(
+                orderRef,
+                {
+                  status: 'pending',
+                  updated_at: now,
+                },
+                { merge: true }
+              );
+            }
+
+            return {
+              paymentId,
+              orderId,
+            };
+          }
+        );
+
+      return res.json({
+        success: true,
+        ...result,
+      });
+    } catch (error) {
+      console.error(
+        'Manual payment rejection error:',
+        error
+      );
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Unable to reject payment.';
+
+      const status =
+        message === 'Payment not found.'
+          ? 404
+          : message.includes('cannot be rejected') ||
+              message.includes(
+                'Only manual EcoCash'
+              )
+            ? 409
+            : 500;
+
+      return res.status(status).json({
+        success: false,
+        message,
       });
     }
   }

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { getAuth } from 'firebase/auth';
 import { 
   User, 
   Domain, 
@@ -51,6 +52,64 @@ import {
 import {
   checkoutRepository,
 } from '../services/CheckoutRepository';
+
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  (import.meta.env.DEV
+    ? 'http://localhost:4000'
+    : '');
+
+const callAdminPaymentApi =
+  async (
+    path: string,
+    body: Record<string, unknown>
+  ) => {
+    const authUser =
+      getAuth().currentUser;
+
+    if (!authUser) {
+      throw new Error(
+        'Authentication required.'
+      );
+    }
+
+    const token =
+      await authUser.getIdToken();
+
+    const response =
+      await fetch(
+        `${API_BASE_URL}/api/payments${path}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type':
+              'application/json',
+            Authorization:
+              `Bearer ${token}`,
+          },
+          body:
+            JSON.stringify(body),
+        }
+      );
+
+    let data: any = null;
+
+    try {
+      data =
+        await response.json();
+    } catch {
+      data = null;
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        data?.message ||
+        `Payment action failed (${response.status}).`
+      );
+    }
+
+    return data;
+  };
 
 
 interface StoreContextType {
@@ -1696,17 +1755,6 @@ const getDomainOrderDetails = async (
         );
       }
 
-      if (
-        payment.status ===
-        'verified'
-      ) {
-        showNotification(
-          'This payment is already verified.',
-          'info'
-        );
-        return;
-      }
-
       const order =
         orders.find(
           (item) =>
@@ -1721,356 +1769,155 @@ const getDomainOrderDetails = async (
       }
 
       if (
-        order.status ===
-        'cancelled'
+        payment.gateway !==
+        'ecocash_usd'
       ) {
         throw new Error(
-          'This order was cancelled and cannot be paid or activated. The customer must place a new order.'
+          'Only manual EcoCash USD payments can be approved manually.'
         );
       }
 
+      const result =
+        await callAdminPaymentApi(
+          '/admin/manual/approve',
+          {
+            paymentId,
+            ...(transactionId
+              ? { transactionId }
+              : {}),
+          }
+        );
+
       /*
-       * ----------------------------------------------------------
-       * DOMAIN RENEWAL PAYMENT
-       * ----------------------------------------------------------
+       * The backend is now authoritative. Reload the admin
+       * collections instead of recreating settlement state in
+       * the browser.
        */
+      const [
+        refreshedPayments,
+        refreshedOrders,
+        refreshedDomains,
+      ] =
+        await Promise.all([
+          paymentRepository
+            .getAllPayments(),
+          orderRepository
+            .getAllOrders(),
+          domainRepository
+            .getAllDomains(),
+        ]);
+
+      setPayments(
+        refreshedPayments
+      );
+      setOrders(
+        refreshedOrders
+      );
+      setDomains(
+        refreshedDomains
+      );
+
+      const approvedPayment =
+        refreshedPayments.find(
+          (item) =>
+            item.id === paymentId
+        ) || payment;
+
+      const paidOrder =
+        refreshedOrders.find(
+          (item) =>
+            item.id === order.id
+        ) || order;
+
+      const fulfilledDomain =
+        refreshedDomains.find(
+          (item) =>
+            item.id ===
+              result?.fulfillment
+                ?.resourceId ||
+            (item as any)
+              .order_id ===
+              order.id ||
+            item.id ===
+              (order as any)
+                .domain_id
+        );
+
       if (
         (order as any).purpose ===
         'domain_renewal'
       ) {
-        const domainId =
-          (order as any).domain_id;
-
         const years =
           Number(
             (order as any)
               .renewal_years || 1
           );
 
-        const domain =
-          domains.find(
-            (item) =>
-              item.id === domainId
-          );
-
-        if (!domain) {
-          throw new Error(
-            'Renewal domain not found.'
-          );
-        }
-
-        const approvedPayment =
-          paymentService
-            .approveManualPayment(
-              payment,
-              currentUser.id,
-              transactionId
+        if (fulfilledDomain) {
+          emailNotificationService
+            .notifyQuietly(
+              'renewal_completed',
+              {
+                email:
+                  fulfilledDomain
+                    .user_email,
+                name:
+                  fulfilledDomain
+                    .owner_details
+                    ?.full_name,
+                orderReference:
+                  paidOrder.reference,
+                paymentReference:
+                  approvedPayment
+                    .reference,
+                domainName:
+                  fulfilledDomain
+                    .domain_name,
+                amount:
+                  approvedPayment
+                    .amount,
+                years,
+                renewalDate:
+                  fulfilledDomain
+                    .expires_at,
+              }
             );
 
-        const paidOrder =
-          orderService.markPaid(
-            order
+          showNotification(
+            `${fulfilledDomain.domain_name} renewed until ${
+              fulfilledDomain.expires_at
+                ? new Date(
+                    fulfilledDomain.expires_at
+                  ).toLocaleDateString()
+                : 'its new renewal date'
+            }.`,
+            'success'
           );
-
-        const now =
-          new Date();
-
-        const existingExpiry =
-          domain.expires_at
-            ? new Date(
-                domain.expires_at
-              )
-            : null;
-
-        /*
-         * Early renewal:
-         * extend current expiry.
-         *
-         * Expired domain:
-         * start from today.
-         */
-        const baseDate =
-          existingExpiry &&
-          existingExpiry.getTime() >
-            now.getTime()
-            ? new Date(
-                existingExpiry
-              )
-            : new Date(now);
-
-        const newExpiry =
-          new Date(baseDate);
-
-        newExpiry.setFullYear(
-          newExpiry.getFullYear() +
-            years
-        );
-
-        const nowIso =
-          now.toISOString();
-
-        const updatedDomain: Domain =
-          {
-            ...domain,
-
-            status:
-              'active',
-
-            expires_at:
-              newExpiry.toISOString(),
-
-            updated_at:
-              nowIso,
-
-            history: [
-              ...domain.history,
-
-              {
-                id:
-                  'hist-' +
-                  Math.random()
-                    .toString(36)
-                    .substring(2, 9),
-
-                domain_id:
-                  domain.id,
-
-                action:
-                  'RENEWAL',
-
-                description:
-                  `Renewal payment confirmed. Domain renewed for ${years} ${
-                    years === 1
-                      ? 'year'
-                      : 'years'
-                  }.`,
-
-                status:
-                  'confirmed',
-
-                actor:
-                  currentUser.email,
-
-                created_at:
-                  nowIso,
-              },
-            ],
-          };
-
-        await paymentRepository.updatePayment(
-          payment.id,
-          approvedPayment
-        );
-
-        await orderRepository.updateOrder(
-          order.id,
-          paidOrder
-        );
-
-        await domainRepository.updateDomain(
-          domain.id,
-          {
-            status:
-              updatedDomain.status,
-
-            expires_at:
-              updatedDomain.expires_at,
-
-            history:
-              updatedDomain.history,
-
-            updated_at:
-              updatedDomain.updated_at,
-          }
-        );
-
-        setPayments((prev) =>
-          prev.map((item) =>
-            item.id ===
-            payment.id
-              ? approvedPayment
-              : item
-          )
-        );
-
-        setOrders((prev) =>
-          prev.map((item) =>
-            item.id ===
-            order.id
-              ? paidOrder
-              : item
-          )
-        );
-
-        setDomains((prev) =>
-          prev.map((item) =>
-            item.id ===
-            domain.id
-              ? updatedDomain
-              : item
-          )
-        );
-
-        emailNotificationService.notifyQuietly(
-          'renewal_completed',
-          {
-            email:
-              domain.user_email,
-
-            name:
-              domain.owner_details
-                ?.full_name,
-
-            orderReference:
-              order.reference,
-
-            paymentReference:
-              approvedPayment.reference,
-
-            domainName:
-              domain.domain_name,
-
-            amount:
-              approvedPayment.amount,
-
-            years,
-
-            renewalDate:
-              updatedDomain.expires_at,
-          }
-        );
-
-        showNotification(
-          `${domain.domain_name} renewed until ${newExpiry.toLocaleDateString()}.`,
-          'success'
-        );
+        } else {
+          showNotification(
+            'Renewal payment approved.',
+            'success'
+          );
+        }
 
         return;
       }
 
-      const domain =
-        domains.find(
-          (item) =>
-            (item as any)
-              .order_id ===
-              order.id
+      if (!fulfilledDomain) {
+        showNotification(
+          'Payment approved. The paid order is ready for fulfillment.',
+          'success'
         );
-
-      if (!domain) {
-        throw new Error(
-          'The domain linked to this order was not found.'
-        );
+        return;
       }
 
-      const approvedPayment =
-        paymentService.approveManualPayment(
-          payment,
-          currentUser.id,
-          transactionId
-        );
-
-      const paidOrder =
-        orderService.markPaid(
-          order
-        );
-
-      const now =
-        new Date().toISOString();
-
-      const updatedDomain: Domain = {
-        ...domain,
-
-        status:
-          'pending_registration',
-
-        updated_at:
-          now,
-
-        history: [
-          ...domain.history,
-          {
-            id:
-              'hist-' +
-              Math.random()
-                .toString(36)
-                .substring(2, 9),
-
-            domain_id:
-              domain.id,
-
-            action:
-              'STATUS_CHANGE',
-
-            description:
-              'Payment verified. Domain registration is now being processed.',
-
-            status:
-              'pending_registration',
-
-            actor:
-              currentUser.email,
-
-            created_at:
-              now,
-          },
-        ],
-      };
-
-      await paymentRepository.updatePayment(
-        payment.id,
-        approvedPayment
-      );
-
-      await orderRepository.updateOrder(
-        order.id,
-        paidOrder
-      );
-
-      await domainRepository.updateDomain(
-        domain.id,
-        {
-          status:
-            updatedDomain.status,
-          history:
-            updatedDomain.history,
-          updated_at:
-            updatedDomain.updated_at,
-        }
-      );
-
-      setPayments((prev) =>
-        prev.map((item) =>
-          item.id ===
-          payment.id
-            ? approvedPayment
-            : item
-        )
-      );
-
-      setOrders((prev) =>
-        prev.map((item) =>
-          item.id ===
-          order.id
-            ? paidOrder
-            : item
-        )
-      );
-
-      setDomains((prev) =>
-        prev.map((item) =>
-          item.id ===
-          domain.id
-            ? updatedDomain
-            : item
-        )
-      );
-
       /*
-       * Only after payment approval do Zimbabwe
-       * registry domains enter the registry queue.
+       * Preserve the existing registry-queue UI behaviour.
+       * Payment/order/domain settlement itself is no longer
+       * performed here.
        */
       if (
-        (domain as any)
+        (fulfilledDomain as any)
           .processing_type ===
         'zispa'
       ) {
@@ -2078,7 +1925,7 @@ const getDomainOrderDetails = async (
           registryRequests.some(
             (request) =>
               request.domain_id ===
-                domain.id &&
+                fulfilledDomain.id &&
               request.action ===
                 'N'
           );
@@ -2086,7 +1933,7 @@ const getDomainOrderDetails = async (
         if (!existing) {
           const registryRequest =
             registryService.createRequest(
-              updatedDomain,
+              fulfilledDomain,
               'N',
               currentUser.email
             );
@@ -2103,32 +1950,32 @@ const getDomainOrderDetails = async (
         }
       }
 
-      emailNotificationService.notifyQuietly(
-        'payment_approved',
-        {
-          email:
-            domain.user_email,
-
-          name:
-            domain.owner_details
-              ?.full_name,
-
-          orderReference:
-            order.reference,
-
-          paymentReference:
-            approvedPayment.reference,
-
-          domainName:
-            domain.domain_name,
-
-          amount:
-            approvedPayment.amount,
-        }
-      );
+      emailNotificationService
+        .notifyQuietly(
+          'payment_approved',
+          {
+            email:
+              fulfilledDomain
+                .user_email,
+            name:
+              fulfilledDomain
+                .owner_details
+                ?.full_name,
+            orderReference:
+              paidOrder.reference,
+            paymentReference:
+              approvedPayment
+                .reference,
+            domainName:
+              fulfilledDomain
+                .domain_name,
+            amount:
+              approvedPayment.amount,
+          }
+        );
 
       showNotification(
-        `Payment approved for ${domain.domain_name}. Registration can now be processed.`,
+        `Payment approved for ${fulfilledDomain.domain_name}. Registration can now be processed.`,
         'success'
       );
     };
@@ -2161,26 +2008,14 @@ const getDomainOrderDetails = async (
         );
       }
 
-      const rejected =
-        paymentService.rejectManualPayment(
-          payment,
-          currentUser.id,
-          reason
+      if (
+        payment.gateway !==
+        'ecocash_usd'
+      ) {
+        throw new Error(
+          'Only manual EcoCash USD payments can be rejected manually.'
         );
-
-      await paymentRepository.updatePayment(
-        payment.id,
-        rejected
-      );
-
-      setPayments((prev) =>
-        prev.map((item) =>
-          item.id ===
-          payment.id
-            ? rejected
-            : item
-        )
-      );
+      }
 
       const rejectedOrder =
         orders.find(
@@ -2188,6 +2023,40 @@ const getDomainOrderDetails = async (
             item.id ===
             payment.order_id
         );
+
+      await callAdminPaymentApi(
+        '/admin/manual/reject',
+        {
+          paymentId,
+          reason:
+            reason ||
+            'Payment could not be verified.',
+        }
+      );
+
+      const [
+        refreshedPayments,
+        refreshedOrders,
+      ] =
+        await Promise.all([
+          paymentRepository
+            .getAllPayments(),
+          orderRepository
+            .getAllOrders(),
+        ]);
+
+      setPayments(
+        refreshedPayments
+      );
+      setOrders(
+        refreshedOrders
+      );
+
+      const rejected =
+        refreshedPayments.find(
+          (item) =>
+            item.id === paymentId
+        ) || payment;
 
       const rejectedDomain =
         rejectedOrder
@@ -2202,54 +2071,46 @@ const getDomainOrderDetails = async (
             )
           : undefined;
 
-      if (
-        rejectedOrder
-      ) {
-        emailNotificationService.notifyQuietly(
-          'payment_rejected',
-          {
-            email:
-              rejectedDomain
-                ?.user_email ||
-              rejectedOrder
-                .user_email,
-
-            name:
-              rejectedDomain
-                ?.owner_details
-                ?.full_name,
-
-            orderReference:
-              rejectedOrder
-                .reference,
-
-            paymentReference:
-              rejected.reference,
-
-            domainName:
-              rejectedDomain
-                ?.domain_name ||
-              rejectedOrder
-                .items?.[0]
-                ?.reference_id ||
-              'Runtime order',
-
-            amount:
-              rejected.amount,
-
-            reason:
-              reason ||
-              'Payment could not be verified.',
-          }
-        );
+      if (rejectedOrder) {
+        emailNotificationService
+          .notifyQuietly(
+            'payment_rejected',
+            {
+              email:
+                rejectedDomain
+                  ?.user_email ||
+                rejectedOrder
+                  .user_email,
+              name:
+                rejectedDomain
+                  ?.owner_details
+                  ?.full_name,
+              orderReference:
+                rejectedOrder
+                  .reference,
+              paymentReference:
+                rejected.reference,
+              domainName:
+                rejectedDomain
+                  ?.domain_name ||
+                rejectedOrder
+                  .items?.[0]
+                  ?.reference_id ||
+                'Runtime order',
+              amount:
+                rejected.amount,
+              reason:
+                reason ||
+                'Payment could not be verified.',
+            }
+          );
       }
 
       showNotification(
-        'Payment marked as not verified.',
+        'Payment rejected. The order remains open for another payment attempt.',
         'info'
       );
     };
-
 
   /*
    * ----------------------------------------------------------
