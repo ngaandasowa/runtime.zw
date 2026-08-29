@@ -1,5 +1,6 @@
 import React from 'react';
-
+import { useEffect } from 'react';
+import { testWallet } from '../../testWallet';
 import {
   ArrowRight,
   CheckCircle2,
@@ -22,6 +23,12 @@ export const DashboardOverview:
       setDashboardSubView,
       setRegistrationModalOpen,
     } = useStore();
+
+    useEffect(() => {
+      if (currentUser) {
+        testWallet();
+      }
+    }, [currentUser]);
 
     const userDomains =
       domains.filter(
