@@ -1515,6 +1515,12 @@ router.post(
               .split('/')[0]
           : '';
 
+      const existingDomainId =
+        typeof req.body?.existingDomainId ===
+        'string'
+          ? req.body.existingDomainId.trim()
+          : '';
+
       const reason =
         typeof req.body?.reason ===
           'string' &&
@@ -1543,6 +1549,7 @@ router.post(
         adminDb
           .collection('domains')
           .doc(
+            existingDomainId ||
             `dom-${crypto.randomUUID()}`
           );
 
@@ -1641,6 +1648,22 @@ router.post(
                 paymentQuery
               );
 
+            const existingReplacementDoc =
+              existingDomainId
+                ? await transaction.get(
+                    replacementRef
+                  )
+                : null;
+
+            if (
+              existingDomainId &&
+              !existingReplacementDoc?.exists
+            ) {
+              throw new Error(
+                'The existing replacement domain was not found.'
+              );
+            }
+
             const verifiedPayments =
               paymentSnapshot.docs
                 .map(
@@ -1691,26 +1714,98 @@ router.post(
               );
             }
 
-            const duplicateQuery =
-              adminDb
-                .collection('domains')
-                .where(
-                  'domain_name',
-                  '==',
-                  replacementDomainName
+            if (
+              existingDomainId
+            ) {
+              const existingDomain =
+                existingReplacementDoc!
+                  .data()!;
+
+              if (
+                replacementRef.id ===
+                oldDomainRef.id
+              ) {
+                throw new Error(
+                  'The original domain cannot replace itself.'
+                );
+              }
+
+              if (
+                existingDomain.user_id !==
+                oldDomain.user_id
+              ) {
+                throw new Error(
+                  'The existing replacement domain belongs to a different customer.'
+                );
+              }
+
+              if (
+                String(
+                  existingDomain.domain_name ||
+                  ''
+                )
+                  .trim()
+                  .toLowerCase() !==
+                replacementDomainName
+              ) {
+                throw new Error(
+                  'The selected existing domain does not match the replacement domain name.'
+                );
+              }
+
+              if (
+                [
+                  'cancelled',
+                  'registry_rejected',
+                  'replaced',
+                ].includes(
+                  String(
+                    existingDomain.status
+                  )
+                )
+              ) {
+                throw new Error(
+                  'An archived or failed domain cannot be used as the replacement.'
+                );
+              }
+
+              const conflictingOrderId =
+                String(
+                  existingDomain.order_id ||
+                  ''
+                ).trim();
+
+              if (
+                conflictingOrderId &&
+                conflictingOrderId !==
+                  orderId
+              ) {
+                throw new Error(
+                  'The existing replacement domain is already linked to another order.'
+                );
+              }
+            } else {
+              const duplicateQuery =
+                adminDb
+                  .collection('domains')
+                  .where(
+                    'domain_name',
+                    '==',
+                    replacementDomainName
+                  );
+
+              const duplicateSnapshot =
+                await transaction.get(
+                  duplicateQuery
                 );
 
-            const duplicateSnapshot =
-              await transaction.get(
-                duplicateQuery
-              );
-
-            if (
-              !duplicateSnapshot.empty
-            ) {
-              throw new Error(
-                'That replacement domain already exists in Runtime.'
-              );
+              if (
+                !duplicateSnapshot.empty
+              ) {
+                throw new Error(
+                  'That replacement domain already exists in Runtime. Use "Use Existing Domain" instead.'
+                );
+              }
             }
 
             const parts =
@@ -1752,7 +1847,24 @@ router.post(
                 ? oldDomain.history
                 : [];
 
+            const existingReplacement =
+              existingDomainId
+                ? existingReplacementDoc!
+                    .data()!
+                : null;
+
+            const existingReplacementHistory =
+              Array.isArray(
+                existingReplacement
+                  ?.history
+              )
+                ? existingReplacement
+                    .history
+                : [];
+
             const newDomain = {
+              ...(existingReplacement ||
+                {}),
               id:
                 replacementRef.id,
               domain_name:
@@ -1763,44 +1875,72 @@ router.post(
               user_email:
                 oldDomain.user_email,
               status:
+                existingReplacement
+                  ?.status ||
                 'pending_registration',
               nameservers:
+                existingReplacement &&
                 Array.isArray(
-                  oldDomain.nameservers
+                  existingReplacement
+                    .nameservers
                 )
-                  ? oldDomain
+                  ? existingReplacement
                       .nameservers
-                  : [],
+                  : Array.isArray(
+                      oldDomain.nameservers
+                    )
+                    ? oldDomain
+                        .nameservers
+                    : [],
               nameserver_ips:
+                existingReplacement &&
                 Array.isArray(
-                  oldDomain
+                  existingReplacement
                     .nameserver_ips
                 )
-                  ? oldDomain
+                  ? existingReplacement
                       .nameserver_ips
-                  : [],
+                  : Array.isArray(
+                      oldDomain
+                        .nameserver_ips
+                    )
+                    ? oldDomain
+                        .nameserver_ips
+                    : [],
               auto_renew:
+                existingReplacement
+                  ?.auto_renew ??
                 oldDomain.auto_renew ??
                 true,
               renewal_price:
                 Number(
+                  existingReplacement
+                    ?.renewal_price ??
                   oldDomain
-                    .renewal_price ||
+                    .renewal_price ??
                   0
                 ),
               currency:
+                existingReplacement
+                  ?.currency ||
                 oldDomain.currency ||
                 order.currency ||
                 'USD',
               registrant_type:
+                existingReplacement
+                  ?.registrant_type ||
                 oldDomain
                   .registrant_type ||
                 'myself',
               owner_details:
+                existingReplacement
+                  ?.owner_details ||
                 oldDomain
                   .owner_details ||
                 {},
               processing_type:
+                existingReplacement
+                  ?.processing_type ||
                 oldDomain
                   .processing_type ||
                 'zispa',
@@ -1813,6 +1953,13 @@ router.post(
                 ),
               order_id:
                 orderId,
+              payment_id:
+                verifiedPayments.length ===
+                1
+                  ? verifiedPayments[0]
+                      .id
+                  : existingReplacement
+                      ?.payment_id,
               payment_ids:
                 verifiedPayments.map(
                   (payment: any) =>
@@ -1821,6 +1968,7 @@ router.post(
               replacement_for_domain_id:
                 oldDomainRef.id,
               history: [
+                ...existingReplacementHistory,
                 {
                   id:
                     `hist-${crypto.randomUUID()}`,
@@ -1828,8 +1976,12 @@ router.post(
                     replacementRef.id,
                   action: 'NEW',
                   description:
-                    `Replacement for ${oldDomain.domain_name}. Existing paid order ${order.reference || orderId} applied; no new payment created.`,
+                    existingDomainId
+                      ? `Existing domain linked as the replacement for ${oldDomain.domain_name}. Existing paid order ${order.reference || orderId} applied; no new payment created.`
+                      : `Replacement for ${oldDomain.domain_name}. Existing paid order ${order.reference || orderId} applied; no new payment created.`,
                   status:
+                    existingReplacement
+                      ?.status ||
                     'pending_registration',
                   actor:
                     runtimeUser.email ||
@@ -1839,6 +1991,8 @@ router.post(
                 },
               ],
               created_at:
+                existingReplacement
+                  ?.created_at ||
                 now,
               updated_at:
                 now,
@@ -1914,10 +2068,22 @@ router.post(
               }
             );
 
-            transaction.create(
-              replacementRef,
-              newDomain
-            );
+            if (
+              existingDomainId
+            ) {
+              transaction.set(
+                replacementRef,
+                newDomain,
+                {
+                  merge: true,
+                }
+              );
+            } else {
+              transaction.create(
+                replacementRef,
+                newDomain
+              );
+            }
 
             transaction.set(
               orderRef,
@@ -1964,6 +2130,10 @@ router.post(
                 ),
               verifiedTotal,
               orderTotal,
+              reusedExistingDomain:
+                Boolean(
+                  existingDomainId
+                ),
             };
           }
         );

@@ -26,6 +26,7 @@ export const AdminOrdersPayments:
       approveManualPayment,
       rejectManualPayment,
       replacePaidDomain,
+      replacePaidDomainWithExisting,
       cancelOrder,
       deleteOrder,
       showNotification,
@@ -457,6 +458,131 @@ export const AdminOrdersPayments:
             error instanceof Error
               ? error.message
               : 'Unable to replace domain.',
+            'error'
+          );
+        } finally {
+          setBusyOrderId(
+            null
+          );
+        }
+      };
+
+
+    const useExistingDomainAsReplacement =
+      async (
+        originalDomainId: string,
+        originalDomainName: string
+      ) => {
+        const originalDomain =
+          domains.find(
+            (item) =>
+              item.id ===
+              originalDomainId
+          );
+
+        if (!originalDomain) {
+          showNotification(
+            'Original domain not found.',
+            'error'
+          );
+          return;
+        }
+
+        const eligibleDomains =
+          domains.filter(
+            (item) =>
+              item.id !==
+                originalDomain.id &&
+              item.user_id ===
+                originalDomain.user_id &&
+              ![
+                'cancelled',
+                'registry_rejected',
+                'replaced',
+              ].includes(
+                String(
+                  item.status
+                )
+              )
+          );
+
+        if (
+          eligibleDomains.length ===
+          0
+        ) {
+          showNotification(
+            'This customer has no existing domain that can be used as the replacement.',
+            'error'
+          );
+          return;
+        }
+
+        const choices =
+          eligibleDomains
+            .map(
+              (item, index) =>
+                `${index + 1}. ${item.domain_name} (${String(item.status).replace(/_/g, ' ')})`
+            )
+            .join('\n');
+
+        const selected =
+          window.prompt(
+            `Choose the existing domain to use as the replacement for ${originalDomainName}.\n\n${choices}\n\nEnter the number:`
+          );
+
+        if (!selected?.trim()) {
+          return;
+        }
+
+        const index =
+          Number(
+            selected.trim()
+          ) - 1;
+
+        const existingDomain =
+          eligibleDomains[
+            index
+          ];
+
+        if (!existingDomain) {
+          showNotification(
+            'Choose a valid domain number.',
+            'error'
+          );
+          return;
+        }
+
+        const reason =
+          window.prompt(
+            'Why is the original domain being replaced?',
+            'Registry rejected the original domain.'
+          ) ||
+          'Registry rejected the original domain.';
+
+        const confirmed =
+          window.confirm(
+            `Use ${existingDomain.domain_name} as the replacement for ${originalDomainName}?\n\nThe existing domain record will be kept and linked to the original paid order and verified payment. No new domain and no new payment will be created.`
+          );
+
+        if (!confirmed) {
+          return;
+        }
+
+        setBusyOrderId(
+          originalDomainId
+        );
+
+        try {
+          await replacePaidDomainWithExisting(
+            originalDomainId,
+            existingDomain.id,
+            reason
+          );
+        } catch (error) {
+          showNotification(
+            error instanceof Error
+              ? error.message
+              : 'Unable to link the existing replacement domain.',
             'error'
           );
         } finally {
@@ -1021,25 +1147,47 @@ export const AdminOrdersPayments:
                                 attempt.status ===
                                 'verified'
                             ) && (
-                            <button
-                              type="button"
-                              disabled={
-                                busyOrderId ===
+                            <>
+                              <button
+                                type="button"
+                                disabled={
+                                  busyOrderId ===
+                                  domain.id
+                                }
+                                onClick={() =>
+                                  replaceDomain(
+                                    domain.id,
+                                    domain.domain_name
+                                  )
+                                }
+                                className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#3120ff]/20 bg-[#3120ff]/5 px-4 py-2.5 text-xs font-bold text-[#3120ff] transition hover:bg-[#3120ff]/10 disabled:opacity-50"
+                              >
+                                {busyOrderId ===
                                 domain.id
-                              }
-                              onClick={() =>
-                                replaceDomain(
-                                  domain.id,
-                                  domain.domain_name
-                                )
-                              }
-                              className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#3120ff]/20 bg-[#3120ff]/5 px-4 py-2.5 text-xs font-bold text-[#3120ff] transition hover:bg-[#3120ff]/10 disabled:opacity-50"
-                            >
-                              {busyOrderId ===
-                              domain.id
-                                ? 'Replacing...'
-                                : 'Replace Domain'}
-                            </button>
+                                  ? 'Replacing...'
+                                  : 'Replace Domain'}
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={
+                                  busyOrderId ===
+                                  domain.id
+                                }
+                                onClick={() =>
+                                  useExistingDomainAsReplacement(
+                                    domain.id,
+                                    domain.domain_name
+                                  )
+                                }
+                                className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50"
+                              >
+                                {busyOrderId ===
+                                domain.id
+                                  ? 'Linking...'
+                                  : 'Use Existing Domain'}
+                              </button>
+                            </>
                           )}
 
                           {cancellable && (

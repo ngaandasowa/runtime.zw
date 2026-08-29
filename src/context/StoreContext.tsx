@@ -200,6 +200,12 @@ interface StoreContextType {
     reason?: string
   ) => Promise<Domain>;
 
+  replacePaidDomainWithExisting: (
+    domainId: string,
+    existingDomainId: string,
+    reason?: string
+  ) => Promise<Domain>;
+
   // Order actions
   cancelOrder: (
     orderId: string
@@ -2048,6 +2054,48 @@ const getDomainOrderDetails = async (
         );
       }
 
+      const originalDomain =
+        domains.find(
+          (item) =>
+            item.id ===
+            domainId
+        );
+
+      if (!originalDomain) {
+        throw new Error(
+          'Original domain not found.'
+        );
+      }
+
+      const originalOrder =
+        orders.find(
+          (item) =>
+            item.id ===
+            originalDomain.order_id
+        );
+
+      const verifiedPayments =
+        originalOrder
+          ? payments.filter(
+              (item) =>
+                item.order_id ===
+                  originalOrder.id &&
+                item.status ===
+                  'verified'
+            )
+          : [];
+
+      const existingPaymentReference =
+        verifiedPayments
+          .map(
+            (item) =>
+              item.reference
+          )
+          .filter(Boolean)
+          .join(', ') ||
+        originalDomain.payment_id ||
+        undefined;
+
       const result =
         await callAdminPaymentApi(
           '/admin/domain-replacement',
@@ -2098,6 +2146,39 @@ const getDomainOrderDetails = async (
         );
       }
 
+      emailNotificationService
+        .notifyQuietly(
+          'domain_replaced',
+          {
+            email:
+              replacement.user_email,
+
+            name:
+              replacement.owner_details
+                ?.full_name,
+
+            domainName:
+              replacement.domain_name,
+
+            originalDomainName:
+              originalDomain.domain_name,
+
+            replacementDomainName:
+              replacement.domain_name,
+
+            orderReference:
+              originalOrder?.reference,
+
+            paymentReference:
+              existingPaymentReference,
+
+            additionalCharge:
+              0,
+
+            reason,
+          }
+        );
+
       showNotification(
         `${replacement.domain_name} now uses the existing paid order. No new payment was created.`,
         'success'
@@ -2105,6 +2186,172 @@ const getDomainOrderDetails = async (
 
       return replacement;
     };
+
+  const replacePaidDomainWithExisting =
+    async (
+      domainId: string,
+      existingDomainId: string,
+      reason:
+        string =
+          'Registry rejected the original domain.'
+    ): Promise<Domain> => {
+      if (
+        !currentUser ||
+        currentUser.role !==
+          'super_admin'
+      ) {
+        throw new Error(
+          'Only a super admin can link an existing replacement domain.'
+        );
+      }
+
+      const originalDomain =
+        domains.find(
+          (item) =>
+            item.id ===
+            domainId
+        );
+
+      if (!originalDomain) {
+        throw new Error(
+          'Original domain not found.'
+        );
+      }
+
+      const existingDomain =
+        domains.find(
+          (item) =>
+            item.id ===
+            existingDomainId
+        );
+
+      if (!existingDomain) {
+        throw new Error(
+          'Existing replacement domain not found.'
+        );
+      }
+
+      if (
+        existingDomain.user_id !==
+        originalDomain.user_id
+      ) {
+        throw new Error(
+          'Both domains must belong to the same customer.'
+        );
+      }
+
+      const originalOrder =
+        orders.find(
+          (item) =>
+            item.id ===
+            originalDomain.order_id
+        );
+
+      const verifiedPayments =
+        originalOrder
+          ? payments.filter(
+              (item) =>
+                item.order_id ===
+                  originalOrder.id &&
+                item.status ===
+                  'verified'
+            )
+          : [];
+
+      const existingPaymentReference =
+        verifiedPayments
+          .map(
+            (item) =>
+              item.reference
+          )
+          .filter(Boolean)
+          .join(', ') ||
+        originalDomain.payment_id ||
+        undefined;
+
+      const result =
+        await callAdminPaymentApi(
+          '/admin/domain-replacement',
+          {
+            domainId,
+            existingDomainId:
+              existingDomain.id,
+            replacementDomainName:
+              existingDomain.domain_name,
+            reason,
+          }
+        );
+
+      const [
+        refreshedPayments,
+        refreshedOrders,
+        refreshedDomains,
+      ] =
+        await Promise.all([
+          paymentRepository
+            .getAllPayments(),
+          orderRepository
+            .getAllOrders(),
+          domainRepository
+            .getAllDomains(),
+        ]);
+
+      setPayments(
+        refreshedPayments
+      );
+      setOrders(
+        refreshedOrders
+      );
+      setDomains(
+        refreshedDomains
+      );
+
+      const replacement =
+        refreshedDomains.find(
+          (item) =>
+            item.id ===
+            result?.replacementDomain?.id
+        );
+
+      if (!replacement) {
+        throw new Error(
+          'The existing domain was linked but could not be reloaded.'
+        );
+      }
+
+      emailNotificationService
+        .notifyQuietly(
+          'domain_replaced',
+          {
+            email:
+              replacement.user_email,
+            name:
+              replacement.owner_details
+                ?.full_name,
+            domainName:
+              replacement.domain_name,
+            originalDomainName:
+              originalDomain.domain_name,
+            replacementDomainName:
+              replacement.domain_name,
+            orderReference:
+              originalOrder?.reference,
+            paymentReference:
+              existingPaymentReference,
+            additionalCharge:
+              0,
+            reason,
+          }
+        );
+
+      showNotification(
+        `${replacement.domain_name} is now linked as the replacement. The existing paid order was reused and no new payment was created.`,
+        'success'
+      );
+
+      return replacement;
+    };
+
 
   const rejectManualPayment =
     async (
@@ -3147,6 +3394,7 @@ const getDomainOrderDetails = async (
       approveManualPayment,
       rejectManualPayment,
       replacePaidDomain,
+      replacePaidDomainWithExisting,
       cancelOrder,
       deleteOrder,
       createPaymentForOrder,
