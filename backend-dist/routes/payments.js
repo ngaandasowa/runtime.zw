@@ -129,11 +129,33 @@ const fetchPesePayStatus = async (referenceNumber) => {
     }
     return decryptPayload(responseBody.payload, encryptionKey);
 };
-/*
- * ----------------------------------------------------------
- * HELPERS
- * ----------------------------------------------------------
- */
+const classifyPesePayStatus = (statusValue, descriptionValue) => {
+    const status = String(statusValue || '')
+        .trim()
+        .toUpperCase();
+    const description = String(descriptionValue || '')
+        .trim()
+        .toUpperCase();
+    if (status === 'SUCCESS') {
+        return 'success';
+    }
+    const combined = `${status} ${description}`;
+    const terminalFailureWords = [
+        'FAIL',
+        'CANCEL',
+        'DECLIN',
+        'REJECT',
+        'EXPIRE',
+        'ABORT',
+        'TIMEOUT',
+        'UNSUCCESS',
+        'AUTHORIZATION_FAILED',
+    ];
+    if (terminalFailureWords.some((word) => combined.includes(word))) {
+        return 'failed';
+    }
+    return 'pending';
+};
 const markInitiationFailed = async (paymentId, orderId, previousOrderStatus, reason) => {
     const now = new Date().toISOString();
     await adminDb.runTransaction(async (transaction) => {
@@ -612,27 +634,54 @@ router.post('/pesepay/verify', authenticate, async (req, res) => {
             return res.json({
                 success: true,
                 verified: true,
+                paymentState: 'success',
+                terminal: true,
                 paymentId,
                 orderId: result.orderId,
                 transactionStatus: providerStatus,
                 transactionStatusDescription: providerDescription,
             });
         }
-        /*
-         * Do not guess which non-success statuses
-         * are terminal. Keep the payment pending
-         * while recording PesePay's latest status.
-         */
+        const paymentState = classifyPesePayStatus(providerStatus, providerDescription);
+        const runtimePaymentStatus = paymentState === 'failed'
+            ? 'failed'
+            : 'pending';
         await paymentRef.set({
+            status: runtimePaymentStatus,
             provider_status: providerStatus ||
                 'UNKNOWN',
             provider_status_description: providerDescription,
             transaction_id: providerInternalReference,
+            rejection_reason: paymentState === 'failed'
+                ? providerDescription ||
+                    `PesePay returned ${providerStatus || 'a failed status'}.`
+                : null,
             updated_at: now,
         }, { merge: true });
+        /*
+         * A failed PesePay attempt must not leave the order
+         * permanently stuck in payment_pending. The order
+         * remains unpaid so the customer can retry checkout.
+         */
+        if (paymentState === 'failed') {
+            const orderRef = adminDb
+                .collection('orders')
+                .doc(orderId);
+            const orderSnapshot = await orderRef.get();
+            if (orderSnapshot.exists &&
+                orderSnapshot.data()?.status ===
+                    'payment_pending') {
+                await orderRef.set({
+                    status: 'pending',
+                    updated_at: now,
+                }, { merge: true });
+            }
+        }
         return res.json({
             success: true,
             verified: false,
+            paymentState,
+            terminal: paymentState === 'failed',
             paymentId,
             orderId,
             transactionStatus: providerStatus ||

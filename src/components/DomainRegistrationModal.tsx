@@ -174,6 +174,8 @@ const [placedOrder, setPlacedOrder] =
     gateway: Gateway;
     paymentId?: string;
     transactionStatus?: string;
+    transactionStatusDescription?: string;
+    paymentState?: 'pending' | 'success' | 'failed';
   } | null>(null);
 
   const selectedDomain = availabilityResult?.domain || '';
@@ -753,7 +755,7 @@ const [placedOrder, setPlacedOrder] =
   const waitForPesePayVerification = async (
     paymentId: string
   ) => {
-    const maxAttempts = 40;
+    const maxAttempts = 20;
 
     for (
       let attempt = 0;
@@ -765,7 +767,16 @@ const [placedOrder, setPlacedOrder] =
           paymentId
         );
 
-      if (result?.verified) {
+      if (
+        result?.paymentState === 'success' ||
+        result?.verified
+      ) {
+        return result;
+      }
+
+      if (
+        result?.paymentState === 'failed'
+      ) {
         return result;
       }
 
@@ -777,7 +788,13 @@ const [placedOrder, setPlacedOrder] =
       );
     }
 
-    return null;
+    return {
+      verified: false,
+      paymentState: 'pending',
+      transactionStatus: 'PENDING',
+      transactionStatusDescription:
+        'Payment has not been confirmed yet.',
+    };
   };
 
   useEffect(() => {
@@ -1006,6 +1023,13 @@ const [placedOrder, setPlacedOrder] =
               transaction.transactionStatus ||
               'INITIATED'
             ),
+          transactionStatusDescription:
+            String(
+              transaction.transactionStatusDescription ||
+              ''
+            ),
+          paymentState:
+            'pending',
         });
 
         sessionStorage.removeItem(
@@ -1054,7 +1078,10 @@ const [placedOrder, setPlacedOrder] =
             paymentId
           );
 
-        if (verified?.verified) {
+        if (
+          verified?.paymentState === 'success' ||
+          verified?.verified
+        ) {
           setPlacedOrder(
             (previous) =>
               previous
@@ -1062,6 +1089,11 @@ const [placedOrder, setPlacedOrder] =
                     ...previous,
                     transactionStatus:
                       'SUCCESS',
+                    transactionStatusDescription:
+                      verified?.transactionStatusDescription ||
+                      'Payment confirmed by PesePay.',
+                    paymentState:
+                      'success',
                   }
                 : previous
           );
@@ -1070,7 +1102,68 @@ const [placedOrder, setPlacedOrder] =
             'Payment confirmed successfully.',
             'success'
           );
+
+          return;
         }
+
+        if (
+          verified?.paymentState === 'failed'
+        ) {
+          setPlacedOrder(
+            (previous) =>
+              previous
+                ? {
+                    ...previous,
+                    transactionStatus:
+                      String(
+                        verified?.transactionStatus ||
+                        'FAILED'
+                      ),
+                    transactionStatusDescription:
+                      String(
+                        verified?.transactionStatusDescription ||
+                        'The payment was not completed.'
+                      ),
+                    paymentState:
+                      'failed',
+                  }
+                : previous
+          );
+
+          showNotification(
+            verified?.transactionStatusDescription ||
+              'Payment was not completed. You can try again.',
+            'error'
+          );
+
+          return;
+        }
+
+        setPlacedOrder(
+          (previous) =>
+            previous
+              ? {
+                  ...previous,
+                  transactionStatus:
+                    String(
+                      verified?.transactionStatus ||
+                      'PENDING'
+                    ),
+                  transactionStatusDescription:
+                    String(
+                      verified?.transactionStatusDescription ||
+                      'Payment has not been confirmed yet.'
+                    ),
+                  paymentState:
+                    'pending',
+                }
+              : previous
+        );
+
+        showNotification(
+          'Payment has not been confirmed yet. You can check again from this order.',
+          'info'
+        );
 
         return;
       }
@@ -2014,22 +2107,33 @@ const [placedOrder, setPlacedOrder] =
                         <h3 className="text-base font-bold text-zinc-950">
                           {placedOrder.gateway ===
                           'pesepay'
-                            ? placedOrder.transactionStatus ===
-                              'SUCCESS'
+                            ? placedOrder.paymentState ===
+                                'success' ||
+                              placedOrder.transactionStatus ===
+                                'SUCCESS'
                               ? 'Payment confirmed'
-                              : 'Payment requested'
+                              : placedOrder.paymentState ===
+                                'failed'
+                                ? 'Payment not completed'
+                                : 'Payment requested'
                             : 'Order created'}
                         </h3>
 
                         <p className="mt-1 text-xs leading-5 text-zinc-500">
                           {placedOrder.gateway ===
                           'pesepay'
-                            ? placedOrder.transactionStatus ===
-                              'SUCCESS'
+                            ? placedOrder.paymentState ===
+                                'success' ||
+                              placedOrder.transactionStatus ===
+                                'SUCCESS'
                               ? 'PesePay confirmed your payment. Runtime can now continue processing your domain registration.'
-                              : selectedPesePayMethod
-                              ? `Complete the ${selectedPesePayMethod.name} payment request. Runtime will verify the transaction directly with PesePay.`
-                              : 'Complete the payment request. Runtime will verify the transaction directly with PesePay.'
+                              : placedOrder.paymentState ===
+                                'failed'
+                                ? placedOrder.transactionStatusDescription ||
+                                  'The payment was not completed. You can try again.'
+                                : selectedPesePayMethod
+                                  ? `Complete the ${selectedPesePayMethod.name} payment request. Runtime will verify the transaction directly with PesePay.`
+                                  : 'Complete the payment request. Runtime will verify the transaction directly with PesePay.'
                             : 'Your domain is now visible in My Domains as awaiting payment. Registration will only start after the payment is verified.'}
                         </p>
                       </div>
@@ -2080,10 +2184,15 @@ const [placedOrder, setPlacedOrder] =
                         <SummaryRow
                           label="Status"
                           value={
+                            placedOrder.paymentState ===
+                              'success' ||
                             placedOrder.transactionStatus ===
-                            'SUCCESS'
+                              'SUCCESS'
                               ? 'Paid'
-                              : 'Awaiting confirmation'
+                              : placedOrder.paymentState ===
+                                'failed'
+                                ? 'Not completed'
+                                : 'Awaiting confirmation'
                           }
                         />
                       </>
@@ -2128,6 +2237,10 @@ const [placedOrder, setPlacedOrder] =
                       </button>
                     </>
                   ) : (
+                    placedOrder.paymentState !==
+                      'failed' &&
+                    placedOrder.paymentState !==
+                      'success' &&
                     placedOrder.transactionStatus !==
                       'SUCCESS' &&
                     placedOrder.paymentId && (
@@ -2148,6 +2261,8 @@ const [placedOrder, setPlacedOrder] =
                               );
 
                             if (
+                              verified?.paymentState ===
+                                'success' ||
                               verified?.verified
                             ) {
                               setPlacedOrder(
@@ -2157,6 +2272,11 @@ const [placedOrder, setPlacedOrder] =
                                         ...previous,
                                         transactionStatus:
                                           'SUCCESS',
+                                        transactionStatusDescription:
+                                          verified?.transactionStatusDescription ||
+                                          'Payment confirmed by PesePay.',
+                                        paymentState:
+                                          'success',
                                       }
                                     : previous
                               );
@@ -2165,9 +2285,60 @@ const [placedOrder, setPlacedOrder] =
                                 'Payment confirmed successfully.',
                                 'success'
                               );
-                            } else {
+                            } else if (
+                              verified?.paymentState ===
+                              'failed'
+                            ) {
+                              setPlacedOrder(
+                                (previous) =>
+                                  previous
+                                    ? {
+                                        ...previous,
+                                        transactionStatus:
+                                          String(
+                                            verified?.transactionStatus ||
+                                            'FAILED'
+                                          ),
+                                        transactionStatusDescription:
+                                          String(
+                                            verified?.transactionStatusDescription ||
+                                            'The payment was not completed.'
+                                          ),
+                                        paymentState:
+                                          'failed',
+                                      }
+                                    : previous
+                              );
+
                               showNotification(
-                                'Payment is not confirmed yet. Complete the EcoCash prompt and try again.',
+                                verified?.transactionStatusDescription ||
+                                  'Payment was not completed. You can try again.',
+                                'error'
+                              );
+                            } else {
+                              setPlacedOrder(
+                                (previous) =>
+                                  previous
+                                    ? {
+                                        ...previous,
+                                        transactionStatus:
+                                          String(
+                                            verified?.transactionStatus ||
+                                            'PENDING'
+                                          ),
+                                        transactionStatusDescription:
+                                          String(
+                                            verified?.transactionStatusDescription ||
+                                            'Payment has not been confirmed yet.'
+                                          ),
+                                        paymentState:
+                                          'pending',
+                                      }
+                                    : previous
+                              );
+
+                              showNotification(
+                                'Payment is still pending. Complete the payment prompt, then check again.',
                                 'info'
                               );
                             }
