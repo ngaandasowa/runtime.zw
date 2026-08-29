@@ -4,7 +4,7 @@ if (!apiKey) {
     throw new Error('RESEND_API_KEY environment variable is missing');
 }
 const resend = new Resend(apiKey);
-export const sendMail = async ({ to, subject, html, }) => {
+export const sendMail = async ({ to, subject, html, replyTo, }) => {
     const fromName = process.env.MAIL_FROM_NAME ||
         'Runtime';
     const fromEmail = process.env.MAIL_FROM_EMAIL ||
@@ -14,6 +14,11 @@ export const sendMail = async ({ to, subject, html, }) => {
         to: [to],
         subject,
         html,
+        ...(replyTo
+            ? {
+                replyTo,
+            }
+            : {}),
     });
     if (error) {
         console.error('Resend email error:', error);

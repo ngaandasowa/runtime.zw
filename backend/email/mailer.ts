@@ -17,10 +17,12 @@ export const sendMail =
     to,
     subject,
     html,
+    replyTo,
   }: {
     to: string;
     subject: string;
     html: string;
+    replyTo?: string;
   }) => {
     const fromName =
       process.env.MAIL_FROM_NAME ||
@@ -40,6 +42,11 @@ export const sendMail =
         to: [to],
         subject,
         html,
+        ...(replyTo
+          ? {
+              replyTo,
+            }
+          : {}),
       });
 
     if (error) {

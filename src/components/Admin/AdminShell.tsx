@@ -7,6 +7,7 @@ import {
   Globe2,
   LayoutDashboard,
   LogOut,
+  Mail,
   Menu,
   Server,
   Settings,
@@ -55,6 +56,10 @@ import {
   AdminCustomerAccount,
 } from './AdminCustomerAccount';
 
+import {
+  AdminEmailCampaigns,
+} from './AdminEmailCampaigns';
+
 type NavItem = {
   id:
     | 'dashboard'
@@ -64,6 +69,7 @@ type NavItem = {
     | 'registry'
     | 'pricing'
     | 'nameservers'
+    | 'email_campaigns'
     | 'settings';
   label: string;
   icon: React.ComponentType<{
@@ -142,6 +148,11 @@ export const AdminShell:
         id: 'nameservers',
         label: 'Nameservers',
         icon: Server,
+      },
+      {
+        id: 'email_campaigns',
+        label: 'Email Campaigns',
+        icon: Mail,
       },
       {
         id: 'settings',
@@ -382,6 +393,11 @@ export const AdminShell:
               {adminSubView ===
                 'nameservers' && (
                 <AdminNameservers />
+              )}
+
+              {adminSubView ===
+                'email_campaigns' && (
+                <AdminEmailCampaigns />
               )}
 
               {adminSubView ===

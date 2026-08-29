@@ -6,6 +6,7 @@ import cors from 'cors';
 import emailRoutes from './routes/email.js';
 import paymentRoutes from './routes/payments.js';
 import walletRoutes from './routes/wallet.js';
+import emailCampaignRoutes from './routes/emailCampaigns.js';
 
 const app = express();
 
@@ -124,6 +125,11 @@ app.use(
 app.use(
   '/api/wallet',
   walletRoutes
+);
+
+app.use(
+  '/api/email-campaigns',
+  emailCampaignRoutes
 );
 
 /*
