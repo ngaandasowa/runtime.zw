@@ -162,14 +162,19 @@ interface StoreContextType {
     registrantType: 'myself' | 'client', 
     ownerDetails: RegistrantDetails, 
     nameservers: string[],
-    paymentGateway?: any
+    paymentGateway?: any,
+    nameserverIps?: string[]
   ) => Promise<{
     success: boolean;
     domain: Domain;
     order: Order;
     payment?: Payment;
   }>;
-  updateDomainNameservers: (domainId: string, nameservers: string[]) => void;
+  updateDomainNameservers: (
+    domainId: string,
+    nameservers: string[],
+    nameserverIps?: string[]
+  ) => void;
   requestDomainModify: (domainId: string, updatedOwner: RegistrantDetails, nameservers: string[]) => void;
   requestDomainDelete: (domainId: string, confirmationText: string) => boolean;
   requestDomainTransfer: (domainName: string, authCode: string) => Promise<void>;
@@ -185,6 +190,12 @@ interface StoreContextType {
     paymentId: string,
     reason?: string
   ) => Promise<void>;
+
+  replacePaidDomain: (
+    domainId: string,
+    replacementDomainName: string,
+    reason?: string
+  ) => Promise<Domain>;
 
   // Order actions
   cancelOrder: (
@@ -703,7 +714,8 @@ const getDomainOrderDetails = async (
   registrantType: 'myself' | 'client',
   ownerDetails: RegistrantDetails,
   nameservers: string[],
-  gateway: any = 'checkout'
+  gateway: any = 'checkout',
+  nameserverIps: string[] = []
 ) => {
   if (!currentUser) {
     throw new Error(
@@ -794,6 +806,9 @@ const getDomainOrderDetails = async (
         : [
             ...settings.default_nameservers,
           ],
+
+    nameserver_ips:
+      nameserverIps,
 
     auto_renew:
       true,
@@ -964,7 +979,8 @@ const getDomainOrderDetails = async (
 
   const updateDomainNameservers = (
     domainId: string,
-    nameservers: string[]
+    nameservers: string[],
+    nameserverIps: string[] = []
   ) => {
     const domain = domains.find((item) => item.id === domainId);
 
@@ -978,6 +994,8 @@ const getDomainOrderDetails = async (
     const updated = {
       ...domain,
       nameservers,
+      nameserver_ips:
+        nameserverIps,
       updated_at: now,
       history: [
         ...domain.history,
@@ -1002,6 +1020,8 @@ const getDomainOrderDetails = async (
     void domainRepository
       .updateDomain(domainId, {
         nameservers: updated.nameservers,
+        nameserver_ips:
+          updated.nameserver_ips,
         history: updated.history,
         updated_at: updated.updated_at,
       })
@@ -2026,6 +2046,96 @@ const getDomainOrderDetails = async (
         `Payment approved for ${fulfilledDomain.domain_name}. Registration can now be processed.`,
         'success'
       );
+    };
+
+  const replacePaidDomain =
+    async (
+      domainId: string,
+      replacementDomainName: string,
+      reason:
+        string =
+          'Registry rejected the original domain.'
+    ): Promise<Domain> => {
+      if (
+        !currentUser ||
+        currentUser.role !==
+          'super_admin'
+      ) {
+        throw new Error(
+          'Only a super admin can replace a paid domain.'
+        );
+      }
+
+      const normalized =
+        domainService.cleanDomain(
+          replacementDomainName
+        );
+
+      if (
+        !normalized ||
+        !normalized.includes('.')
+      ) {
+        throw new Error(
+          'Enter a valid replacement domain.'
+        );
+      }
+
+      const result =
+        await callAdminPaymentApi(
+          '/admin/domain-replacement',
+          {
+            domainId,
+            replacementDomainName:
+              normalized,
+            reason,
+          }
+        );
+
+      const [
+        refreshedPayments,
+        refreshedOrders,
+        refreshedDomains,
+      ] =
+        await Promise.all([
+          paymentRepository
+            .getAllPayments(),
+          orderRepository
+            .getAllOrders(),
+          domainRepository
+            .getAllDomains(),
+        ]);
+
+      setPayments(
+        refreshedPayments
+      );
+
+      setOrders(
+        refreshedOrders
+      );
+
+      setDomains(
+        refreshedDomains
+      );
+
+      const replacement =
+        refreshedDomains.find(
+          (item) =>
+            item.id ===
+            result?.replacementDomain?.id
+        );
+
+      if (!replacement) {
+        throw new Error(
+          'Replacement domain was created but could not be reloaded.'
+        );
+      }
+
+      showNotification(
+        `${replacement.domain_name} now uses the existing paid order. No new payment was created.`,
+        'success'
+      );
+
+      return replacement;
     };
 
   const rejectManualPayment =
@@ -3068,6 +3178,7 @@ const getDomainOrderDetails = async (
       renewDomain,
       approveManualPayment,
       rejectManualPayment,
+      replacePaidDomain,
       cancelOrder,
       deleteOrder,
       createPaymentForOrder,

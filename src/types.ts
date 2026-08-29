@@ -34,7 +34,9 @@ export type DomainStatus =
   | 'pending_transfer' 
   | 'pending_delete' 
   | 'expired' 
-  | 'cancelled' 
+  | 'cancelled'
+  | 'registry_rejected'
+  | 'replaced'
   | 'suspended';
 
 export interface DomainHistoryItem {
@@ -55,6 +57,11 @@ export interface Domain {
   user_email: string;
   status: DomainStatus;
   nameservers: string[];
+  /**
+   * IP addresses aligned by index with nameservers.
+   * ZISPA requires hostname + IP for the first two nameservers.
+   */
+  nameserver_ips?: string[];
   auto_renew: boolean;
   registered_at?: string;
   expires_at?: string;
@@ -67,6 +74,18 @@ export interface Domain {
   updated_at: string;
   processing_type?: 'zispa' | 'manual';
   registration_price?: number;
+
+  order_id?: string;
+  payment_id?: string;
+  payment_ids?: string[];
+
+  registry_rejection_reason?: string;
+  rejected_at?: string;
+  archived_at?: string;
+  replacement_domain_id?: string;
+  replaced_by_domain?: string;
+  replaced_at?: string;
+  replacement_for_domain_id?: string;
 }
 
 export interface OrderItem {
@@ -94,6 +113,11 @@ export interface Order {
   created_at: string;
   updated_at: string;
   items: OrderItem[];
+
+  fulfillment_domain_id?: string;
+  original_domain_id?: string;
+  replacement_reason?: string;
+  replacement_at?: string;
 }
 
 export type PaymentGateway =

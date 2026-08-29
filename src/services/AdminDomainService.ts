@@ -24,6 +24,7 @@ export interface AssignDomainInput {
   expiresAt: string;
 
   nameservers: string[];
+  nameserverIps?: string[];
 
   ownerDetails:
     RegistrantDetails;
@@ -127,6 +128,10 @@ class AdminDomainService {
 
       nameservers:
         input.nameservers,
+
+      nameserver_ips:
+        input.nameserverIps ||
+        [],
 
       auto_renew:
         false,

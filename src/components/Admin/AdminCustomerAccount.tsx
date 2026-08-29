@@ -214,7 +214,16 @@ export const AdminCustomerAccount:
           domains.filter(
             (domain) =>
               domain.user_id ===
-              adminCustomerId
+                adminCustomerId &&
+              ![
+                'cancelled',
+                'registry_rejected',
+                'replaced',
+              ].includes(
+                String(
+                  domain.status
+                )
+              )
           ),
         [
           domains,
@@ -788,6 +797,20 @@ const AssignDomainModal = ({
       ''
   );
 
+  const [
+    ns1Ip,
+    setNs1Ip,
+  ] = useState(
+    '148.163.100.131'
+  );
+
+  const [
+    ns2Ip,
+    setNs2Ip,
+  ] = useState(
+    '148.163.100.132'
+  );
+
 
   const [
     fullName,
@@ -831,6 +854,11 @@ const AssignDomainModal = ({
     postalAddress,
     setPostalAddress,
   ] = useState('');
+
+  const [
+    postalSameAsPhysical,
+    setPostalSameAsPhysical,
+  ] = useState(false);
 
 
   const [
@@ -1010,6 +1038,65 @@ const AssignDomainModal = ({
       return;
     }
 
+    if (
+      !ns1Ip.trim() ||
+      !ns2Ip.trim()
+    ) {
+      setError(
+        'The first two nameservers require IP addresses.'
+      );
+
+      return;
+    }
+
+    if (
+      !organisation.trim()
+    ) {
+      setError(
+        'Organisation name is required. Use "Individual" for a personal registration.'
+      );
+
+      return;
+    }
+
+    if (
+      !address.trim() ||
+      !postalAddress.trim() ||
+      !city.trim()
+    ) {
+      setError(
+        'Physical address, postal address and city are required.'
+      );
+
+      return;
+    }
+
+    if (
+      !orgDescription.trim() ||
+      !proposedUsage.trim()
+    ) {
+      setError(
+        'Organisation description and proposed domain usage are required.'
+      );
+
+      return;
+    }
+
+    if (
+      orgDescription
+        .trim()
+        .toLowerCase() ===
+      proposedUsage
+        .trim()
+        .toLowerCase()
+    ) {
+      setError(
+        'Organisation description and proposed domain usage must be different.'
+      );
+
+      return;
+    }
+
 
     if (
       !registeredAt ||
@@ -1081,6 +1168,11 @@ const AssignDomainModal = ({
         nameservers: [
           ns1.trim(),
           ns2.trim(),
+        ],
+
+        nameserverIps: [
+          ns1Ip.trim(),
+          ns2Ip.trim(),
         ],
 
         ownerDetails: {
@@ -1302,6 +1394,22 @@ const AssignDomainModal = ({
                 required
               />
 
+              <Field
+                label="Primary nameserver IP"
+                value={ns1Ip}
+                onChange={setNs1Ip}
+                placeholder="148.163.100.131"
+                required
+              />
+
+              <Field
+                label="Secondary nameserver IP"
+                value={ns2Ip}
+                onChange={setNs2Ip}
+                placeholder="148.163.100.132"
+                required
+              />
+
             </div>
 
           </div>
@@ -1331,6 +1439,7 @@ const AssignDomainModal = ({
 
               <Field
                 label="Organisation"
+                required
                 value={
                   organisation
                 }
@@ -1356,22 +1465,65 @@ const AssignDomainModal = ({
               <Field
                 label="Physical address"
                 value={address}
-                onChange={
-                  setAddress
-                }
+                onChange={(value) => {
+                  setAddress(
+                    value
+                  );
+
+                  if (
+                    postalSameAsPhysical
+                  ) {
+                    setPostalAddress(
+                      value
+                    );
+                  }
+                }}
+                required
                 className="sm:col-span-2"
               />
 
-              <Field
-                label="Postal address"
-                value={
-                  postalAddress
-                }
-                onChange={
-                  setPostalAddress
-                }
-                className="sm:col-span-2"
-              />
+              <div className="sm:col-span-2">
+                <Field
+                  label="Postal address"
+                  value={
+                    postalSameAsPhysical
+                      ? address
+                      : postalAddress
+                  }
+                  onChange={
+                    setPostalAddress
+                  }
+                  required
+                  disabled={
+                    postalSameAsPhysical
+                  }
+                />
+
+                <label className="mt-2 flex items-center gap-2 text-xs text-zinc-600">
+                  <input
+                    type="checkbox"
+                    checked={
+                      postalSameAsPhysical
+                    }
+                    onChange={(event) => {
+                      const checked =
+                        event.target.checked;
+
+                      setPostalSameAsPhysical(
+                        checked
+                      );
+
+                      if (checked) {
+                        setPostalAddress(
+                          address
+                        );
+                      }
+                    }}
+                    className="h-4 w-4 rounded border-zinc-300 accent-[#3120ff]"
+                  />
+                  Postal address is the same as physical address
+                </label>
+              </div>
 
               <Field
                 label="City"
@@ -1388,28 +1540,57 @@ const AssignDomainModal = ({
               />
 
               <Field
-                label="Organisation description"
+                label="Organisation / activity description"
                 value={
                   orgDescription
                 }
                 onChange={
                   setOrgDescription
                 }
-                placeholder="Optional"
+                placeholder="e.g. Clothing retailer, school, software company"
+                required
                 className="sm:col-span-2"
               />
 
-              <Field
-                label="Proposed usage"
-                value={
-                  proposedUsage
-                }
-                onChange={
-                  setProposedUsage
-                }
-                placeholder="Optional"
-                className="sm:col-span-2"
-              />
+              <label className="block sm:col-span-2">
+                <span className="mb-1.5 block text-xs font-medium text-zinc-600">
+                  Proposed domain usage *
+                </span>
+
+                <select
+                  value={
+                    proposedUsage
+                  }
+                  onChange={(event) =>
+                    setProposedUsage(
+                      event.target.value
+                    )
+                  }
+                  className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-sm text-zinc-950 outline-none transition focus:border-[#3120ff]"
+                >
+                  <option value="">
+                    Select how the domain will be used
+                  </option>
+                  <option value="Website">
+                    Website
+                  </option>
+                  <option value="Web application">
+                    Web application
+                  </option>
+                  <option value="Online store">
+                    Online store
+                  </option>
+                  <option value="Email services">
+                    Email services
+                  </option>
+                  <option value="API / developer service">
+                    API / developer service
+                  </option>
+                  <option value="Other">
+                    Other
+                  </option>
+                </select>
+              </label>
 
             </div>
 
@@ -1469,6 +1650,7 @@ const Field = ({
   placeholder,
   step,
   required = false,
+  disabled = false,
   className = '',
 }: {
   label: string;
@@ -1482,6 +1664,7 @@ const Field = ({
   placeholder?: string;
   step?: string;
   required?: boolean;
+  disabled?: boolean;
   className?: string;
 }) => {
   return (
@@ -1509,12 +1692,15 @@ const Field = ({
         required={
           required
         }
+        disabled={
+          disabled
+        }
         onChange={(event) =>
           onChange(
             event.target.value
           )
         }
-        className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-sm text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-[#3120ff]"
+        className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-sm text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-[#3120ff] disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-500"
       />
 
     </label>

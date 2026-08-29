@@ -19,11 +19,13 @@ import {
 export const AdminOrdersPayments:
   React.FC = () => {
     const {
+      users,
       orders,
       payments,
       domains,
       approveManualPayment,
       rejectManualPayment,
+      replacePaidDomain,
       cancelOrder,
       deleteOrder,
       showNotification,
@@ -59,6 +61,15 @@ export const AdminOrdersPayments:
     ] = useState<
       string | null
     >(null);
+
+    const customerForPayment = (
+      userId: string
+    ) =>
+      users.find(
+        (user) =>
+          user.id ===
+          userId
+      ) || null;
 
     const walletTopups =
       useMemo(
@@ -130,19 +141,36 @@ export const AdminOrdersPayments:
               paymentAttempts[0] ||
               null;
 
-            const domain =
-              domains.find(
+            const linkedDomains =
+              domains.filter(
                 (item) =>
                   (item as any)
                     .order_id ===
                   order.id
-              ) || null;
+              );
+
+            const domain =
+              linkedDomains.find(
+                (item) =>
+                  ![
+                    'cancelled',
+                    'registry_rejected',
+                    'replaced',
+                  ].includes(
+                    String(
+                      item.status
+                    )
+                  )
+              ) ||
+              linkedDomains[0] ||
+              null;
 
             return {
               order,
               payment,
               paymentAttempts,
               domain,
+              linkedDomains,
             };
           });
       }, [
@@ -377,6 +405,68 @@ export const AdminOrdersPayments:
       };
 
 
+    const replaceDomain =
+      async (
+        domainId: string,
+        currentDomainName: string
+      ) => {
+        const replacement =
+          window.prompt(
+            `Enter the replacement domain for ${currentDomainName}. The customer's existing verified payment will be retained.`
+          );
+
+        if (
+          !replacement?.trim()
+        ) {
+          return;
+        }
+
+        const reason =
+          window.prompt(
+            'Why is the original domain being replaced?',
+            'Registry rejected the original domain.'
+          ) ||
+          'Registry rejected the original domain.';
+
+        const replacementName =
+          replacement
+            .trim()
+            .toLowerCase();
+
+        const confirmed =
+          window.confirm(
+            `Replace ${currentDomainName} with ${replacementName}?\n\nNo new payment will be created. The original verified payment and order history will be retained.`
+          );
+
+        if (!confirmed) {
+          return;
+        }
+
+        setBusyOrderId(
+          domainId
+        );
+
+        try {
+          await replacePaidDomain(
+            domainId,
+            replacementName,
+            reason
+          );
+        } catch (error) {
+          showNotification(
+            error instanceof Error
+              ? error.message
+              : 'Unable to replace domain.',
+            'error'
+          );
+        } finally {
+          setBusyOrderId(
+            null
+          );
+        }
+      };
+
+
     const deleteAdminOrder =
       async (
         orderId: string,
@@ -571,9 +661,27 @@ export const AdminOrdersPayments:
                             Wallet top-up
                           </p>
 
-                          <p className="mt-1 text-xs text-zinc-500">
-                            User ID: {payment.user_id}
-                          </p>
+                          {(() => {
+                            const customer =
+                              customerForPayment(
+                                payment.user_id
+                              );
+
+                            return (
+                              <div className="mt-1">
+                                <p className="text-xs font-semibold text-zinc-700">
+                                  {customer?.name ||
+                                    customer?.email ||
+                                    'Customer'}
+                                </p>
+
+                                <p className="mt-0.5 text-xs text-zinc-500">
+                                  {customer?.email ||
+                                    `User ${payment.user_id}`}
+                                </p>
+                              </div>
+                            );
+                          })()}
 
                           <div className="mt-4 grid gap-3 text-xs sm:grid-cols-3">
                             <Info
@@ -896,6 +1004,41 @@ export const AdminOrdersPayments:
                                 </button>
                               </>
                             )}
+
+                          {domain &&
+                            [
+                              'cancelled',
+                              'registry_rejected',
+                            ].includes(
+                              String(
+                                domain.status
+                              )
+                            ) &&
+                            paymentAttempts.some(
+                              (attempt) =>
+                                attempt.status ===
+                                'verified'
+                            ) && (
+                            <button
+                              type="button"
+                              disabled={
+                                busyOrderId ===
+                                domain.id
+                              }
+                              onClick={() =>
+                                replaceDomain(
+                                  domain.id,
+                                  domain.domain_name
+                                )
+                              }
+                              className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#3120ff]/20 bg-[#3120ff]/5 px-4 py-2.5 text-xs font-bold text-[#3120ff] transition hover:bg-[#3120ff]/10 disabled:opacity-50"
+                            >
+                              {busyOrderId ===
+                              domain.id
+                                ? 'Replacing...'
+                                : 'Replace Domain'}
+                            </button>
+                          )}
 
                           {cancellable && (
                             <button

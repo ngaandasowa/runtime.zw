@@ -58,25 +58,36 @@ export class RegistryTemplateService {
         domain.nameservers[3]
       );
 
-    const ns1Ip =
+    const suppliedIps =
+      Array.isArray(
+        domain.nameserver_ips
+      )
+        ? domain.nameserver_ips
+        : [];
+
+    const resolveNameserverIp = (
+      hostname: string,
+      index: number
+    ) =>
+      value(
+        suppliedIps[index]
+      ) ||
       KNOWN_NAMESERVER_IPS[
-        ns1.toLowerCase()
-      ] || '';
+        hostname.toLowerCase()
+      ] ||
+      '';
+
+    const ns1Ip =
+      resolveNameserverIp(ns1, 0);
 
     const ns2Ip =
-      KNOWN_NAMESERVER_IPS[
-        ns2.toLowerCase()
-      ] || '';
+      resolveNameserverIp(ns2, 1);
 
     const ns3Ip =
-      KNOWN_NAMESERVER_IPS[
-        ns3.toLowerCase()
-      ] || '';
+      resolveNameserverIp(ns3, 2);
 
     const ns4Ip =
-      KNOWN_NAMESERVER_IPS[
-        ns4.toLowerCase()
-      ] || '';
+      resolveNameserverIp(ns4, 3);
 
     const lines = [
       '                                ZISPA',
@@ -254,6 +265,45 @@ export class RegistryTemplateService {
     );
 
     if (
+      value(owner.org_description) &&
+      value(owner.proposed_usage) &&
+      value(owner.org_description)
+        .toLowerCase() ===
+      value(owner.proposed_usage)
+        .toLowerCase()
+    ) {
+      missing.push(
+        'Organisation description and proposed domain use must describe different things'
+      );
+    }
+
+    const suppliedIps =
+      Array.isArray(
+        domain.nameserver_ips
+      )
+        ? domain.nameserver_ips
+        : [];
+
+    const requiredNsIp = (
+      index: number
+    ) => {
+      const hostname =
+        value(
+          domain.nameservers[index]
+        );
+
+      return (
+        value(
+          suppliedIps[index]
+        ) ||
+        KNOWN_NAMESERVER_IPS[
+          hostname.toLowerCase()
+        ] ||
+        ''
+      );
+    };
+
+    if (
       !value(
         domain.nameservers[0]
       )
@@ -270,6 +320,28 @@ export class RegistryTemplateService {
     ) {
       missing.push(
         'Secondary nameserver'
+      );
+    }
+
+    if (
+      value(
+        domain.nameservers[0]
+      ) &&
+      !requiredNsIp(0)
+    ) {
+      missing.push(
+        'Primary nameserver IP address'
+      );
+    }
+
+    if (
+      value(
+        domain.nameservers[1]
+      ) &&
+      !requiredNsIp(1)
+    ) {
+      missing.push(
+        'Secondary nameserver IP address'
       );
     }
 

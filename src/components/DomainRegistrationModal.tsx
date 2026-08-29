@@ -31,7 +31,6 @@ type Step =
   | 'instructions';
 
 type Gateway =
-  | 'checkout'
   | 'ecocash_usd'
   | 'pesepay';
 
@@ -50,6 +49,43 @@ const ZISPA_PRICES: Record<string, number> = {
 };
 
 const ZISPA_TLDS = Object.keys(ZISPA_PRICES);
+
+const KNOWN_NAMESERVER_IPS:
+  Record<string, string> = {
+    'ns1.ngaatec.com':
+      '148.163.100.131',
+    'ns2.ngaatec.com':
+      '148.163.100.132',
+  };
+
+const isValidIpAddress = (
+  value: string
+) => {
+  const input =
+    value.trim();
+
+  const parts =
+    input.split('.');
+
+  if (
+    parts.length === 4 &&
+    parts.every(
+      (part) =>
+        /^\d{1,3}$/.test(part) &&
+        Number(part) >= 0 &&
+        Number(part) <= 255
+    )
+  ) {
+    return true;
+  }
+
+  return (
+    input.includes(':') &&
+    /^[0-9a-f:]+$/i.test(
+      input
+    )
+  );
+};
 
 const normalizeDomain = (value: string) =>
   value.trim().toLowerCase();
@@ -140,12 +176,25 @@ export const DomainRegistrationModal: React.FC = () => {
   const [customNameservers, setCustomNameservers] = useState<
     string[]
   >(['', '', '', '']);
+
+  const [
+    customNameserverIps,
+    setCustomNameserverIps,
+  ] = useState<string[]>(
+    ['', '', '', '']
+  );
+
+  const [
+    postalSameAsPhysical,
+    setPostalSameAsPhysical,
+  ] = useState(false);
+
   const [nameserverError, setNameserverError] = useState<
     string | null
   >(null);
 
 const [gateway, setGateway] =
-  useState<Gateway>('checkout');
+  useState<Gateway>('ecocash_usd');
 
 const [pesepayMethods, setPesepayMethods] =
   useState<PesePayMethod[]>([]);
@@ -175,8 +224,6 @@ const [placedOrder, setPlacedOrder] =
     gateway: Gateway;
     paymentId?: string;
     transactionStatus?: string;
-    transactionStatusDescription?: string;
-    paymentState?: 'pending' | 'success' | 'failed';
   } | null>(null);
 
   const selectedDomain = availabilityResult?.domain || '';
@@ -264,8 +311,14 @@ const [placedOrder, setPlacedOrder] =
     setRegistrantDetails(emptyRegistrant());
     setUseDefaultNameservers(true);
     setCustomNameservers(['', '', '', '']);
+    setCustomNameserverIps(
+      ['', '', '', '']
+    );
+    setPostalSameAsPhysical(
+      false
+    );
     setNameserverError(null);
-    setGateway('checkout');
+    setGateway('ecocash_usd');
     setPesepayMethods([]);
     setPesepayMethodCode('');
     setPesepayMethodsError(null);
@@ -344,6 +397,8 @@ const [placedOrder, setPlacedOrder] =
               registrantDetails: RegistrantDetails;
               useDefaultNameservers: boolean;
               customNameservers: string[];
+              customNameserverIps?: string[];
+              postalSameAsPhysical?: boolean;
               gateway: Gateway;
             }
           : null;
@@ -352,7 +407,18 @@ const [placedOrder, setPlacedOrder] =
           setRegistrantType(draft.registrantType);
           setRegistrantDetails(draft.registrantDetails);
           setUseDefaultNameservers(draft.useDefaultNameservers);
-          setCustomNameservers(draft.customNameservers);
+          setCustomNameservers(
+            draft.customNameservers
+          );
+          setCustomNameserverIps(
+            draft.customNameserverIps ||
+              ['', '', '', '']
+          );
+          setPostalSameAsPhysical(
+            Boolean(
+              draft.postalSameAsPhysical
+            )
+          );
           setGateway(draft.gateway);
         }
 
@@ -532,10 +598,21 @@ const [placedOrder, setPlacedOrder] =
     field: keyof RegistrantDetails,
     value: string
   ) => {
-    setRegistrantDetails((current) => ({
-      ...current,
-      [field]: value,
-    }));
+    setRegistrantDetails(
+      (current) => ({
+        ...current,
+        [field]:
+          value,
+        ...(field ===
+            'physical_address' &&
+          postalSameAsPhysical
+          ? {
+              postal_address:
+                value,
+            }
+          : {}),
+      })
+    );
   };
 
   const validateRegistrant = () => {
@@ -546,6 +623,11 @@ const [placedOrder, setPlacedOrder] =
       {
         value: registrantDetails.full_name,
         message: 'Full applicant name is required.',
+      },
+      {
+        value: registrantDetails.org_name,
+        message:
+          'Organisation name is required. Use "Individual" for a personal registration.',
       },
       {
         value: registrantDetails.physical_address,
@@ -592,6 +674,17 @@ const [placedOrder, setPlacedOrder] =
       return 'Please enter a valid email address.';
     }
 
+    if (
+      registrantDetails.org_description
+        .trim()
+        .toLowerCase() ===
+      registrantDetails.proposed_usage
+        .trim()
+        .toLowerCase()
+    ) {
+      return 'Organisation description and proposed domain use must be different. Describe what the organisation does, then select how the domain will be used.';
+    }
+
     return null;
   };
 
@@ -608,12 +701,18 @@ const [placedOrder, setPlacedOrder] =
 
   const continueFromNameservers = () => {
     if (!useDefaultNameservers) {
-      const active = customNameservers
-        .map((value) => value.trim())
-        .filter(Boolean);
+      const active =
+        customNameservers
+          .map((value) =>
+            value.trim()
+          )
+          .filter(Boolean);
 
       const validation =
-        nameserverService.validateNameservers(active);
+        nameserverService
+          .validateNameservers(
+            active
+          );
 
       if (!validation.valid) {
         setNameserverError(
@@ -621,6 +720,45 @@ const [placedOrder, setPlacedOrder] =
             'Please check the nameservers you entered.'
         );
         return;
+      }
+
+      if (zispaRequired) {
+        for (
+          let index = 0;
+          index < 2;
+          index += 1
+        ) {
+          const hostname =
+            customNameservers[
+              index
+            ]?.trim();
+
+          const ip =
+            customNameserverIps[
+              index
+            ]?.trim();
+
+          if (
+            !hostname ||
+            !ip
+          ) {
+            setNameserverError(
+              'The first two custom nameservers require both a hostname and an IP address for the registry template.'
+            );
+            return;
+          }
+
+          if (
+            !isValidIpAddress(
+              ip
+            )
+          ) {
+            setNameserverError(
+              `Enter a valid IP address for nameserver ${index + 1}.`
+            );
+            return;
+          }
+        }
       }
     }
 
@@ -630,10 +768,56 @@ const [placedOrder, setPlacedOrder] =
 
   const finalNameservers = () =>
     useDefaultNameservers
-      ? [...settings.default_nameservers]
+      ? [
+          ...settings.default_nameservers,
+        ]
       : customNameservers
-          .map((value) => value.trim())
+          .map((value) =>
+            value.trim()
+          )
           .filter(Boolean);
+
+  const finalNameserverIps = () => {
+    if (useDefaultNameservers) {
+      return settings
+        .default_nameservers
+        .map(
+          (hostname) =>
+            KNOWN_NAMESERVER_IPS[
+              hostname
+                .trim()
+                .toLowerCase()
+            ] ||
+            ''
+        );
+    }
+
+    return customNameservers
+      .map(
+        (
+          hostname,
+          index
+        ) => ({
+          hostname:
+            hostname.trim(),
+          ip:
+            customNameserverIps[
+              index
+            ]?.trim() ||
+            '',
+        })
+      )
+      .filter(
+        (entry) =>
+          Boolean(
+            entry.hostname
+          )
+      )
+      .map(
+        (entry) =>
+          entry.ip
+      );
+  };
 
   const basicOwnerDetails = (): RegistrantDetails => ({
     full_name: currentUser?.name || '',
@@ -756,7 +940,7 @@ const [placedOrder, setPlacedOrder] =
   const waitForPesePayVerification = async (
     paymentId: string
   ) => {
-    const maxAttempts = 20;
+    const maxAttempts = 40;
 
     for (
       let attempt = 0;
@@ -768,16 +952,7 @@ const [placedOrder, setPlacedOrder] =
           paymentId
         );
 
-      if (
-        result?.paymentState === 'success' ||
-        result?.verified
-      ) {
-        return result;
-      }
-
-      if (
-        result?.paymentState === 'failed'
-      ) {
+      if (result?.verified) {
         return result;
       }
 
@@ -789,13 +964,7 @@ const [placedOrder, setPlacedOrder] =
       );
     }
 
-    return {
-      verified: false,
-      paymentState: 'pending',
-      transactionStatus: 'PENDING',
-      transactionStatusDescription:
-        'Payment has not been confirmed yet.',
-    };
+    return null;
   };
 
   useEffect(() => {
@@ -916,7 +1085,9 @@ const [placedOrder, setPlacedOrder] =
           registrantDetails,
           useDefaultNameservers,
           customNameservers,
-          gateway: 'checkout',
+          customNameserverIps,
+          postalSameAsPhysical,
+          gateway,
         })
       );
 
@@ -933,16 +1104,32 @@ const [placedOrder, setPlacedOrder] =
       return;
     }
 
+    if (
+      gateway === 'pesepay' &&
+      !selectedPesePayMethod
+    ) {
+      showNotification(
+        'Choose an available PesePay payment method.',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      gateway === 'pesepay' &&
+      selectedPesePayMethod?.requiresPhone &&
+      !pesepayPhone.trim()
+    ) {
+      showNotification(
+        `Enter the ${selectedPesePayMethod.name} phone number.`,
+        'error'
+      );
+      return;
+    }
+
     setIsProcessing(true);
 
     try {
-      /*
-       * Domain registration now stops at ORDER CREATION.
-       *
-       * No EcoCash payment and no PesePay transaction is
-       * created here. The Billing checkout owns all payment
-       * methods, including Runtime Credit and split payments.
-       */
       const result =
         await registerNewDomain(
           availabilityResult.domain,
@@ -953,44 +1140,155 @@ const [placedOrder, setPlacedOrder] =
             ? registrantDetails
             : basicOwnerDetails(),
           finalNameservers(),
-          'checkout'
+          gateway,
+          finalNameserverIps()
         );
+
+      if (gateway === 'pesepay') {
+        const initiation =
+          await postAuthenticated(
+            '/api/payments/pesepay/initiate',
+            {
+              orderId:
+                result.order.id,
+              paymentMethodCode:
+                selectedPesePayMethod!.code,
+              customerPhoneNumber:
+                selectedPesePayMethod!.requiresPhone
+                  ? pesepayPhone.trim()
+                  : currentUser.phone || '',
+            }
+          );
+
+        const paymentId =
+          String(
+            initiation?.paymentId ||
+            ''
+          );
+
+        if (!paymentId) {
+          throw new Error(
+            'Runtime could not create the PesePay transaction.'
+          );
+        }
+
+        const transaction =
+          initiation?.transaction ||
+          {};
+
+        setPlacedOrder({
+          orderReference:
+            result.order.reference,
+          paymentReference:
+            String(
+              transaction.referenceNumber ||
+              paymentId
+            ),
+          amount:
+            result.order.total,
+          domain:
+            result.domain.domain_name,
+          gateway:
+            'pesepay',
+          paymentId,
+          transactionStatus:
+            String(
+              transaction.transactionStatus ||
+              'INITIATED'
+            ),
+        });
+
+        sessionStorage.removeItem(
+          REGISTRATION_DRAFT_KEY
+        );
+
+        const flow =
+          String(
+            transaction.flow ||
+            ''
+          );
+
+        if (
+          flow === 'redirect' ||
+          transaction.redirectRequired
+        ) {
+          if (!transaction.redirectUrl) {
+            throw new Error(
+              'PesePay did not return a checkout URL for this payment method.'
+            );
+          }
+
+          sessionStorage.setItem(
+            'runtime_pesepay_payment_id',
+            paymentId
+          );
+
+          window.location.assign(
+            String(
+              transaction.redirectUrl
+            )
+          );
+
+          return;
+        }
+
+        setStep('instructions');
+
+        showNotification(
+          `${selectedPesePayMethod!.name} payment request sent. Complete the payment prompt to continue.`,
+          'info'
+        );
+
+        const verified =
+          await waitForPesePayVerification(
+            paymentId
+          );
+
+        if (verified?.verified) {
+          setPlacedOrder(
+            (previous) =>
+              previous
+                ? {
+                    ...previous,
+                    transactionStatus:
+                      'SUCCESS',
+                  }
+                : previous
+          );
+
+          showNotification(
+            'Payment confirmed successfully.',
+            'success'
+          );
+        }
+
+        return;
+      }
+
+      if (!result.payment) {
+        throw new Error(
+          'Manual payment could not be created.'
+        );
+      }
+
+      setPlacedOrder({
+        orderReference:
+          result.order.reference,
+        paymentReference:
+          result.payment.reference,
+        amount:
+          result.payment.amount,
+        domain:
+          result.domain.domain_name,
+        gateway:
+          'ecocash_usd',
+      });
 
       sessionStorage.removeItem(
         REGISTRATION_DRAFT_KEY
       );
 
-      /*
-       * Tell Billing which freshly-created order should open.
-       * DashboardBilling consumes and removes this key.
-       */
-      sessionStorage.setItem(
-        'runtime_checkout_order_id',
-        result.order.id
-      );
-
-      setRegistrationModalOpen(
-        false
-      );
-
-      setPendingRegisterDomain(
-        null
-      );
-
-      setActiveView(
-        'dashboard'
-      );
-
-      setDashboardSubView(
-        'billing'
-      );
-
-      resetState();
-
-      showNotification(
-        `Order ${result.order.reference} created. Choose how you want to pay.`,
-        'success'
-      );
+      setStep('instructions');
     } catch (error) {
       console.error(
         'Domain registration order failed:',
@@ -1099,7 +1397,7 @@ const [placedOrder, setPlacedOrder] =
         : step === 'nameservers'
           ? 'Nameservers'
           : step === 'payment'
-            ? 'Review order'
+            ? 'Review and payment'
             : placedOrder?.gateway === 'pesepay'
               ? 'PesePay payment'
               : 'EcoCash USD payment';
@@ -1447,6 +1745,7 @@ const [placedOrder, setPlacedOrder] =
 
                     <Field
                       label="Organisation name"
+                      required
                       value={
                         registrantDetails.org_name ?? ''
                       }
@@ -1472,19 +1771,52 @@ const [placedOrder, setPlacedOrder] =
                       }
                     />
 
-                    <Field
-                      label="Postal address"
-                      required
-                      value={
-                        registrantDetails.postal_address ?? ''
-                      }
-                      onChange={(value) =>
-                        updateRegistrant(
-                          'postal_address',
-                          value
-                        )
-                      }
-                    />
+                    <div>
+                      <Field
+                        label="Postal address"
+                        required
+                        disabled={
+                          postalSameAsPhysical
+                        }
+                        value={
+                          postalSameAsPhysical
+                            ? registrantDetails.physical_address ?? ''
+                            : registrantDetails.postal_address ?? ''
+                        }
+                        onChange={(value) =>
+                          updateRegistrant(
+                            'postal_address',
+                            value
+                          )
+                        }
+                      />
+
+                      <label className="mt-2 flex items-center gap-2 text-xs text-zinc-600">
+                        <input
+                          type="checkbox"
+                          checked={
+                            postalSameAsPhysical
+                          }
+                          onChange={(event) => {
+                            const checked =
+                              event.target.checked;
+
+                            setPostalSameAsPhysical(
+                              checked
+                            );
+
+                            if (checked) {
+                              updateRegistrant(
+                                'postal_address',
+                                registrantDetails.physical_address
+                              );
+                            }
+                          }}
+                          className="h-4 w-4 rounded border-zinc-300 accent-[#3120ff]"
+                        />
+                        Postal address is the same as physical address
+                      </label>
+                    </div>
 
                     <Field
                       label="Town / City"
@@ -1544,33 +1876,67 @@ const [placedOrder, setPlacedOrder] =
                     />
                   </div>
 
-                  <Field
-                    label="Organisation / activity description"
-                    required
-                    value={
-                      registrantDetails.org_description ?? ''
-                    }
-                    onChange={(value) =>
-                      updateRegistrant(
-                        'org_description',
-                        value
-                      )
-                    }
-                  />
+                  <div>
+                    <Field
+                      label="Organisation / activity description"
+                      required
+                      value={
+                        registrantDetails.org_description ?? ''
+                      }
+                      placeholder="e.g. Clothing retailer, software company, school"
+                      onChange={(value) =>
+                        updateRegistrant(
+                          'org_description',
+                          value
+                        )
+                      }
+                    />
 
-                  <Field
-                    label="Proposed domain use"
-                    required
-                    value={
-                      registrantDetails.proposed_usage ?? ''
-                    }
-                    onChange={(value) =>
-                      updateRegistrant(
-                        'proposed_usage',
-                        value
-                      )
-                    }
-                  />
+                    <p className="mt-1.5 text-[11px] leading-4 text-zinc-500">
+                      Describe what the person, organisation or business does. Do not repeat the domain usage.
+                    </p>
+                  </div>
+
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-medium text-zinc-700">
+                      Proposed domain use *
+                    </span>
+
+                    <select
+                      value={
+                        registrantDetails.proposed_usage ?? ''
+                      }
+                      onChange={(event) =>
+                        updateRegistrant(
+                          'proposed_usage',
+                          event.target.value
+                        )
+                      }
+                      className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2.5 text-sm text-zinc-950 outline-none transition focus:border-[#3120ff]"
+                    >
+                      <option value="">
+                        Select how the domain will be used
+                      </option>
+                      <option value="Website">
+                        Website
+                      </option>
+                      <option value="Web application">
+                        Web application
+                      </option>
+                      <option value="Online store">
+                        Online store
+                      </option>
+                      <option value="Email services">
+                        Email services
+                      </option>
+                      <option value="API / developer service">
+                        API / developer service
+                      </option>
+                      <option value="Other">
+                        Other
+                      </option>
+                    </select>
+                  </label>
                 </div>
               )}
 
@@ -1672,32 +2038,80 @@ const [placedOrder, setPlacedOrder] =
                   {!useDefaultNameservers && (
                     <div className="space-y-3 rounded-xl border border-zinc-200 p-4">
                       {customNameservers.map(
-                        (value, index) => (
-                          <Field
-                            key={index}
-                            label={`Nameserver ${index + 1}${
-                              index < 2
-                                ? ' *'
-                                : ' (optional)'
-                            }`}
-                            value={value}
-                            placeholder={`ns${index + 1}.example.com`}
-                            mono
-                            onChange={(
-                              newValue
-                            ) => {
-                              const copy = [
-                                ...customNameservers,
-                              ];
+                        (
+                          value,
+                          index
+                        ) => (
+                          <div
+                            key={
+                              index
+                            }
+                            className="grid gap-3 sm:grid-cols-2"
+                          >
+                            <Field
+                              label={`Nameserver ${index + 1}${
+                                index < 2
+                                  ? ' *'
+                                  : ' (optional)'
+                              }`}
+                              value={
+                                value
+                              }
+                              placeholder={`ns${index + 1}.example.com`}
+                              mono
+                              onChange={(
+                                newValue
+                              ) => {
+                                const copy =
+                                  [
+                                    ...customNameservers,
+                                  ];
 
-                              copy[index] =
-                                newValue.toLowerCase();
+                                copy[
+                                  index
+                                ] =
+                                  newValue.toLowerCase();
 
-                              setCustomNameservers(
-                                copy
-                              );
-                            }}
-                          />
+                                setCustomNameservers(
+                                  copy
+                                );
+                              }}
+                            />
+
+                            <Field
+                              label={`IP address ${index + 1}${
+                                zispaRequired &&
+                                index < 2
+                                  ? ' *'
+                                  : ' (optional)'
+                              }`}
+                              value={
+                                customNameserverIps[
+                                  index
+                                ] ||
+                                ''
+                              }
+                              placeholder="203.0.113.10"
+                              mono
+                              onChange={(
+                                newValue
+                              ) => {
+                                const copy =
+                                  [
+                                    ...customNameserverIps,
+                                  ];
+
+                                copy[
+                                  index
+                                ] =
+                                  newValue.trim();
+
+                                setCustomNameserverIps(
+                                  copy
+                                );
+                              }}
+                            />
+                          </div>
                         )
                       )}
 
@@ -1761,25 +2175,133 @@ const [placedOrder, setPlacedOrder] =
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-[#3120ff]/15 bg-[#3120ff]/5 p-4">
-                    <div className="flex items-start gap-3">
-                      <Lock className="mt-0.5 h-4 w-4 shrink-0 text-[#3120ff]" />
+                  <div>
+                    <h3 className="mb-3 text-sm font-semibold text-zinc-950">
+                      Payment method
+                    </h3>
 
-                      <div>
-                        <h3 className="text-sm font-semibold text-zinc-950">
-                          Payment after order creation
-                        </h3>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <GatewayButton
+                        active={
+                          gateway ===
+                          'ecocash_usd'
+                        }
+                        title="EcoCash USD"
+                        description="Manual payment. Admin verifies your screenshot before processing."
+                        onClick={() =>
+                          setGateway(
+                            'ecocash_usd'
+                          )
+                        }
+                      />
 
-                        <p className="mt-1.5 text-xs leading-5 text-zinc-600">
-                          Continue to Runtime checkout to use your available Runtime Credit, PesePay, or EcoCash USD.
-                        </p>
-
-                        <p className="mt-2 text-xs leading-5 text-zinc-600">
-                          If your Runtime Credit does not cover the full order, it can be applied first and you can pay the remaining balance with another payment method.
-                        </p>
-                      </div>
+                      <GatewayButton
+                        active={
+                          gateway ===
+                          'pesepay'
+                        }
+                        title="PesePay"
+                        description="Choose from the payment methods currently available through PesePay."
+                        onClick={() =>
+                          setGateway(
+                            'pesepay'
+                          )
+                        }
+                      />
                     </div>
                   </div>
+
+                  {gateway ===
+                    'ecocash_usd' && (
+                    <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                      <p className="text-sm font-semibold text-zinc-950">
+                        How EcoCash USD works
+                      </p>
+
+                      <p className="mt-2 text-xs leading-5 text-zinc-500">
+                        Place the order first. Runtime will then show the exact EcoCash USD payment details and your order reference. Your domain will appear in My Domains as awaiting payment until an admin confirms receipt.
+                      </p>
+                    </div>
+                  )}
+
+                  {gateway ===
+                    'pesepay' && (
+                    <div className="space-y-4 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                      <div>
+                        <p className="text-sm font-semibold text-zinc-950">
+                          Pay with PesePay
+                        </p>
+                        <p className="mt-2 text-xs leading-5 text-zinc-500">
+                          Choose an available payment method. EcoCash and InnBucks use the seamless flow when PesePay supports it. Other methods continue securely on PesePay when a redirect is required.
+                        </p>
+                      </div>
+
+                      {pesepayMethodsLoading && (
+                        <p className="text-xs text-zinc-500">
+                          Loading available payment methods...
+                        </p>
+                      )}
+
+                      {pesepayMethodsError && (
+                        <p className="text-xs text-red-600">
+                          {pesepayMethodsError}
+                        </p>
+                      )}
+
+                      {!pesepayMethodsLoading &&
+                        !pesepayMethodsError &&
+                        pesepayMethods.length === 0 && (
+                        <p className="text-xs text-zinc-500">
+                          No PesePay payment methods are currently available for USD.
+                        </p>
+                      )}
+
+                      {pesepayMethods.length > 0 && (
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {pesepayMethods.map(
+                            (method) => (
+                              <GatewayButton
+                                key={
+                                  method.code
+                                }
+                                active={
+                                  pesepayMethodCode ===
+                                  method.code
+                                }
+                                title={
+                                  method.name
+                                }
+                                description={
+                                  method.seamless
+                                    ? 'Pay without leaving Runtime.'
+                                    : 'Continue securely on PesePay to complete payment.'
+                                }
+                                onClick={() =>
+                                  setPesepayMethodCode(
+                                    method.code
+                                  )
+                                }
+                              />
+                            )
+                          )}
+                        </div>
+                      )}
+
+                      {selectedPesePayMethod?.requiresPhone && (
+                        <Field
+                          label={`${selectedPesePayMethod.name} phone number`}
+                          required
+                          value={
+                            pesepayPhone
+                          }
+                          placeholder="0771234567"
+                          onChange={
+                            setPesepayPhone
+                          }
+                        />
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1798,33 +2320,22 @@ const [placedOrder, setPlacedOrder] =
                         <h3 className="text-base font-bold text-zinc-950">
                           {placedOrder.gateway ===
                           'pesepay'
-                            ? placedOrder.paymentState ===
-                                'success' ||
-                              placedOrder.transactionStatus ===
-                                'SUCCESS'
+                            ? placedOrder.transactionStatus ===
+                              'SUCCESS'
                               ? 'Payment confirmed'
-                              : placedOrder.paymentState ===
-                                'failed'
-                                ? 'Payment not completed'
-                                : 'Payment requested'
+                              : 'Payment requested'
                             : 'Order created'}
                         </h3>
 
                         <p className="mt-1 text-xs leading-5 text-zinc-500">
                           {placedOrder.gateway ===
                           'pesepay'
-                            ? placedOrder.paymentState ===
-                                'success' ||
-                              placedOrder.transactionStatus ===
-                                'SUCCESS'
+                            ? placedOrder.transactionStatus ===
+                              'SUCCESS'
                               ? 'PesePay confirmed your payment. Runtime can now continue processing your domain registration.'
-                              : placedOrder.paymentState ===
-                                'failed'
-                                ? placedOrder.transactionStatusDescription ||
-                                  'The payment was not completed. You can try again.'
-                                : selectedPesePayMethod
-                                  ? `Complete the ${selectedPesePayMethod.name} payment request. Runtime will verify the transaction directly with PesePay.`
-                                  : 'Complete the payment request. Runtime will verify the transaction directly with PesePay.'
+                              : selectedPesePayMethod
+                              ? `Complete the ${selectedPesePayMethod.name} payment request. Runtime will verify the transaction directly with PesePay.`
+                              : 'Complete the payment request. Runtime will verify the transaction directly with PesePay.'
                             : 'Your domain is now visible in My Domains as awaiting payment. Registration will only start after the payment is verified.'}
                         </p>
                       </div>
@@ -1875,15 +2386,10 @@ const [placedOrder, setPlacedOrder] =
                         <SummaryRow
                           label="Status"
                           value={
-                            placedOrder.paymentState ===
-                              'success' ||
                             placedOrder.transactionStatus ===
-                              'SUCCESS'
+                            'SUCCESS'
                               ? 'Paid'
-                              : placedOrder.paymentState ===
-                                'failed'
-                                ? 'Not completed'
-                                : 'Awaiting confirmation'
+                              : 'Awaiting confirmation'
                           }
                         />
                       </>
@@ -1928,10 +2434,6 @@ const [placedOrder, setPlacedOrder] =
                       </button>
                     </>
                   ) : (
-                    placedOrder.paymentState !==
-                      'failed' &&
-                    placedOrder.paymentState !==
-                      'success' &&
                     placedOrder.transactionStatus !==
                       'SUCCESS' &&
                     placedOrder.paymentId && (
@@ -1952,8 +2454,6 @@ const [placedOrder, setPlacedOrder] =
                               );
 
                             if (
-                              verified?.paymentState ===
-                                'success' ||
                               verified?.verified
                             ) {
                               setPlacedOrder(
@@ -1963,11 +2463,6 @@ const [placedOrder, setPlacedOrder] =
                                         ...previous,
                                         transactionStatus:
                                           'SUCCESS',
-                                        transactionStatusDescription:
-                                          verified?.transactionStatusDescription ||
-                                          'Payment confirmed by PesePay.',
-                                        paymentState:
-                                          'success',
                                       }
                                     : previous
                               );
@@ -1976,60 +2471,9 @@ const [placedOrder, setPlacedOrder] =
                                 'Payment confirmed successfully.',
                                 'success'
                               );
-                            } else if (
-                              verified?.paymentState ===
-                              'failed'
-                            ) {
-                              setPlacedOrder(
-                                (previous) =>
-                                  previous
-                                    ? {
-                                        ...previous,
-                                        transactionStatus:
-                                          String(
-                                            verified?.transactionStatus ||
-                                            'FAILED'
-                                          ),
-                                        transactionStatusDescription:
-                                          String(
-                                            verified?.transactionStatusDescription ||
-                                            'The payment was not completed.'
-                                          ),
-                                        paymentState:
-                                          'failed',
-                                      }
-                                    : previous
-                              );
-
-                              showNotification(
-                                verified?.transactionStatusDescription ||
-                                  'Payment was not completed. You can try again.',
-                                'error'
-                              );
                             } else {
-                              setPlacedOrder(
-                                (previous) =>
-                                  previous
-                                    ? {
-                                        ...previous,
-                                        transactionStatus:
-                                          String(
-                                            verified?.transactionStatus ||
-                                            'PENDING'
-                                          ),
-                                        transactionStatusDescription:
-                                          String(
-                                            verified?.transactionStatusDescription ||
-                                            'Payment has not been confirmed yet.'
-                                          ),
-                                        paymentState:
-                                          'pending',
-                                      }
-                                    : previous
-                              );
-
                               showNotification(
-                                'Payment is still pending. Complete the payment prompt, then check again.',
+                                'Payment is not confirmed yet. Complete the EcoCash prompt and try again.',
                                 'info'
                               );
                             }
@@ -2153,6 +2597,7 @@ type FieldProps = {
   required?: boolean;
   type?: 'text' | 'email';
   placeholder?: string;
+  disabled?: boolean;
   mono?: boolean;
 };
 
@@ -2163,6 +2608,7 @@ const Field: React.FC<FieldProps> = ({
   required = false,
   type = 'text',
   placeholder,
+  disabled = false,
   mono = false,
 }) => (
   <div>
@@ -2174,11 +2620,12 @@ const Field: React.FC<FieldProps> = ({
     <input
       type={type}
       value={value}
+      disabled={disabled}
       onChange={(event) =>
         onChange(event.target.value)
       }
       placeholder={placeholder}
-      className={`w-full rounded-lg border border-zinc-200 bg-white px-3 py-2.5 text-sm text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-[#3120ff] ${
+      className={`w-full rounded-lg border border-zinc-200 bg-white px-3 py-2.5 text-sm text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-[#3120ff] disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-500 ${
         mono ? 'font-mono' : ''
       }`}
     />

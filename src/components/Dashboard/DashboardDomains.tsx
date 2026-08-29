@@ -69,6 +69,10 @@ const statusLabel = (
       'Processing',
     cancelled:
       'Cancelled',
+    registry_rejected:
+      'Registry rejected',
+    replaced:
+      'Replaced',
     expired:
       'Expired',
   };
@@ -157,6 +161,13 @@ export const DashboardDomains: React.FC =
       );
 
     const [
+      editNameserverIps,
+      setEditNameserverIps,
+    ] = useState<string[]>(
+      ['', '', '', '']
+    );
+
+    const [
       editOwner,
       setEditOwner,
     ] =
@@ -210,6 +221,18 @@ export const DashboardDomains: React.FC =
             )
             .filter(
               (domain) =>
+                ![
+                  'cancelled',
+                  'registry_rejected',
+                  'replaced',
+                ].includes(
+                  String(
+                    domain.status
+                  )
+                )
+            )
+            .filter(
+              (domain) =>
                 !search.trim() ||
                 domain.domain_name
                   .toLowerCase()
@@ -256,6 +279,24 @@ export const DashboardDomains: React.FC =
       setEditNameservers(
         next
       );
+
+      const nextIps = [
+        ...(
+          domain.nameserver_ips ||
+          []
+        ),
+      ];
+
+      while (
+        nextIps.length < 4
+      ) {
+        nextIps.push('');
+      }
+
+      setEditNameserverIps(
+        nextIps
+      );
+
       setNameserverError(
         null
       );
@@ -295,9 +336,52 @@ export const DashboardDomains: React.FC =
           return;
         }
 
+        const activeIps =
+          editNameservers
+            .map(
+              (
+                hostname,
+                index
+              ) => ({
+                hostname:
+                  hostname.trim(),
+                ip:
+                  editNameserverIps[
+                    index
+                  ]?.trim() ||
+                  '',
+              })
+            )
+            .filter(
+              (entry) =>
+                Boolean(
+                  entry.hostname
+                )
+            )
+            .map(
+              (entry) =>
+                entry.ip
+            );
+
+        if (
+          selectedDomain
+            .processing_type ===
+            'zispa' &&
+          (
+            !activeIps[0] ||
+            !activeIps[1]
+          )
+        ) {
+          setNameserverError(
+            'The first two nameservers require IP addresses for the registry template.'
+          );
+          return;
+        }
+
         updateDomainNameservers(
           selectedDomain.id,
-          active
+          active,
+          activeIps
         );
 
         setModalMode(
@@ -1130,32 +1214,63 @@ export const DashboardDomains: React.FC =
                     value,
                     index
                   ) => (
-                    <Field
+                    <div
                       key={
                         index
                       }
-                      label={`Nameserver ${index + 1}${index < 2 ? ' *' : ''}`}
-                      value={
-                        value
-                      }
-                      placeholder={`ns${index + 1}.example.com`}
-                      onChange={(
-                        next
-                      ) => {
-                        const copy = [
-                          ...editNameservers,
-                        ];
+                      className="grid gap-3 sm:grid-cols-2"
+                    >
+                      <Field
+                        label={`Nameserver ${index + 1}${index < 2 ? ' *' : ''}`}
+                        value={
+                          value
+                        }
+                        placeholder={`ns${index + 1}.example.com`}
+                        onChange={(
+                          next
+                        ) => {
+                          const copy = [
+                            ...editNameservers,
+                          ];
 
-                        copy[
-                          index
-                        ] =
-                          next;
+                          copy[
+                            index
+                          ] =
+                            next;
 
-                        setEditNameservers(
-                          copy
-                        );
-                      }}
-                    />
+                          setEditNameservers(
+                            copy
+                          );
+                        }}
+                      />
+
+                      <Field
+                        label={`IP address ${index + 1}${selectedDomain.processing_type === 'zispa' && index < 2 ? ' *' : ''}`}
+                        value={
+                          editNameserverIps[
+                            index
+                          ] ||
+                          ''
+                        }
+                        placeholder="203.0.113.10"
+                        onChange={(
+                          next
+                        ) => {
+                          const copy = [
+                            ...editNameserverIps,
+                          ];
+
+                          copy[
+                            index
+                          ] =
+                            next;
+
+                          setEditNameserverIps(
+                            copy
+                          );
+                        }}
+                      />
+                    </div>
                   )
                 )}
               </div>

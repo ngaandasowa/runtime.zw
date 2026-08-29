@@ -31,6 +31,10 @@ const STATUS_LABELS:
       'Active',
     cancelled:
       'Cancelled',
+    registry_rejected:
+      'Registry rejected',
+    replaced:
+      'Replaced',
     expired:
       'Expired',
   };
@@ -59,9 +63,38 @@ export const AdminDomains:
         () =>
           domains.filter(
             (domain) => {
+              const archived =
+                [
+                  'cancelled',
+                  'registry_rejected',
+                  'replaced',
+                ].includes(
+                  String(
+                    domain.status
+                  )
+                );
+
+              if (
+                statusFilter ===
+                  'ALL' &&
+                archived
+              ) {
+                return false;
+              }
+
+              if (
+                statusFilter ===
+                  'ARCHIVED' &&
+                !archived
+              ) {
+                return false;
+              }
+
               if (
                 statusFilter !==
                   'ALL' &&
+                statusFilter !==
+                  'ARCHIVED' &&
                 domain.status !==
                   statusFilter
               ) {
@@ -119,7 +152,11 @@ export const AdminDomains:
             className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs outline-none"
           >
             <option value="ALL">
-              All statuses
+              Current domains
+            </option>
+
+            <option value="ARCHIVED">
+              Archived / rejected
             </option>
 
             <option value="pending_payment">
@@ -144,6 +181,14 @@ export const AdminDomains:
 
             <option value="cancelled">
               Cancelled
+            </option>
+
+            <option value="registry_rejected">
+              Registry rejected
+            </option>
+
+            <option value="replaced">
+              Replaced
             </option>
 
             <option value="expired">
@@ -304,6 +349,10 @@ export const AdminDomains:
 
                             <option value="cancelled">
                               Cancelled
+                            </option>
+
+                            <option value="registry_rejected">
+                              Registry rejected
                             </option>
 
                             <option value="expired">

@@ -21,10 +21,6 @@ import {
   settleWalletTopup,
 } from '../services/WalletTopupSettlementService.js';
 
-import {
-  applyRuntimeCreditToOrder,
-} from '../services/CreditOrderPaymentService.js';
-
 const router = Router();
 
 const PESEPAY_MAKE_PAYMENT_URL =
@@ -67,71 +63,6 @@ type PesePayTransaction = {
     paymentMethodReference?: string;
   };
 };
-
-const money = (
-  value: number
-) =>
-  Math.round(
-    (Number(value) + Number.EPSILON) *
-      100
-  ) / 100;
-
-const getOrderPaymentTotals =
-  async (
-    orderId: string,
-    orderTotal: number
-  ) => {
-    const snapshot =
-      await adminDb
-        .collection('payments')
-        .where(
-          'order_id',
-          '==',
-          orderId
-        )
-        .get();
-
-    const amountPaid =
-      money(
-        snapshot.docs
-          .filter(
-            (doc) =>
-              doc.data().status ===
-              'verified'
-          )
-          .reduce(
-            (
-              total,
-              doc
-            ) =>
-              total +
-              Number(
-                doc.data().amount ||
-                0
-              ),
-            0
-          )
-      );
-
-    const total =
-      money(orderTotal);
-
-    return {
-      amountPaid:
-        Math.min(
-          total,
-          amountPaid
-        ),
-      amountDue:
-        money(
-          Math.max(
-            0,
-            total -
-              amountPaid
-          )
-        ),
-    };
-  };
 
 /*
  * ----------------------------------------------------------
@@ -494,8 +425,8 @@ const classifyPesePayStatus = (
 
 const markInitiationFailed = async (
   paymentId: string,
-  orderId: string | null,
-  previousOrderStatus: string | null,
+  orderId: string,
+  previousOrderStatus: string,
   reason: string
 ) => {
   const now =
@@ -508,6 +439,16 @@ const markInitiationFailed = async (
           .collection('payments')
           .doc(paymentId);
 
+      const orderRef =
+        adminDb
+          .collection('orders')
+          .doc(orderId);
+
+      const orderSnapshot =
+        await transaction.get(
+          orderRef
+        );
+
       transaction.set(
         paymentRef,
         {
@@ -519,33 +460,18 @@ const markInitiationFailed = async (
       );
 
       if (
-        orderId &&
-        previousOrderStatus
+        orderSnapshot.exists &&
+        orderSnapshot.data()?.status ===
+          'payment_pending'
       ) {
-        const orderRef =
-          adminDb
-            .collection('orders')
-            .doc(orderId);
-
-        const orderSnapshot =
-          await transaction.get(
-            orderRef
-          );
-
-        if (
-          orderSnapshot.exists &&
-          orderSnapshot.data()?.status ===
-            'payment_pending'
-        ) {
-          transaction.update(
-            orderRef,
-            {
-              status:
-                previousOrderStatus,
-              updated_at: now,
-            }
-          );
-        }
+        transaction.update(
+          orderRef,
+          {
+            status:
+              previousOrderStatus,
+            updated_at: now,
+          }
+        );
       }
     }
   );
@@ -1296,6 +1222,555 @@ router.post(
 
 /*
  * ----------------------------------------------------------
+ * ADMIN DOMAIN REPLACEMENT
+ * ----------------------------------------------------------
+ *
+ * Used when a registry rejects a domain after the customer's order
+ * has already been paid. The original verified payment is NEVER
+ * recreated, moved, refunded or duplicated. Fulfillment is changed
+ * to a replacement domain under the same paid order.
+ */
+router.post(
+  '/admin/domain-replacement',
+  authenticate,
+  async (
+    req: AuthenticatedRequest,
+    res: Response
+  ) => {
+    try {
+      const runtimeUser =
+        req.runtimeUser!;
+
+      if (
+        runtimeUser.role !==
+        'super_admin'
+      ) {
+        return res.status(403).json({
+          success: false,
+          message:
+            'Super admin permission required.',
+        });
+      }
+
+      const domainId =
+        typeof req.body?.domainId ===
+        'string'
+          ? req.body.domainId.trim()
+          : '';
+
+      const replacementDomainName =
+        typeof req.body
+          ?.replacementDomainName ===
+        'string'
+          ? req.body
+              .replacementDomainName
+              .trim()
+              .toLowerCase()
+              .replace(/^https?:\/\//, '')
+              .replace(/^www\./, '')
+              .split('/')[0]
+          : '';
+
+      const reason =
+        typeof req.body?.reason ===
+          'string' &&
+        req.body.reason.trim()
+          ? req.body.reason.trim()
+          : 'Registry rejected the original domain.';
+
+      if (
+        !domainId ||
+        !replacementDomainName ||
+        !replacementDomainName.includes('.')
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Original domain and a valid replacement domain are required.',
+        });
+      }
+
+      const oldDomainRef =
+        adminDb
+          .collection('domains')
+          .doc(domainId);
+
+      const replacementRef =
+        adminDb
+          .collection('domains')
+          .doc(
+            `dom-${crypto.randomUUID()}`
+          );
+
+      const now =
+        new Date().toISOString();
+
+      const result =
+        await adminDb.runTransaction(
+          async (transaction) => {
+            /*
+             * IMPORTANT:
+             * Every read happens before the first write.
+             */
+            const oldDomainDoc =
+              await transaction.get(
+                oldDomainRef
+              );
+
+            if (!oldDomainDoc.exists) {
+              throw new Error(
+                'Original domain not found.'
+              );
+            }
+
+            const oldDomain =
+              oldDomainDoc.data()!;
+
+            if (
+              ![
+                'cancelled',
+                'registry_rejected',
+              ].includes(
+                String(
+                  oldDomain.status
+                )
+              )
+            ) {
+              throw new Error(
+                'Only a cancelled or registry-rejected domain can be replaced.'
+              );
+            }
+
+            const orderId =
+              String(
+                oldDomain.order_id ||
+                ''
+              ).trim();
+
+            if (!orderId) {
+              throw new Error(
+                'The original domain is not linked to an order.'
+              );
+            }
+
+            const orderRef =
+              adminDb
+                .collection('orders')
+                .doc(orderId);
+
+            const orderDoc =
+              await transaction.get(
+                orderRef
+              );
+
+            if (!orderDoc.exists) {
+              throw new Error(
+                'The paid order linked to this domain was not found.'
+              );
+            }
+
+            const order =
+              orderDoc.data()!;
+
+            if (
+              order.user_id !==
+              oldDomain.user_id
+            ) {
+              throw new Error(
+                'Domain and order customer do not match.'
+              );
+            }
+
+            const paymentQuery =
+              adminDb
+                .collection('payments')
+                .where(
+                  'order_id',
+                  '==',
+                  orderId
+                );
+
+            const paymentSnapshot =
+              await transaction.get(
+                paymentQuery
+              );
+
+            const verifiedPayments =
+              paymentSnapshot.docs
+                .map(
+                  (doc) => ({
+                    id: doc.id,
+                    ...doc.data(),
+                  })
+                )
+                .filter(
+                  (payment: any) =>
+                    payment.status ===
+                    'verified'
+                );
+
+            const verifiedTotal =
+              Math.round(
+                verifiedPayments.reduce(
+                  (
+                    total: number,
+                    payment: any
+                  ) =>
+                    total +
+                    Number(
+                      payment.amount ||
+                      0
+                    ),
+                  0
+                ) *
+                100
+              ) / 100;
+
+            const orderTotal =
+              Math.round(
+                Number(
+                  order.total ||
+                  0
+                ) *
+                100
+              ) / 100;
+
+            if (
+              verifiedTotal +
+                0.00001 <
+              orderTotal
+            ) {
+              throw new Error(
+                'The linked order is not fully paid. A replacement cannot use an unpaid order.'
+              );
+            }
+
+            const duplicateQuery =
+              adminDb
+                .collection('domains')
+                .where(
+                  'domain_name',
+                  '==',
+                  replacementDomainName
+                );
+
+            const duplicateSnapshot =
+              await transaction.get(
+                duplicateQuery
+              );
+
+            if (
+              !duplicateSnapshot.empty
+            ) {
+              throw new Error(
+                'That replacement domain already exists in Runtime.'
+              );
+            }
+
+            const parts =
+              replacementDomainName
+                .split('.');
+
+            const tld =
+              replacementDomainName
+                .endsWith('.co.zw')
+                ? '.co.zw'
+                : replacementDomainName
+                    .endsWith('.org.zw')
+                  ? '.org.zw'
+                  : replacementDomainName
+                      .endsWith('.ac.zw')
+                    ? '.ac.zw'
+                    : parts.length > 1
+                      ? `.${parts
+                          .slice(1)
+                          .join('.')}`
+                      : '';
+
+            if (
+              oldDomain.tld &&
+              String(
+                oldDomain.tld
+              ).toLowerCase() !==
+                tld.toLowerCase()
+            ) {
+              throw new Error(
+                'A no-charge replacement must use the same domain extension as the original paid domain.'
+              );
+            }
+
+            const oldHistory =
+              Array.isArray(
+                oldDomain.history
+              )
+                ? oldDomain.history
+                : [];
+
+            const newDomain = {
+              id:
+                replacementRef.id,
+              domain_name:
+                replacementDomainName,
+              tld,
+              user_id:
+                oldDomain.user_id,
+              user_email:
+                oldDomain.user_email,
+              status:
+                'pending_registration',
+              nameservers:
+                Array.isArray(
+                  oldDomain.nameservers
+                )
+                  ? oldDomain
+                      .nameservers
+                  : [],
+              nameserver_ips:
+                Array.isArray(
+                  oldDomain
+                    .nameserver_ips
+                )
+                  ? oldDomain
+                      .nameserver_ips
+                  : [],
+              auto_renew:
+                oldDomain.auto_renew ??
+                true,
+              renewal_price:
+                Number(
+                  oldDomain
+                    .renewal_price ||
+                  0
+                ),
+              currency:
+                oldDomain.currency ||
+                order.currency ||
+                'USD',
+              registrant_type:
+                oldDomain
+                  .registrant_type ||
+                'myself',
+              owner_details:
+                oldDomain
+                  .owner_details ||
+                {},
+              processing_type:
+                oldDomain
+                  .processing_type ||
+                'zispa',
+              registration_price:
+                Number(
+                  oldDomain
+                    .registration_price ||
+                  order.total ||
+                  0
+                ),
+              order_id:
+                orderId,
+              payment_ids:
+                verifiedPayments.map(
+                  (payment: any) =>
+                    payment.id
+                ),
+              replacement_for_domain_id:
+                oldDomainRef.id,
+              history: [
+                {
+                  id:
+                    `hist-${crypto.randomUUID()}`,
+                  domain_id:
+                    replacementRef.id,
+                  action: 'NEW',
+                  description:
+                    `Replacement for ${oldDomain.domain_name}. Existing paid order ${order.reference || orderId} applied; no new payment created.`,
+                  status:
+                    'pending_registration',
+                  actor:
+                    runtimeUser.email ||
+                    runtimeUser.uid,
+                  created_at:
+                    now,
+                },
+              ],
+              created_at:
+                now,
+              updated_at:
+                now,
+            };
+
+            const nextItems =
+              Array.isArray(
+                order.items
+              )
+                ? order.items.map(
+                    (
+                      item: any
+                    ) =>
+                      item.item_type ===
+                      'domain_registration'
+                        ? {
+                            ...item,
+                            reference_id:
+                              replacementDomainName,
+                            description:
+                              `Domain registration: ${replacementDomainName}`,
+                          }
+                        : item
+                  )
+                : [];
+
+            /*
+             * All reads are complete. Writes begin here.
+             */
+            transaction.set(
+              oldDomainRef,
+              {
+                status:
+                  'replaced',
+                registry_rejection_reason:
+                  reason,
+                rejected_at:
+                  oldDomain.rejected_at ||
+                  now,
+                archived_at:
+                  now,
+                replacement_domain_id:
+                  replacementRef.id,
+                replaced_by_domain:
+                  replacementDomainName,
+                replaced_at:
+                  now,
+                updated_at:
+                  now,
+                history: [
+                  ...oldHistory,
+                  {
+                    id:
+                      `hist-${crypto.randomUUID()}`,
+                    domain_id:
+                      oldDomainRef.id,
+                    action:
+                      'STATUS_CHANGE',
+                    description:
+                      `Registry replacement: ${oldDomain.domain_name} was replaced by ${replacementDomainName}. Existing payment/order retained.`,
+                    status:
+                      'replaced',
+                    actor:
+                      runtimeUser.email ||
+                      runtimeUser.uid,
+                    created_at:
+                      now,
+                  },
+                ],
+              },
+              {
+                merge: true,
+              }
+            );
+
+            transaction.create(
+              replacementRef,
+              newDomain
+            );
+
+            transaction.set(
+              orderRef,
+              {
+                status:
+                  order.status ===
+                    'completed'
+                    ? 'processing'
+                    : order.status,
+                items:
+                  nextItems,
+                fulfillment_domain_id:
+                  replacementRef.id,
+                original_domain_id:
+                  oldDomainRef.id,
+                replacement_reason:
+                  reason,
+                replacement_at:
+                  now,
+                updated_at:
+                  now,
+              },
+              {
+                merge: true,
+              }
+            );
+
+            /*
+             * Payment documents are intentionally untouched.
+             */
+            return {
+              replacementDomain:
+                newDomain,
+              originalDomainId:
+                oldDomainRef.id,
+              orderId,
+              orderReference:
+                order.reference ||
+                orderId,
+              paymentIds:
+                verifiedPayments.map(
+                  (payment: any) =>
+                    payment.id
+                ),
+              verifiedTotal,
+              orderTotal,
+            };
+          }
+        );
+
+      return res.json({
+        success: true,
+        ...result,
+      });
+    } catch (error) {
+      console.error(
+        'Domain replacement error:',
+        error
+      );
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Unable to replace domain.';
+
+      const status =
+        message.includes(
+          'not found'
+        )
+          ? 404
+          : message.includes(
+                'Only a cancelled'
+              ) ||
+              message.includes(
+                'not fully paid'
+              ) ||
+              message.includes(
+                'already exists'
+              ) ||
+              message.includes(
+                'do not match'
+              ) ||
+              message.includes(
+                'same domain extension'
+              )
+            ? 409
+            : 500;
+
+      return res.status(status).json({
+        success: false,
+        message,
+      });
+    }
+  }
+);
+
+
+/*
+ * ----------------------------------------------------------
  * ADMIN MANUAL PAYMENT VERIFICATION
  * ----------------------------------------------------------
  *
@@ -1768,252 +2243,6 @@ router.post(
 
 /*
  * ----------------------------------------------------------
- * ORDER PAYMENT SUMMARY
- * ----------------------------------------------------------
- */
-router.get(
-  '/order/:orderId/payment-summary',
-  authenticate,
-  async (
-    req: AuthenticatedRequest,
-    res: Response
-  ) => {
-    try {
-      const orderId =
-        String(
-          req.params.orderId ||
-          ''
-        ).trim();
-
-      const runtimeUser =
-        req.runtimeUser!;
-
-      const orderDoc =
-        await adminDb
-          .collection('orders')
-          .doc(orderId)
-          .get();
-
-      if (!orderDoc.exists) {
-        return res.status(404).json({
-          success: false,
-          message:
-            'Order not found.',
-        });
-      }
-
-      const order =
-        orderDoc.data()!;
-
-      if (
-        order.user_id !==
-        runtimeUser.uid
-      ) {
-        return res.status(403).json({
-          success: false,
-          message:
-            'You may only view your own order.',
-        });
-      }
-
-      const total =
-        money(
-          Number(
-            order.total || 0
-          )
-        );
-
-      const paymentTotals =
-        await getOrderPaymentTotals(
-          orderId,
-          total
-        );
-
-      const walletDoc =
-        await adminDb
-          .collection('wallets')
-          .doc(runtimeUser.uid)
-          .get();
-
-      const walletBalance =
-        money(
-          Number(
-            walletDoc.exists
-              ? walletDoc.data()
-                  ?.balance || 0
-              : 0
-          )
-        );
-
-      return res.json({
-        success: true,
-        order: {
-          id:
-            orderId,
-          reference:
-            order.reference,
-          total,
-          currency:
-            String(
-              order.currency ||
-                'USD'
-            ).toUpperCase(),
-          status:
-            order.status,
-          amountPaid:
-            paymentTotals
-              .amountPaid,
-          amountDue:
-            paymentTotals
-              .amountDue,
-        },
-        wallet: {
-          balance:
-            walletBalance,
-          currency:
-            'USD',
-          applicableAmount:
-            money(
-              Math.min(
-                walletBalance,
-                paymentTotals
-                  .amountDue
-              )
-            ),
-        },
-      });
-    } catch (error) {
-      console.error(
-        'Order payment summary error:',
-        error
-      );
-
-      return res.status(500).json({
-        success: false,
-        message:
-          'Unable to load payment summary.',
-      });
-    }
-  }
-);
-
-
-/*
- * ----------------------------------------------------------
- * APPLY RUNTIME CREDIT TO ORDER
- * ----------------------------------------------------------
- *
- * The wallet debit, immutable ledger entry, internal verified
- * payment, order state, and full-payment fulfillment happen
- * in one Firestore transaction.
- */
-router.post(
-  '/order/runtime-credit',
-  authenticate,
-  async (
-    req: AuthenticatedRequest,
-    res: Response
-  ) => {
-    try {
-      const orderId =
-        typeof req.body?.orderId ===
-        'string'
-          ? req.body.orderId.trim()
-          : '';
-
-      const requestedAmount =
-        req.body?.amount ===
-          undefined
-          ? undefined
-          : Number(
-              req.body.amount
-            );
-
-      if (!orderId) {
-        return res.status(400).json({
-          success: false,
-          message:
-            'Order ID is required.',
-        });
-      }
-
-      if (
-        requestedAmount !==
-          undefined &&
-        (
-          !Number.isFinite(
-            requestedAmount
-          ) ||
-          requestedAmount <= 0
-        )
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            'Runtime Credit amount must be greater than zero.',
-        });
-      }
-
-      const runtimeUser =
-        req.runtimeUser!;
-
-      const result =
-        await applyRuntimeCreditToOrder({
-          orderId,
-          userId:
-            runtimeUser.uid,
-          actor:
-            runtimeUser.email ||
-            runtimeUser.uid,
-          requestedAmount,
-        });
-
-      return res.json({
-        success: true,
-        ...result,
-      });
-    } catch (error) {
-      console.error(
-        'Runtime Credit order payment error:',
-        error
-      );
-
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Unable to apply Runtime Credit.';
-
-      const status =
-        message ===
-          'Order not found.'
-          ? 404
-          : message.includes(
-                'own order'
-              )
-            ? 403
-            : message.includes(
-                  'already fully paid'
-                ) ||
-                message.includes(
-                  'can no longer be paid'
-                ) ||
-                message.includes(
-                  'do not have Runtime Credit'
-                )
-              ? 409
-              : 400;
-
-      return res.status(status).json({
-        success: false,
-        message,
-      });
-    }
-  }
-);
-
-
-/*
- * ----------------------------------------------------------
  * CREATE / RETRY MANUAL ECOCASH PAYMENT FOR EXISTING ORDER
  * ----------------------------------------------------------
  *
@@ -2101,35 +2330,17 @@ router.post(
         });
       }
 
-      const orderTotal =
-        money(
-          Number(order.total)
-        );
+      const amount =
+        Number(order.total);
 
       if (
-        !Number.isFinite(orderTotal) ||
-        orderTotal <= 0
+        !Number.isFinite(amount) ||
+        amount <= 0
       ) {
         return res.status(400).json({
           success: false,
           message:
             'This order has an invalid amount.',
-        });
-      }
-
-      const {
-        amountDue: amount,
-      } =
-        await getOrderPaymentTotals(
-          orderId,
-          orderTotal
-        );
-
-      if (amount <= 0) {
-        return res.status(400).json({
-          success: false,
-          message:
-            'This order has already been fully paid.',
         });
       }
 
@@ -2163,42 +2374,14 @@ router.post(
         );
 
       if (activeManual) {
-        const activeData =
-          activeManual.data();
-
-        if (
-          money(
-            Number(
-              activeData.amount ||
-              0
-            )
-          ) === amount
-        ) {
-          return res.json({
-            success: true,
-            paymentId:
-              activeManual.id,
-            payment:
-              activeData,
-            reused: true,
-          });
-        }
-
-        await activeManual.ref.set(
-          {
-            status:
-              'failed',
-            rejection_reason:
-              'Payment amount changed after Runtime Credit was applied.',
-            replaced_at:
-              new Date()
-                .toISOString(),
-            updated_at:
-              new Date()
-                .toISOString(),
-          },
-          { merge: true }
-        );
+        return res.json({
+          success: true,
+          paymentId:
+            activeManual.id,
+          payment:
+            activeManual.data(),
+          reused: true,
+        });
       }
 
       const now =
@@ -2299,481 +2482,6 @@ router.post(
     }
   }
 );
-
-
-/*
- * ----------------------------------------------------------
- * INITIATE PESEPAY RUNTIME CREDIT TOP-UP
- * ----------------------------------------------------------
- *
- * Wallet top-ups are payments in their own right. They are not
- * represented by fake orders. A successful provider verification
- * is settled by WalletTopupSettlementService.
- */
-
-router.post(
-  '/wallet/pesepay/initiate',
-  authenticate,
-  async (
-    req: AuthenticatedRequest,
-    res: Response
-  ) => {
-    let paymentId = '';
-
-    try {
-      const runtimeUser =
-        req.runtimeUser!;
-
-      const amount =
-        Number(
-          req.body?.amount
-        );
-
-      const paymentMethodCode =
-        typeof req.body?.paymentMethodCode ===
-        'string'
-          ? req.body.paymentMethodCode.trim()
-          : '';
-
-      const customerPhoneNumber =
-        typeof req.body?.customerPhoneNumber ===
-        'string'
-          ? req.body.customerPhoneNumber.trim()
-          : '';
-
-      if (
-        !Number.isFinite(amount) ||
-        amount <= 0
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            'Top-up amount must be greater than zero.',
-        });
-      }
-
-      if (!paymentMethodCode) {
-        return res.status(400).json({
-          success: false,
-          message:
-            'PesePay payment method is required.',
-        });
-      }
-
-      const roundedAmount =
-        Math.round(
-          (amount + Number.EPSILON) *
-          100
-        ) / 100;
-
-      const currency = 'USD';
-
-      const availableMethods =
-        await fetchPesePayMethods(
-          currency
-        );
-
-      const selectedMethod =
-        availableMethods.find(
-          (method) =>
-            method.code ===
-            paymentMethodCode
-        );
-
-      if (!selectedMethod) {
-        return res.status(400).json({
-          success: false,
-          message:
-            'That PesePay payment method is not currently available.',
-        });
-      }
-
-      if (
-        selectedMethod.requiresPhone &&
-        !customerPhoneNumber
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            `${selectedMethod.name} phone number is required.`,
-        });
-      }
-
-      const customerEmail =
-        String(
-          runtimeUser.email ||
-          ''
-        ).trim();
-
-      if (!customerEmail) {
-        return res.status(400).json({
-          success: false,
-          message:
-            'Customer email is missing.',
-        });
-      }
-
-      /*
-       * Retire the customer's older pending PesePay wallet
-       * attempts. This does not touch order payments.
-       */
-      const previousAttempts =
-        await adminDb
-          .collection('payments')
-          .where(
-            'user_id',
-            '==',
-            runtimeUser.uid
-          )
-          .get();
-
-      const staleBatch =
-        adminDb.batch();
-
-      let hasStaleUpdates =
-        false;
-
-      for (
-        const attempt of
-        previousAttempts.docs
-      ) {
-        const data =
-          attempt.data();
-
-        if (
-          data.purpose ===
-            'wallet_topup' &&
-          data.gateway ===
-            'pesepay' &&
-          (
-            data.status ===
-              'pending' ||
-            data.status ===
-              'pending_verification'
-          )
-        ) {
-          staleBatch.set(
-            attempt.ref,
-            {
-              status: 'failed',
-              rejection_reason:
-                'Previous Runtime Credit top-up was replaced by a new payment attempt.',
-              replaced_at:
-                new Date().toISOString(),
-              updated_at:
-                new Date().toISOString(),
-            },
-            { merge: true }
-          );
-
-          hasStaleUpdates =
-            true;
-        }
-      }
-
-      if (hasStaleUpdates) {
-        await staleBatch.commit();
-      }
-
-      const paymentRef =
-        adminDb
-          .collection('payments')
-          .doc();
-
-      paymentId =
-        paymentRef.id;
-
-      const merchantReference =
-        `RT-CREDIT-${paymentId.slice(0, 8).toUpperCase()}`;
-
-      const reasonForPayment =
-        `Runtime Credit top-up - USD ${roundedAmount.toFixed(2)}`;
-
-      const now =
-        new Date().toISOString();
-
-      await paymentRef.set({
-        id: paymentId,
-        purpose: 'wallet_topup',
-        user_id:
-          runtimeUser.uid,
-        reference:
-          merchantReference,
-        amount:
-          roundedAmount,
-        currency,
-        gateway: 'pesepay',
-        provider_payment_method:
-          selectedMethod.code,
-        provider_payment_method_name:
-          selectedMethod.name,
-        provider_payment_flow:
-          selectedMethod.seamless
-            ? 'seamless'
-            : 'redirect',
-        status: 'pending',
-        customer_confirmed_payment:
-          false,
-        created_at: now,
-        updated_at: now,
-      });
-
-      const {
-        integrationKey,
-        encryptionKey,
-      } = getPesePayCredentials();
-
-      const apiBaseUrl =
-        process.env.RUNTIME_API_URL ||
-        'https://runtime-api-my3q.onrender.com';
-
-      const frontendUrl =
-        process.env.RUNTIME_FRONTEND_URL ||
-        'https://runtime.co.zw';
-
-      const resultUrl =
-        `${apiBaseUrl}/api/payments/pesepay/result?paymentId=${encodeURIComponent(
-          paymentId
-        )}`;
-
-      const returnUrl =
-        `${frontendUrl}/dashboard`;
-
-      const customer = {
-        email:
-          customerEmail,
-        phoneNumber:
-          customerPhoneNumber,
-        name:
-          runtimeUser.name,
-      };
-
-      const paymentBody =
-        selectedMethod.seamless
-          ? {
-              amountDetails: {
-                amount:
-                  roundedAmount,
-                currencyCode:
-                  currency,
-              },
-              merchantReference,
-              reasonForPayment,
-              resultUrl,
-              returnUrl,
-              paymentMethodCode:
-                selectedMethod.code,
-              customer,
-              paymentMethodRequiredFields:
-                selectedMethod.requiresPhone
-                  ? {
-                      customerPhoneNumber,
-                    }
-                  : {},
-            }
-          : {
-              amountDetails: {
-                amount:
-                  roundedAmount,
-                currencyCode:
-                  currency,
-              },
-              merchantReference,
-              reasonForPayment,
-              resultUrl,
-              returnUrl,
-              customer,
-            };
-
-      const encryptedPayload =
-        encryptPayload(
-          paymentBody,
-          encryptionKey
-        );
-
-      const providerUrl =
-        selectedMethod.seamless
-          ? PESEPAY_MAKE_PAYMENT_URL
-          : PESEPAY_INITIATE_URL;
-
-      const response =
-        await nodeFetch(
-          providerUrl,
-          {
-            method: 'POST',
-            headers: {
-              authorization:
-                integrationKey,
-              'Content-Type':
-                'application/json',
-            },
-            body: JSON.stringify({
-              payload:
-                encryptedPayload,
-            }),
-            insecureHTTPParser: true,
-          }
-        );
-
-      let responseBody: any = null;
-
-      try {
-        responseBody =
-          await response.json();
-      } catch {
-        responseBody = null;
-      }
-
-      if (!response.ok) {
-        console.error(
-          'PesePay wallet top-up initiation failed:',
-          response.status,
-          responseBody
-        );
-
-        await markInitiationFailed(
-          paymentId,
-          null,
-          null,
-          `PesePay initiation failed with HTTP ${response.status}.`
-        );
-
-        return res.status(502).json({
-          success: false,
-          message:
-            'PesePay could not initiate the Runtime Credit top-up.',
-        });
-      }
-
-      if (
-        !responseBody ||
-        typeof responseBody.payload !==
-          'string' ||
-        !responseBody.payload
-      ) {
-        await markInitiationFailed(
-          paymentId,
-          null,
-          null,
-          'PesePay returned an invalid response.'
-        );
-
-        return res.status(502).json({
-          success: false,
-          message:
-            'PesePay returned an invalid response.',
-        });
-      }
-
-      const providerTransaction =
-        decryptPayload(
-          responseBody.payload,
-          encryptionKey
-        );
-
-      if (
-        !providerTransaction.referenceNumber
-      ) {
-        await markInitiationFailed(
-          paymentId,
-          null,
-          null,
-          'PesePay response did not include a reference number.'
-        );
-
-        return res.status(502).json({
-          success: false,
-          message:
-            'PesePay returned an incomplete transaction.',
-        });
-      }
-
-      await paymentRef.set(
-        {
-          provider_reference:
-            providerTransaction.referenceNumber,
-          transaction_id:
-            providerTransaction.internalReference ||
-            providerTransaction.referenceNumber,
-          provider_status:
-            providerTransaction.transactionStatus ||
-            'INITIATED',
-          provider_status_description:
-            providerTransaction.transactionStatusDescription ||
-            '',
-          pesepay_poll_url:
-            providerTransaction.pollUrl ||
-            '',
-          redirect_url:
-            providerTransaction.redirectUrl ||
-            '',
-          updated_at:
-            new Date().toISOString(),
-        },
-        { merge: true }
-      );
-
-      return res.json({
-        success: true,
-        paymentId,
-        purpose:
-          'wallet_topup',
-        transaction: {
-          referenceNumber:
-            providerTransaction.referenceNumber,
-          transactionStatus:
-            providerTransaction.transactionStatus,
-          redirectRequired:
-            Boolean(
-              providerTransaction.redirectRequired
-            ),
-          redirectUrl:
-            providerTransaction.redirectUrl ||
-            null,
-          pollUrl:
-            providerTransaction.pollUrl ||
-            null,
-          flow:
-            selectedMethod.seamless
-              ? 'seamless'
-              : 'redirect',
-          paymentMethodCode:
-            selectedMethod.code,
-          paymentMethodName:
-            selectedMethod.name,
-        },
-      });
-    } catch (error) {
-      console.error(
-        'PesePay wallet top-up initiation error:',
-        error
-      );
-
-      if (paymentId) {
-        try {
-          await markInitiationFailed(
-            paymentId,
-            null,
-            null,
-            'Unable to initiate PesePay Runtime Credit top-up.'
-          );
-        } catch (cleanupError) {
-          console.error(
-            'Unable to clean up failed wallet top-up initiation:',
-            cleanupError
-          );
-        }
-      }
-
-      return res.status(500).json({
-        success: false,
-        message:
-          'Unable to initiate PesePay Runtime Credit top-up.',
-      });
-    }
-  }
-);
-
 
 /*
  * ----------------------------------------------------------
@@ -2946,18 +2654,8 @@ router.post(
         }
       }
 
-      const orderTotal =
-        money(
-          Number(order.total)
-        );
-
-      const {
-        amountDue: amount,
-      } =
-        await getOrderPaymentTotals(
-          orderId,
-          orderTotal
-        );
+      const amount =
+        Number(order.total);
 
       const currency =
         String(
@@ -2965,21 +2663,13 @@ router.post(
         ).toUpperCase();
 
       if (
-        !Number.isFinite(orderTotal) ||
-        orderTotal <= 0
+        !Number.isFinite(amount) ||
+        amount <= 0
       ) {
         return res.status(400).json({
           success: false,
           message:
             'This order has an invalid payment amount.',
-        });
-      }
-
-      if (amount <= 0) {
-        return res.status(400).json({
-          success: false,
-          message:
-            'This order has already been fully paid.',
         });
       }
 
