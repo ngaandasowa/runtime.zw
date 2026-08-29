@@ -1755,25 +1755,42 @@ const getDomainOrderDetails = async (
         );
       }
 
-      const order =
-        orders.find(
-          (item) =>
-            item.id ===
-            payment.order_id
-        );
-
-      if (!order) {
-        throw new Error(
-          'The order linked to this payment was not found.'
-        );
-      }
-
       if (
         payment.gateway !==
         'ecocash_usd'
       ) {
         throw new Error(
           'Only manual EcoCash USD payments can be approved manually.'
+        );
+      }
+
+      const purpose =
+        payment.purpose ===
+        'wallet_topup'
+          ? 'wallet_topup'
+          : 'order_payment';
+
+      /*
+       * Runtime Credit top-ups intentionally have no order.
+       * Only ordinary order payments require one.
+       */
+      const order =
+        purpose ===
+          'order_payment'
+          ? orders.find(
+              (item) =>
+                item.id ===
+                payment.order_id
+            )
+          : undefined;
+
+      if (
+        purpose ===
+          'order_payment' &&
+        !order
+      ) {
+        throw new Error(
+          'The order linked to this payment was not found.'
         );
       }
 
@@ -1789,9 +1806,9 @@ const getDomainOrderDetails = async (
         );
 
       /*
-       * The backend is now authoritative. Reload the admin
-       * collections instead of recreating settlement state in
-       * the browser.
+       * Backend settlement is authoritative for both:
+       * - order_payment
+       * - wallet_topup
        */
       const [
         refreshedPayments,
@@ -1810,9 +1827,11 @@ const getDomainOrderDetails = async (
       setPayments(
         refreshedPayments
       );
+
       setOrders(
         refreshedOrders
       );
+
       setDomains(
         refreshedDomains
       );
@@ -1822,6 +1841,32 @@ const getDomainOrderDetails = async (
           (item) =>
             item.id === paymentId
         ) || payment;
+
+      /*
+       * Wallet settlement is complete at this point.
+       * There is deliberately no domain/order fulfillment.
+       */
+      if (
+        purpose ===
+        'wallet_topup'
+      ) {
+        showNotification(
+          `Runtime Credit top-up of $${Number(
+            approvedPayment.amount || 0
+          ).toFixed(2)} approved.`,
+          'success'
+        );
+
+        return;
+      }
+
+      /*
+       * From here onward this is guaranteed to be an
+       * order payment with an order.
+       */
+      if (!order) {
+        return;
+      }
 
       const paidOrder =
         refreshedOrders.find(
@@ -1908,13 +1953,12 @@ const getDomainOrderDetails = async (
           'Payment approved. The paid order is ready for fulfillment.',
           'success'
         );
+
         return;
       }
 
       /*
        * Preserve the existing registry-queue UI behaviour.
-       * Payment/order/domain settlement itself is no longer
-       * performed here.
        */
       if (
         (fulfilledDomain as any)
@@ -2017,12 +2061,21 @@ const getDomainOrderDetails = async (
         );
       }
 
+      const purpose =
+        payment.purpose ===
+        'wallet_topup'
+          ? 'wallet_topup'
+          : 'order_payment';
+
       const rejectedOrder =
-        orders.find(
-          (item) =>
-            item.id ===
-            payment.order_id
-        );
+        purpose ===
+          'order_payment'
+          ? orders.find(
+              (item) =>
+                item.id ===
+                payment.order_id
+            )
+          : undefined;
 
       await callAdminPaymentApi(
         '/admin/manual/reject',
@@ -2048,6 +2101,7 @@ const getDomainOrderDetails = async (
       setPayments(
         refreshedPayments
       );
+
       setOrders(
         refreshedOrders
       );
@@ -2057,6 +2111,22 @@ const getDomainOrderDetails = async (
           (item) =>
             item.id === paymentId
         ) || payment;
+
+      /*
+       * A rejected wallet top-up has no order to reopen
+       * and no domain email workflow to run.
+       */
+      if (
+        purpose ===
+        'wallet_topup'
+      ) {
+        showNotification(
+          'Runtime Credit top-up rejected.',
+          'info'
+        );
+
+        return;
+      }
 
       const rejectedDomain =
         rejectedOrder

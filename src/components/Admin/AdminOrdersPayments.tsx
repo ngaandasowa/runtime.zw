@@ -60,6 +60,31 @@ export const AdminOrdersPayments:
       string | null
     >(null);
 
+    const walletTopups =
+      useMemo(
+        () =>
+          payments
+            .filter(
+              (payment) =>
+                payment.purpose ===
+                'wallet_topup'
+            )
+            .sort(
+              (a, b) =>
+                new Date(
+                  b.created_at ||
+                    b.updated_at ||
+                    0
+                ).getTime() -
+                new Date(
+                  a.created_at ||
+                    a.updated_at ||
+                    0
+                ).getTime()
+            ),
+        [payments]
+      );
+
     const rows =
       useMemo(() => {
         return [...orders]
@@ -482,6 +507,189 @@ export const AdminOrdersPayments:
             </option>
           </select>
         </div>
+
+        {/* RUNTIME CREDIT TOP-UPS */}
+        <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
+          <div className="flex items-start justify-between gap-4 border-b border-zinc-100 p-4 sm:p-5">
+            <div>
+              <h2 className="text-sm font-bold text-zinc-950">
+                Runtime Credit top-ups
+              </h2>
+
+              <p className="mt-1 text-xs text-zinc-500">
+                Review wallet funding separately from customer orders.
+              </p>
+            </div>
+
+            <span className="rounded-full bg-[#3120ff]/5 px-2.5 py-1 text-[10px] font-bold text-[#3120ff]">
+              {walletTopups.length}
+            </span>
+          </div>
+
+          {walletTopups.length === 0 ? (
+            <div className="px-5 py-8 text-center text-sm text-zinc-500">
+              No Runtime Credit top-ups yet.
+            </div>
+          ) : (
+            <div className="divide-y divide-zinc-100">
+              {walletTopups.map(
+                (payment) => {
+                  const actionable =
+                    payment.gateway ===
+                      'ecocash_usd' &&
+                    (
+                      payment.status ===
+                        'pending' ||
+                      payment.status ===
+                        'pending_verification'
+                    );
+
+                  return (
+                    <div
+                      key={payment.id}
+                      className="p-4 sm:p-5"
+                    >
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-mono text-sm font-bold text-zinc-950">
+                              {payment.reference}
+                            </p>
+
+                            <StatusBadge
+                              status={
+                                payment.status
+                              }
+                            />
+
+                            <span className="rounded-full border border-[#3120ff]/15 bg-[#3120ff]/5 px-2 py-1 text-[10px] font-bold text-[#3120ff]">
+                              Runtime Credit
+                            </span>
+                          </div>
+
+                          <p className="mt-2 text-sm font-semibold text-zinc-900">
+                            Wallet top-up
+                          </p>
+
+                          <p className="mt-1 text-xs text-zinc-500">
+                            User ID: {payment.user_id}
+                          </p>
+
+                          <div className="mt-4 grid gap-3 text-xs sm:grid-cols-3">
+                            <Info
+                              label="Amount"
+                              value={`$${Number(
+                                payment.amount || 0
+                              ).toFixed(2)} ${
+                                payment.currency ||
+                                'USD'
+                              }`}
+                            />
+
+                            <Info
+                              label="Method"
+                              value={
+                                payment.gateway ===
+                                'ecocash_usd'
+                                  ? 'EcoCash USD'
+                                  : payment.gateway ===
+                                      'pesepay'
+                                    ? 'PesePay'
+                                    : payment.gateway
+                              }
+                            />
+
+                            <Info
+                              label="Transaction ID"
+                              value={
+                                payment.transaction_id ||
+                                '—'
+                              }
+                              mono
+                            />
+                          </div>
+
+                          <p className="mt-3 text-[11px] text-zinc-400">
+                            Created{' '}
+                            {new Date(
+                              payment.created_at
+                            ).toLocaleString()}
+                          </p>
+                        </div>
+
+                        <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:flex-col">
+                          {actionable && (
+                            <>
+                              <button
+                                type="button"
+                                disabled={
+                                  busyPaymentId ===
+                                  payment.id
+                                }
+                                onClick={() =>
+                                  approve(
+                                    payment.id
+                                  )
+                                }
+                                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#3120ff] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#2819d9] disabled:opacity-50"
+                              >
+                                <CheckCircle2 className="h-4 w-4" />
+                                {busyPaymentId ===
+                                payment.id
+                                  ? 'Processing...'
+                                  : 'Approve Top-up'}
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={
+                                  busyPaymentId ===
+                                  payment.id
+                                }
+                                onClick={() =>
+                                  reject(
+                                    payment.id
+                                  )
+                                }
+                                className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50"
+                              >
+                                <XCircle className="h-4 w-4" />
+                                Reject
+                              </button>
+                            </>
+                          )}
+
+                          {payment.status ===
+                            'verified' && (
+                            <div className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs font-bold text-emerald-700">
+                              <CheckCircle2 className="h-4 w-4" />
+                              Credit added
+                            </div>
+                          )}
+
+                          {payment.status ===
+                            'rejected' && (
+                            <div className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs font-bold text-rose-700">
+                              <XCircle className="h-4 w-4" />
+                              Rejected
+                            </div>
+                          )}
+
+                          {payment.status ===
+                            'failed' && (
+                            <div className="max-w-56 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs leading-5 text-rose-700">
+                              This top-up attempt failed.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+              )}
+            </div>
+          )}
+        </section>
 
         <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
           {filtered.length ===
