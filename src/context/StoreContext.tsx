@@ -178,7 +178,10 @@ interface StoreContextType {
   requestDomainModify: (domainId: string, updatedOwner: RegistrantDetails, nameservers: string[]) => void;
   requestDomainDelete: (domainId: string, confirmationText: string) => boolean;
   requestDomainTransfer: (domainName: string, authCode: string) => Promise<void>;
-  updateDomainStatus: (domainId: string, status: DomainStatus) => void;
+  updateDomainStatus: (
+    domainId: string,
+    status: DomainStatus
+  ) => Promise<void>;
   renewDomain: (domainId: string, years: number, paymentGateway?: any) => Promise<void>;
 
   // Admin payment actions
@@ -1369,158 +1372,123 @@ const getDomainOrderDetails = async (
     );
   };
 
-  const updateDomainStatus = (
-    domainId: string,
-    status: DomainStatus
-  ) => {
-    const domain = domains.find(
-      (item) => item.id === domainId
-    );
+  const updateDomainStatus =
+    async (
+      domainId: string,
+      status: DomainStatus
+    ): Promise<void> => {
+      if (
+        !currentUser ||
+        currentUser.role !==
+          'super_admin'
+      ) {
+        throw new Error(
+          'Only a super admin can update domain status.'
+        );
+      }
 
-    if (!domain) {
+      const domain =
+        domains.find(
+          (item) =>
+            item.id ===
+            domainId
+        );
+
+      if (!domain) {
+        throw new Error(
+          'Domain not found.'
+        );
+      }
+
+      /*
+       * IMPORTANT:
+       * Do not update React state first.
+       *
+       * The previous implementation changed the domain in memory and
+       * then attempted the Firestore write. If Firestore rejected it,
+       * a cancelled/rejected domain could disappear from the UI even
+       * though the database still contained the old status.
+       *
+       * The authenticated backend is authoritative here. It uses the
+       * Admin SDK, persists the status first, and only then do we reload
+       * the domain collection.
+       */
+      const result =
+        await callAdminPaymentApi(
+          '/admin/domain-status',
+          {
+            domainId,
+            status,
+          }
+        );
+
+      const refreshedDomains =
+        await domainRepository
+          .getAllDomains();
+
+      setDomains(
+        refreshedDomains
+      );
+
+      const updated =
+        refreshedDomains.find(
+          (item) =>
+            item.id ===
+            domainId
+        );
+
+      if (!updated) {
+        throw new Error(
+          'The domain status was saved but the updated domain could not be reloaded.'
+        );
+      }
+
+      /*
+       * Keep the existing activation email behaviour, but send only
+       * after the backend has successfully persisted "active".
+       */
+      if (
+        status === 'active'
+      ) {
+        emailNotificationService
+          .notifyQuietly(
+            'domain_activated',
+            {
+              email:
+                updated.user_email,
+
+              name:
+                updated.owner_details
+                  ?.full_name,
+
+              domainName:
+                updated.domain_name,
+
+              registeredAt:
+                updated.registered_at,
+
+              renewalDate:
+                updated.expires_at,
+            }
+          );
+      }
+
       showNotification(
-        'Domain not found.',
-        'error'
-      );
-      return;
-    }
-
-    const now = new Date();
-    const nowIso = now.toISOString();
-
-    let registeredAt =
-      domain.registered_at;
-
-    let expiresAt =
-      domain.expires_at;
-
-    /*
-     * A purchase date is not treated as the registration date.
-     * The registration/renewal cycle begins when an admin marks
-     * the domain active for the first time.
-     */
-    if (
-      status === 'active' &&
-      !registeredAt
-    ) {
-      registeredAt =
-        nowIso;
-
-      const firstExpiry =
-        new Date(now);
-
-      firstExpiry.setFullYear(
-        firstExpiry.getFullYear() +
-          1
+        status ===
+          'registry_rejected'
+          ? `${updated.domain_name} marked as registry rejected and moved to Archived / rejected.`
+          : status ===
+              'cancelled'
+            ? `${updated.domain_name} cancelled and moved to Archived / rejected.`
+            : status ===
+                'active'
+              ? `${updated.domain_name} is now active.`
+              : `Domain status updated to ${status.replace(/_/g, ' ')}.`,
+        'success'
       );
 
-      expiresAt =
-        firstExpiry.toISOString();
-    }
-
-    const updated: Domain = {
-      ...domain,
-      status,
-      registered_at:
-        registeredAt,
-      expires_at:
-        expiresAt,
-      updated_at:
-        nowIso,
-      history: [
-        ...domain.history,
-        {
-          id:
-            'hist-' +
-            Math.random()
-              .toString(36)
-              .substring(2, 9),
-          domain_id:
-            domain.id,
-          action:
-            'STATUS_CHANGE',
-          description:
-            status === 'active'
-              ? 'Domain registration completed and the domain is now active.'
-              : `Domain status changed to ${status.replace(/_/g, ' ')}.`,
-          status,
-          actor:
-            currentUser?.email ||
-            'admin',
-          created_at:
-            nowIso,
-        },
-      ],
+      void result;
     };
-
-    setDomains((prev) =>
-      prev.map((item) =>
-        item.id === domainId
-          ? updated
-          : item
-      )
-    );
-
-    void domainRepository
-      .updateDomain(
-        domainId,
-        {
-          status:
-            updated.status,
-          registered_at:
-            updated.registered_at,
-          expires_at:
-            updated.expires_at,
-          history:
-            updated.history,
-          updated_at:
-            updated.updated_at,
-        }
-      )
-      .catch((error) => {
-        console.error(
-          'Failed to persist domain status:',
-          error
-        );
-
-        showNotification(
-          'Unable to save the domain status.',
-          'error'
-        );
-      });
-
-    if (
-      status === 'active'
-    ) {
-      emailNotificationService.notifyQuietly(
-        'domain_activated',
-        {
-          email:
-            domain.user_email,
-
-          name:
-            domain.owner_details
-              ?.full_name,
-
-          domainName:
-            domain.domain_name,
-
-          registeredAt:
-            updated.registered_at,
-
-          renewalDate:
-            updated.expires_at,
-        }
-      );
-    }
-
-    showNotification(
-      status === 'active'
-        ? `${domain.domain_name} is now active.`
-        : `Domain status updated to ${status.replace(/_/g, ' ')}.`,
-      'success'
-    );
-  };
 
   const renewDomain = async (
   domainId: string,

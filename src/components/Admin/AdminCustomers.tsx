@@ -123,7 +123,16 @@ export const AdminCustomers: React.FC =
                   domains.filter(
                     (domain) =>
                       domain.user_id ===
-                      customer.id
+                        customer.id &&
+                      ![
+                        'cancelled',
+                        'registry_rejected',
+                        'replaced',
+                      ].includes(
+                        String(
+                          domain.status
+                        )
+                      )
                   );
 
                 return (

@@ -156,7 +156,7 @@ export const AdminDomains:
             </option>
 
             <option value="ARCHIVED">
-              Archived / rejected
+              Archived / rejected / cancelled
             </option>
 
             <option value="pending_payment">
@@ -314,20 +314,24 @@ export const AdminDomains:
                             value={
                               domain.status
                             }
-                            onChange={(event) => {
+                            onChange={async (event) => {
                               const status =
                                 event.target.value as
                                   DomainStatus;
 
-                              updateDomainStatus(
-                                domain.id,
-                                status
-                              );
-
-                              showNotification(
-                                `${domain.domain_name} status updated.`,
-                                'info'
-                              );
+                              try {
+                                await updateDomainStatus(
+                                  domain.id,
+                                  status
+                                );
+                              } catch (error) {
+                                showNotification(
+                                  error instanceof Error
+                                    ? error.message
+                                    : 'Unable to save the domain status.',
+                                  'error'
+                                );
+                              }
                             }}
                             className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold outline-none"
                           >

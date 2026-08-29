@@ -645,6 +645,154 @@ router.post('/pesepay/verify', authenticate, async (req, res) => {
 });
 /*
  * ----------------------------------------------------------
+ * ADMIN DOMAIN STATUS
+ * ----------------------------------------------------------
+ *
+ * Status changes are backend-owned. This avoids customer Firestore
+ * rules blocking an administrator and prevents the UI from hiding a
+ * domain when persistence actually failed.
+ */
+router.post('/admin/domain-status', authenticate, async (req, res) => {
+    try {
+        const runtimeUser = req.runtimeUser;
+        if (runtimeUser.role !==
+            'super_admin') {
+            return res.status(403).json({
+                success: false,
+                message: 'Super admin permission required.',
+            });
+        }
+        const domainId = typeof req.body?.domainId ===
+            'string'
+            ? req.body.domainId.trim()
+            : '';
+        const status = typeof req.body?.status ===
+            'string'
+            ? req.body.status.trim()
+            : '';
+        const allowedStatuses = new Set([
+            'pending',
+            'pending_payment',
+            'pending_registration',
+            'active',
+            'pending_transfer',
+            'pending_delete',
+            'expired',
+            'cancelled',
+            'registry_rejected',
+            'replaced',
+            'suspended',
+        ]);
+        if (!domainId ||
+            !allowedStatuses.has(status)) {
+            return res.status(400).json({
+                success: false,
+                message: 'A valid domain and status are required.',
+            });
+        }
+        const domainRef = adminDb
+            .collection('domains')
+            .doc(domainId);
+        const result = await adminDb.runTransaction(async (transaction) => {
+            const domainDoc = await transaction.get(domainRef);
+            if (!domainDoc.exists) {
+                throw new Error('Domain not found.');
+            }
+            const domain = domainDoc.data();
+            const now = new Date();
+            const nowIso = now.toISOString();
+            let registeredAt = domain.registered_at ||
+                null;
+            let expiresAt = domain.expires_at ||
+                null;
+            if (status === 'active' &&
+                !registeredAt) {
+                registeredAt =
+                    nowIso;
+                const firstExpiry = new Date(now);
+                firstExpiry.setFullYear(firstExpiry.getFullYear() +
+                    1);
+                expiresAt =
+                    firstExpiry
+                        .toISOString();
+            }
+            const existingHistory = Array.isArray(domain.history)
+                ? domain.history
+                : [];
+            const nextHistory = [
+                ...existingHistory,
+                {
+                    id: `hist-${crypto.randomUUID()}`,
+                    domain_id: domainId,
+                    action: 'STATUS_CHANGE',
+                    description: status ===
+                        'registry_rejected'
+                        ? 'Domain registration was rejected by the registry.'
+                        : status ===
+                            'active'
+                            ? 'Domain registration completed and the domain is now active.'
+                            : `Domain status changed to ${status.replace(/_/g, ' ')}.`,
+                    status,
+                    actor: runtimeUser.email ||
+                        runtimeUser.uid,
+                    created_at: nowIso,
+                },
+            ];
+            const changes = {
+                status,
+                registered_at: registeredAt,
+                expires_at: expiresAt,
+                history: nextHistory,
+                updated_at: nowIso,
+            };
+            if (status ===
+                'registry_rejected') {
+                changes.rejected_at =
+                    domain.rejected_at ||
+                        nowIso;
+                changes.archived_at =
+                    nowIso;
+            }
+            if (status ===
+                'cancelled') {
+                changes.archived_at =
+                    domain.archived_at ||
+                        nowIso;
+            }
+            transaction.set(domainRef, changes, {
+                merge: true,
+            });
+            return {
+                domainId,
+                previousStatus: domain.status,
+                status,
+                registeredAt,
+                expiresAt,
+            };
+        });
+        return res.json({
+            success: true,
+            ...result,
+        });
+    }
+    catch (error) {
+        console.error('Admin domain status update error:', error);
+        const message = error instanceof Error
+            ? error.message
+            : 'Unable to update domain status.';
+        return res
+            .status(message ===
+            'Domain not found.'
+            ? 404
+            : 500)
+            .json({
+            success: false,
+            message,
+        });
+    }
+});
+/*
+ * ----------------------------------------------------------
  * ADMIN DOMAIN REPLACEMENT
  * ----------------------------------------------------------
  *
@@ -711,8 +859,10 @@ router.post('/admin/domain-replacement', authenticate, async (req, res) => {
             if (![
                 'cancelled',
                 'registry_rejected',
+                'pending_registration',
+                'pending_delete',
             ].includes(String(oldDomain.status))) {
-                throw new Error('Only a cancelled or registry-rejected domain can be replaced.');
+                throw new Error('Only a cancelled, registry-rejected, or registration-processing domain can be replaced.');
             }
             const orderId = String(oldDomain.order_id ||
                 '').trim();

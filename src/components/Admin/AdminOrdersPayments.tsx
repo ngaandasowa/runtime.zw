@@ -1009,6 +1009,8 @@ export const AdminOrdersPayments:
                             [
                               'cancelled',
                               'registry_rejected',
+                              'pending_registration',
+                              'pending_delete',
                             ].includes(
                               String(
                                 domain.status
