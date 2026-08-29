@@ -370,6 +370,155 @@ router.post('/', authenticate, requireSuperAdmin, async (req, res) => {
         });
     }
 });
+router.put('/:campaignId', authenticate, requireSuperAdmin, async (req, res) => {
+    try {
+        const campaignRef = adminDb
+            .collection('email_campaigns')
+            .doc(req.params.campaignId);
+        const campaignSnapshot = await campaignRef.get();
+        if (!campaignSnapshot.exists) {
+            return res
+                .status(404)
+                .json({
+                success: false,
+                message: 'Campaign not found.',
+            });
+        }
+        if (campaignSnapshot.data()
+            ?.status !==
+            'draft') {
+            return res
+                .status(400)
+                .json({
+                success: false,
+                message: 'Only draft campaigns can be edited.',
+            });
+        }
+        const subject = String(req.body?.subject ||
+            '').trim();
+        const title = String(req.body?.title ||
+            '').trim();
+        const message = String(req.body?.message ||
+            '').trim();
+        const ctaLabel = String(req.body?.ctaLabel ||
+            '').trim();
+        const ctaUrl = String(req.body?.ctaUrl ||
+            '').trim();
+        if (!subject ||
+            !title ||
+            !message) {
+            return res
+                .status(400)
+                .json({
+                success: false,
+                message: 'Subject, heading and message are required.',
+            });
+        }
+        if (Boolean(ctaLabel) !==
+            Boolean(ctaUrl)) {
+            return res
+                .status(400)
+                .json({
+                success: false,
+                message: 'CTA label and URL must be provided together.',
+            });
+        }
+        if (ctaUrl &&
+            !/^https?:\/\//i.test(ctaUrl)) {
+            return res
+                .status(400)
+                .json({
+                success: false,
+                message: 'CTA URL must start with http:// or https://.',
+            });
+        }
+        await campaignRef.set({
+            subject,
+            title,
+            message,
+            cta_label: ctaLabel || null,
+            cta_url: ctaUrl || null,
+            updated_at: new Date()
+                .toISOString(),
+        }, {
+            merge: true,
+        });
+        return res.json({
+            success: true,
+        });
+    }
+    catch (error) {
+        console.error('Update campaign failed:', error);
+        return res
+            .status(500)
+            .json({
+            success: false,
+            message: error instanceof Error
+                ? error.message
+                : 'Unable to update email campaign.',
+        });
+    }
+});
+router.delete('/:campaignId', authenticate, requireSuperAdmin, async (req, res) => {
+    try {
+        const campaignRef = adminDb
+            .collection('email_campaigns')
+            .doc(req.params.campaignId);
+        const campaignSnapshot = await campaignRef.get();
+        if (!campaignSnapshot.exists) {
+            return res
+                .status(404)
+                .json({
+                success: false,
+                message: 'Campaign not found.',
+            });
+        }
+        if (campaignSnapshot.data()
+            ?.status !==
+            'draft') {
+            return res
+                .status(400)
+                .json({
+                success: false,
+                message: 'Only draft campaigns can be deleted.',
+            });
+        }
+        const recipientsSnapshot = await adminDb
+            .collection('email_campaign_recipients')
+            .where('campaign_id', '==', req.params.campaignId)
+            .get();
+        const refs = [
+            ...recipientsSnapshot.docs.map((doc) => doc.ref),
+            campaignRef,
+        ];
+        /*
+         * Firestore batched writes are limited.
+         * Delete in conservative chunks.
+         */
+        for (let index = 0; index < refs.length; index += 400) {
+            const batch = adminDb.batch();
+            refs
+                .slice(index, index + 400)
+                .forEach((ref) => batch.delete(ref));
+            await batch.commit();
+        }
+        return res.json({
+            success: true,
+            deletedRecipients: recipientsSnapshot.size,
+        });
+    }
+    catch (error) {
+        console.error('Delete campaign failed:', error);
+        return res
+            .status(500)
+            .json({
+            success: false,
+            message: error instanceof Error
+                ? error.message
+                : 'Unable to delete email campaign.',
+        });
+    }
+});
 router.post('/:campaignId/start', authenticate, requireSuperAdmin, async (req, res) => {
     try {
         const ref = adminDb
