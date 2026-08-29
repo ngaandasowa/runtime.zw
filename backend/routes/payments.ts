@@ -6,6 +6,7 @@ import {
 } from 'express';
 
 import crypto from 'crypto';
+import nodeFetch from 'node-fetch';
 
 import {
   adminAuth,
@@ -14,8 +15,14 @@ import {
 
 const router = Router();
 
-const PESEPAY_API_URL =
+const PESEPAY_MAKE_PAYMENT_URL =
   'https://api.pesepay.com/api/payments-engine/v2/payments/make-payment';
+
+const PESEPAY_INITIATE_URL =
+  'https://api.pesepay.com/api/payments-engine/v1/payments/initiate';
+
+const PESEPAY_METHODS_URL =
+  'https://api.pesepay.com/api/payments-engine/v1/payment-methods/for-currency';
 
 const PESEPAY_STATUS_URL =
   'https://api.pesepay.com/api/payments-engine/v1/payments/check-payment';
@@ -253,7 +260,7 @@ const fetchPesePayStatus = async (
     )}`;
 
   const response =
-    await fetch(
+    await nodeFetch(
       url,
       {
         method: 'GET',
@@ -263,6 +270,7 @@ const fetchPesePayStatus = async (
           Accept:
             'application/json',
         },
+        insecureHTTPParser: true,
       }
     );
 
@@ -364,6 +372,119 @@ const markInitiationFailed = async (
   );
 };
 
+
+type RuntimePesePayMethod = {
+  code: string;
+  name: string;
+  description: string;
+  seamless: boolean;
+  requiresPhone: boolean;
+};
+
+const normalisePesePayMethod = (
+  value: any
+): RuntimePesePayMethod | null => {
+  const code = String(
+    value?.paymentMethodCode ??
+      value?.code ??
+      ''
+  ).trim();
+
+  const name = String(
+    value?.paymentMethodName ??
+      value?.name ??
+      value?.description ??
+      code
+  ).trim();
+
+  if (!code) {
+    return null;
+  }
+
+  const searchable =
+    `${code} ${name}`.toLowerCase();
+
+  const isEcoCash =
+    code === 'PZW211' ||
+    searchable.includes('ecocash');
+
+  const isInnBucks =
+    code === 'PZW212' ||
+    searchable.includes('innbucks');
+
+  return {
+    code,
+    name: name || code,
+    description: String(
+      value?.description ??
+        value?.paymentMethodDescription ??
+        ''
+    ).trim(),
+    seamless:
+      isEcoCash || isInnBucks,
+    requiresPhone:
+      isEcoCash,
+  };
+};
+
+const fetchPesePayMethods = async (
+  currencyCode: string
+): Promise<RuntimePesePayMethod[]> => {
+  const { integrationKey } =
+    getPesePayCredentials();
+
+  const url =
+    `${PESEPAY_METHODS_URL}?currencyCode=${encodeURIComponent(
+      currencyCode
+    )}`;
+
+  const response =
+    await nodeFetch(url, {
+      method: 'GET',
+      headers: {
+        authorization:
+          integrationKey,
+        'Content-Type':
+          'application/json',
+        Accept:
+          'application/json',
+      },
+      insecureHTTPParser: true,
+    });
+
+  let body: any = null;
+
+  try {
+    body = await response.json();
+  } catch {
+    body = null;
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `PesePay payment methods request failed (${response.status}).`
+    );
+  }
+
+  const values: unknown[] =
+    Array.isArray(body)
+      ? body
+      : Array.isArray(body?.data)
+        ? body.data
+        : Array.isArray(body?.paymentMethods)
+          ? body.paymentMethods
+          : [];
+
+  return values
+    .map(normalisePesePayMethod)
+    .filter(
+      (
+        method: RuntimePesePayMethod | null
+      ): method is RuntimePesePayMethod =>
+        method !== null
+    );
+};
+
 /*
  * ----------------------------------------------------------
  * HEALTH / CONFIG CHECK
@@ -386,6 +507,44 @@ router.get(
         success: false,
         provider: 'pesepay',
         configured: false,
+      });
+    }
+  }
+);
+
+router.get(
+  '/pesepay/methods',
+  authenticate,
+  async (req, res) => {
+    try {
+      const currencyCode =
+        typeof req.query.currencyCode ===
+        'string'
+          ? req.query.currencyCode
+              .trim()
+              .toUpperCase()
+          : 'USD';
+
+      const methods =
+        await fetchPesePayMethods(
+          currencyCode
+        );
+
+      return res.json({
+        success: true,
+        currencyCode,
+        methods,
+      });
+    } catch (error) {
+      console.error(
+        'PesePay methods error:',
+        error
+      );
+
+      return res.status(502).json({
+        success: false,
+        message:
+          'Unable to load PesePay payment methods.',
       });
     }
   }
@@ -1155,20 +1314,23 @@ router.post(
           ? body.orderId.trim()
           : '';
 
+      const paymentMethodCode =
+        typeof body.paymentMethodCode ===
+        'string'
+          ? body.paymentMethodCode.trim()
+          : '';
+
       const customerPhoneNumber =
         typeof body.customerPhoneNumber ===
         'string'
           ? body.customerPhoneNumber.trim()
           : '';
 
-      if (
-        !orderId ||
-        !customerPhoneNumber
-      ) {
+      if (!orderId || !paymentMethodCode) {
         return res.status(400).json({
           success: false,
           message:
-            'Order ID and phone number are required.',
+            'Order ID and PesePay payment method are required.',
         });
       }
 
@@ -1250,7 +1412,38 @@ router.post(
         return res.status(400).json({
           success: false,
           message:
-            'EcoCash USD payments require a USD order.',
+            'This PesePay payment requires a USD order.',
+        });
+      }
+
+      const availableMethods =
+        await fetchPesePayMethods(
+          currency
+        );
+
+      const selectedMethod =
+        availableMethods.find(
+          (method) =>
+            method.code ===
+            paymentMethodCode
+        );
+
+      if (!selectedMethod) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'That PesePay payment method is not currently available.',
+        });
+      }
+
+      if (
+        selectedMethod.requiresPhone &&
+        !customerPhoneNumber
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            `${selectedMethod.name} phone number is required.`,
         });
       }
 
@@ -1322,6 +1515,14 @@ router.post(
           amount,
           currency,
           gateway: 'pesepay',
+          provider_payment_method:
+            selectedMethod.code,
+          provider_payment_method_name:
+            selectedMethod.name,
+          provider_payment_flow:
+            selectedMethod.seamless
+              ? 'seamless'
+              : 'redirect',
           status: 'pending',
           customer_confirmed_payment:
             false,
@@ -1386,27 +1587,51 @@ router.post(
       const returnUrl =
         `${frontendUrl}/dashboard`;
 
-      const paymentBody = {
-        amountDetails: {
-          amount,
-          currencyCode: currency,
-        },
-        merchantReference,
-        reasonForPayment,
-        resultUrl,
-        returnUrl,
-        paymentMethodCode:
-          'PZW211',
-        customer: {
-          email: customerEmail,
-          phoneNumber:
-            customerPhoneNumber,
-          name: runtimeUser.name,
-        },
-        paymentMethodRequiredFields: {
-          customerPhoneNumber,
-        },
+      const customer = {
+        email: customerEmail,
+        phoneNumber:
+          customerPhoneNumber ||
+          String(
+            order.customer_phone ||
+              ''
+          ),
+        name: runtimeUser.name,
       };
+
+      const paymentBody =
+        selectedMethod.seamless
+          ? {
+              amountDetails: {
+                amount,
+                currencyCode:
+                  currency,
+              },
+              merchantReference,
+              reasonForPayment,
+              resultUrl,
+              returnUrl,
+              paymentMethodCode:
+                selectedMethod.code,
+              customer,
+              paymentMethodRequiredFields:
+                selectedMethod.requiresPhone
+                  ? {
+                      customerPhoneNumber,
+                    }
+                  : {},
+            }
+          : {
+              amountDetails: {
+                amount,
+                currencyCode:
+                  currency,
+              },
+              merchantReference,
+              reasonForPayment,
+              resultUrl,
+              returnUrl,
+              customer,
+            };
 
       const encryptedPayload =
         encryptPayload(
@@ -1414,9 +1639,14 @@ router.post(
           encryptionKey
         );
 
+      const providerUrl =
+        selectedMethod.seamless
+          ? PESEPAY_MAKE_PAYMENT_URL
+          : PESEPAY_INITIATE_URL;
+
       const response =
-        await fetch(
-          PESEPAY_API_URL,
+        await nodeFetch(
+          providerUrl,
           {
             method: 'POST',
             headers: {
@@ -1429,6 +1659,7 @@ router.post(
               payload:
                 encryptedPayload,
             }),
+            insecureHTTPParser: true,
           }
         );
 
@@ -1546,6 +1777,14 @@ router.post(
             null,
           pollUrl:
             transaction.pollUrl || null,
+          flow:
+            selectedMethod.seamless
+              ? 'seamless'
+              : 'redirect',
+          paymentMethodCode:
+            selectedMethod.code,
+          paymentMethodName:
+            selectedMethod.name,
         },
       });
     } catch (error) {

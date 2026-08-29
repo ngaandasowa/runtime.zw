@@ -34,6 +34,14 @@ type Gateway =
   | 'ecocash_usd'
   | 'pesepay';
 
+type PesePayMethod = {
+  code: string;
+  name: string;
+  description: string;
+  seamless: boolean;
+  requiresPhone: boolean;
+};
+
 const ZISPA_PRICES: Record<string, number> = {
   '.co.zw': 2,
   '.org.zw': 3,
@@ -138,6 +146,14 @@ export const DomainRegistrationModal: React.FC = () => {
 const [gateway, setGateway] =
   useState<Gateway>('ecocash_usd');
 
+const [pesepayMethods, setPesepayMethods] =
+  useState<PesePayMethod[]>([]);
+const [pesepayMethodCode, setPesepayMethodCode] =
+  useState('');
+const [pesepayMethodsLoading, setPesepayMethodsLoading] =
+  useState(false);
+const [pesepayMethodsError, setPesepayMethodsError] =
+  useState<string | null>(null);
 const [pesepayPhone, setPesepayPhone] =
   useState('');
 
@@ -247,6 +263,9 @@ const [placedOrder, setPlacedOrder] =
     setCustomNameservers(['', '', '', '']);
     setNameserverError(null);
     setGateway('ecocash_usd');
+    setPesepayMethods([]);
+    setPesepayMethodCode('');
+    setPesepayMethodsError(null);
     setPesepayPhone('');
     setRenewPrice(undefined);
     setIsProcessing(false);
@@ -677,6 +696,51 @@ const [placedOrder, setPlacedOrder] =
     return responseBody;
   };
 
+  const getAuthenticated = async (
+    path: string
+  ) => {
+    const authUser =
+      getAuth().currentUser;
+
+    if (!authUser) {
+      throw new Error(
+        'Your session has expired. Please sign in again.'
+      );
+    }
+
+    const token =
+      await authUser.getIdToken();
+
+    const response =
+      await fetch(
+        `${API_BASE_URL}${path}`,
+        {
+          headers: {
+            Authorization:
+              `Bearer ${token}`,
+          },
+        }
+      );
+
+    let responseBody: any = null;
+
+    try {
+      responseBody =
+        await response.json();
+    } catch {
+      // Use generic error below.
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        responseBody?.message ||
+        `Payment request failed (${response.status}).`
+      );
+    }
+
+    return responseBody;
+  };
+
   const verifyPesePayPayment = async (
     paymentId: string
   ) => {
@@ -715,6 +779,80 @@ const [placedOrder, setPlacedOrder] =
 
     return null;
   };
+
+  useEffect(() => {
+    if (
+      !registrationModalOpen ||
+      gateway !== 'pesepay' ||
+      !currentUser
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadMethods = async () => {
+      setPesepayMethodsLoading(true);
+      setPesepayMethodsError(null);
+
+      try {
+        const result =
+          await getAuthenticated(
+            '/api/payments/pesepay/methods?currencyCode=USD'
+          );
+
+        if (cancelled) return;
+
+        const methods =
+          Array.isArray(result?.methods)
+            ? result.methods
+            : [];
+
+        setPesepayMethods(methods);
+
+        setPesepayMethodCode(
+          (current) =>
+            methods.some(
+              (method: PesePayMethod) =>
+                method.code === current
+            )
+              ? current
+              : methods[0]?.code || ''
+        );
+      } catch (error) {
+        if (cancelled) return;
+
+        setPesepayMethods([]);
+        setPesepayMethodCode('');
+        setPesepayMethodsError(
+          error instanceof Error
+            ? error.message
+            : 'Unable to load PesePay payment methods.'
+        );
+      } finally {
+        if (!cancelled) {
+          setPesepayMethodsLoading(false);
+        }
+      }
+    };
+
+    void loadMethods();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    registrationModalOpen,
+    gateway,
+    currentUser,
+  ]);
+
+  const selectedPesePayMethod =
+    pesepayMethods.find(
+      (method) =>
+        method.code ===
+        pesepayMethodCode
+    ) || null;
 
   const completeOrder = async () => {
     if (
@@ -779,10 +917,22 @@ const [placedOrder, setPlacedOrder] =
 
     if (
       gateway === 'pesepay' &&
+      !selectedPesePayMethod
+    ) {
+      showNotification(
+        'Choose an available PesePay payment method.',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      gateway === 'pesepay' &&
+      selectedPesePayMethod?.requiresPhone &&
       !pesepayPhone.trim()
     ) {
       showNotification(
-        'Enter the EcoCash phone number you want to pay with.',
+        `Enter the ${selectedPesePayMethod.name} phone number.`,
         'error'
       );
       return;
@@ -811,8 +961,12 @@ const [placedOrder, setPlacedOrder] =
             {
               orderId:
                 result.order.id,
+              paymentMethodCode:
+                selectedPesePayMethod!.code,
               customerPhoneNumber:
-                pesepayPhone.trim(),
+                selectedPesePayMethod!.requiresPhone
+                  ? pesepayPhone.trim()
+                  : currentUser.phone || '',
             }
           );
 
@@ -858,27 +1012,40 @@ const [placedOrder, setPlacedOrder] =
           REGISTRATION_DRAFT_KEY
         );
 
-        /*
-         * Some PesePay methods can require a hosted
-         * confirmation page. Follow PesePay's response
-         * rather than assuming every payment is seamless.
-         */
+        const flow =
+          String(
+            transaction.flow ||
+            ''
+          );
+
         if (
-          transaction.redirectRequired &&
-          transaction.redirectUrl
+          flow === 'redirect' ||
+          transaction.redirectRequired
         ) {
+          if (!transaction.redirectUrl) {
+            throw new Error(
+              'PesePay did not return a checkout URL for this payment method.'
+            );
+          }
+
+          sessionStorage.setItem(
+            'runtime_pesepay_payment_id',
+            paymentId
+          );
+
           window.location.assign(
             String(
               transaction.redirectUrl
             )
           );
+
           return;
         }
 
         setStep('instructions');
 
         showNotification(
-          'Payment request sent. Confirm the EcoCash payment on your phone.',
+          `${selectedPesePayMethod!.name} payment request sent. Complete the payment prompt to continue.`,
           'info'
         );
 
@@ -1728,7 +1895,7 @@ const [placedOrder, setPlacedOrder] =
                           'pesepay'
                         }
                         title="PesePay"
-                        description="Pay securely with EcoCash through PesePay."
+                        description="Choose from the payment methods currently available through PesePay."
                         onClick={() =>
                           setGateway(
                             'pesepay'
@@ -1753,27 +1920,80 @@ const [placedOrder, setPlacedOrder] =
 
                   {gateway ===
                     'pesepay' && (
-                    <div className="space-y-3 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                    <div className="space-y-4 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
                       <div>
                         <p className="text-sm font-semibold text-zinc-950">
                           Pay with PesePay
                         </p>
                         <p className="mt-2 text-xs leading-5 text-zinc-500">
-                          Enter the EcoCash number that should receive the payment prompt. Runtime will only mark the order paid after PesePay confirms the transaction.
+                          Choose an available payment method. EcoCash and InnBucks use the seamless flow when PesePay supports it. Other methods continue securely on PesePay when a redirect is required.
                         </p>
                       </div>
 
-                      <Field
-                        label="EcoCash phone number"
-                        required
-                        value={
-                          pesepayPhone
-                        }
-                        placeholder="0771234567"
-                        onChange={
-                          setPesepayPhone
-                        }
-                      />
+                      {pesepayMethodsLoading && (
+                        <p className="text-xs text-zinc-500">
+                          Loading available payment methods...
+                        </p>
+                      )}
+
+                      {pesepayMethodsError && (
+                        <p className="text-xs text-red-600">
+                          {pesepayMethodsError}
+                        </p>
+                      )}
+
+                      {!pesepayMethodsLoading &&
+                        !pesepayMethodsError &&
+                        pesepayMethods.length === 0 && (
+                        <p className="text-xs text-zinc-500">
+                          No PesePay payment methods are currently available for USD.
+                        </p>
+                      )}
+
+                      {pesepayMethods.length > 0 && (
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {pesepayMethods.map(
+                            (method) => (
+                              <GatewayButton
+                                key={
+                                  method.code
+                                }
+                                active={
+                                  pesepayMethodCode ===
+                                  method.code
+                                }
+                                title={
+                                  method.name
+                                }
+                                description={
+                                  method.seamless
+                                    ? 'Pay without leaving Runtime.'
+                                    : 'Continue securely on PesePay to complete payment.'
+                                }
+                                onClick={() =>
+                                  setPesepayMethodCode(
+                                    method.code
+                                  )
+                                }
+                              />
+                            )
+                          )}
+                        </div>
+                      )}
+
+                      {selectedPesePayMethod?.requiresPhone && (
+                        <Field
+                          label={`${selectedPesePayMethod.name} phone number`}
+                          required
+                          value={
+                            pesepayPhone
+                          }
+                          placeholder="0771234567"
+                          onChange={
+                            setPesepayPhone
+                          }
+                        />
+                      )}
                     </div>
                   )}
                 </div>
@@ -1807,7 +2027,9 @@ const [placedOrder, setPlacedOrder] =
                             ? placedOrder.transactionStatus ===
                               'SUCCESS'
                               ? 'PesePay confirmed your payment. Runtime can now continue processing your domain registration.'
-                              : 'Confirm the EcoCash payment prompt on your phone. Runtime will verify the transaction directly with PesePay.'
+                              : selectedPesePayMethod
+                              ? `Complete the ${selectedPesePayMethod.name} payment request. Runtime will verify the transaction directly with PesePay.`
+                              : 'Complete the payment request. Runtime will verify the transaction directly with PesePay.'
                             : 'Your domain is now visible in My Domains as awaiting payment. Registration will only start after the payment is verified.'}
                         </p>
                       </div>
