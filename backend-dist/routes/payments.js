@@ -2,6 +2,7 @@ import { Router, } from 'express';
 import crypto from 'crypto';
 import nodeFetch from 'node-fetch';
 import { adminAuth, adminDb, } from '../firebaseAdmin.js';
+import { fulfillPaidOrder, } from '../services/OrderFulfillmentService.js';
 const router = Router();
 const PESEPAY_MAKE_PAYMENT_URL = 'https://api.pesepay.com/api/payments-engine/v2/payments/make-payment';
 const PESEPAY_INITIATE_URL = 'https://api.pesepay.com/api/payments-engine/v1/payments/initiate';
@@ -414,11 +415,6 @@ const settlePesePayPayment = async (paymentId, options = {}) => {
                     'refunded') {
                 throw new Error('This order can no longer be marked paid.');
             }
-            const domainQuery = adminDb
-                .collection('domains')
-                .where('order_id', '==', orderRef.id)
-                .limit(1);
-            const domainSnapshot = await transaction.get(domainQuery);
             transaction.set(paymentRef, {
                 status: 'verified',
                 provider_status: providerStatus ||
@@ -442,37 +438,19 @@ const settlePesePayPayment = async (paymentId, options = {}) => {
                     updated_at: now,
                 });
             }
-            if (!domainSnapshot.empty) {
-                const domainDoc = domainSnapshot.docs[0];
-                const domain = domainDoc.data();
-                const existingHistory = Array.isArray(domain.history)
-                    ? domain.history
-                    : [];
-                const alreadyRecorded = existingHistory.some((item) => item?.description ===
-                    'PesePay payment verified. Domain registration is now being processed.');
-                transaction.set(domainDoc.ref, {
-                    status: domain.status ===
-                        'pending_payment'
-                        ? 'pending_registration'
-                        : domain.status,
-                    payment_id: paymentId,
-                    updated_at: now,
-                    history: alreadyRecorded
-                        ? existingHistory
-                        : [
-                            ...existingHistory,
-                            {
-                                id: `hist-pesepay-${paymentId.slice(0, 8)}`,
-                                domain_id: domainDoc.id,
-                                action: 'STATUS_CHANGE',
-                                description: 'PesePay payment verified. Domain registration is now being processed.',
-                                status: 'pending_registration',
-                                actor: 'PesePay',
-                                created_at: now,
-                            },
-                        ],
-                }, { merge: true });
-            }
+            /*
+             * Payment settlement ends with the order becoming
+             * paid. Product-specific work is delegated to the
+             * fulfillment layer.
+             */
+            await fulfillPaidOrder({
+                transaction,
+                orderRef,
+                order,
+                paymentId,
+                now,
+                actor: 'PesePay',
+            });
             return {
                 orderId: orderRef.id,
             };
