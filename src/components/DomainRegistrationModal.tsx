@@ -31,6 +31,7 @@ type Step =
   | 'instructions';
 
 type Gateway =
+  | 'checkout'
   | 'ecocash_usd'
   | 'pesepay';
 
@@ -144,7 +145,7 @@ export const DomainRegistrationModal: React.FC = () => {
   >(null);
 
 const [gateway, setGateway] =
-  useState<Gateway>('ecocash_usd');
+  useState<Gateway>('checkout');
 
 const [pesepayMethods, setPesepayMethods] =
   useState<PesePayMethod[]>([]);
@@ -264,7 +265,7 @@ const [placedOrder, setPlacedOrder] =
     setUseDefaultNameservers(true);
     setCustomNameservers(['', '', '', '']);
     setNameserverError(null);
-    setGateway('ecocash_usd');
+    setGateway('checkout');
     setPesepayMethods([]);
     setPesepayMethodCode('');
     setPesepayMethodsError(null);
@@ -915,7 +916,7 @@ const [placedOrder, setPlacedOrder] =
           registrantDetails,
           useDefaultNameservers,
           customNameservers,
-          gateway,
+          gateway: 'checkout',
         })
       );
 
@@ -932,32 +933,16 @@ const [placedOrder, setPlacedOrder] =
       return;
     }
 
-    if (
-      gateway === 'pesepay' &&
-      !selectedPesePayMethod
-    ) {
-      showNotification(
-        'Choose an available PesePay payment method.',
-        'error'
-      );
-      return;
-    }
-
-    if (
-      gateway === 'pesepay' &&
-      selectedPesePayMethod?.requiresPhone &&
-      !pesepayPhone.trim()
-    ) {
-      showNotification(
-        `Enter the ${selectedPesePayMethod.name} phone number.`,
-        'error'
-      );
-      return;
-    }
-
     setIsProcessing(true);
 
     try {
+      /*
+       * Domain registration now stops at ORDER CREATION.
+       *
+       * No EcoCash payment and no PesePay transaction is
+       * created here. The Billing checkout owns all payment
+       * methods, including Runtime Credit and split payments.
+       */
       const result =
         await registerNewDomain(
           availabilityResult.domain,
@@ -968,230 +953,44 @@ const [placedOrder, setPlacedOrder] =
             ? registrantDetails
             : basicOwnerDetails(),
           finalNameservers(),
-          gateway
+          'checkout'
         );
-
-      if (gateway === 'pesepay') {
-        const initiation =
-          await postAuthenticated(
-            '/api/payments/pesepay/initiate',
-            {
-              orderId:
-                result.order.id,
-              paymentMethodCode:
-                selectedPesePayMethod!.code,
-              customerPhoneNumber:
-                selectedPesePayMethod!.requiresPhone
-                  ? pesepayPhone.trim()
-                  : currentUser.phone || '',
-            }
-          );
-
-        const paymentId =
-          String(
-            initiation?.paymentId ||
-            ''
-          );
-
-        if (!paymentId) {
-          throw new Error(
-            'Runtime could not create the PesePay transaction.'
-          );
-        }
-
-        const transaction =
-          initiation?.transaction ||
-          {};
-
-        setPlacedOrder({
-          orderReference:
-            result.order.reference,
-          paymentReference:
-            String(
-              transaction.referenceNumber ||
-              paymentId
-            ),
-          amount:
-            result.order.total,
-          domain:
-            result.domain.domain_name,
-          gateway:
-            'pesepay',
-          paymentId,
-          transactionStatus:
-            String(
-              transaction.transactionStatus ||
-              'INITIATED'
-            ),
-          transactionStatusDescription:
-            String(
-              transaction.transactionStatusDescription ||
-              ''
-            ),
-          paymentState:
-            'pending',
-        });
-
-        sessionStorage.removeItem(
-          REGISTRATION_DRAFT_KEY
-        );
-
-        const flow =
-          String(
-            transaction.flow ||
-            ''
-          );
-
-        if (
-          flow === 'redirect' ||
-          transaction.redirectRequired
-        ) {
-          if (!transaction.redirectUrl) {
-            throw new Error(
-              'PesePay did not return a checkout URL for this payment method.'
-            );
-          }
-
-          sessionStorage.setItem(
-            'runtime_pesepay_payment_id',
-            paymentId
-          );
-
-          window.location.assign(
-            String(
-              transaction.redirectUrl
-            )
-          );
-
-          return;
-        }
-
-        setStep('instructions');
-
-        showNotification(
-          `${selectedPesePayMethod!.name} payment request sent. Complete the payment prompt to continue.`,
-          'info'
-        );
-
-        const verified =
-          await waitForPesePayVerification(
-            paymentId
-          );
-
-        if (
-          verified?.paymentState === 'success' ||
-          verified?.verified
-        ) {
-          setPlacedOrder(
-            (previous) =>
-              previous
-                ? {
-                    ...previous,
-                    transactionStatus:
-                      'SUCCESS',
-                    transactionStatusDescription:
-                      verified?.transactionStatusDescription ||
-                      'Payment confirmed by PesePay.',
-                    paymentState:
-                      'success',
-                  }
-                : previous
-          );
-
-          showNotification(
-            'Payment confirmed successfully.',
-            'success'
-          );
-
-          return;
-        }
-
-        if (
-          verified?.paymentState === 'failed'
-        ) {
-          setPlacedOrder(
-            (previous) =>
-              previous
-                ? {
-                    ...previous,
-                    transactionStatus:
-                      String(
-                        verified?.transactionStatus ||
-                        'FAILED'
-                      ),
-                    transactionStatusDescription:
-                      String(
-                        verified?.transactionStatusDescription ||
-                        'The payment was not completed.'
-                      ),
-                    paymentState:
-                      'failed',
-                  }
-                : previous
-          );
-
-          showNotification(
-            verified?.transactionStatusDescription ||
-              'Payment was not completed. You can try again.',
-            'error'
-          );
-
-          return;
-        }
-
-        setPlacedOrder(
-          (previous) =>
-            previous
-              ? {
-                  ...previous,
-                  transactionStatus:
-                    String(
-                      verified?.transactionStatus ||
-                      'PENDING'
-                    ),
-                  transactionStatusDescription:
-                    String(
-                      verified?.transactionStatusDescription ||
-                      'Payment has not been confirmed yet.'
-                    ),
-                  paymentState:
-                    'pending',
-                }
-              : previous
-        );
-
-        showNotification(
-          'Payment has not been confirmed yet. You can check again from this order.',
-          'info'
-        );
-
-        return;
-      }
-
-      if (!result.payment) {
-        throw new Error(
-          'Manual payment could not be created.'
-        );
-      }
-
-      setPlacedOrder({
-        orderReference:
-          result.order.reference,
-        paymentReference:
-          result.payment.reference,
-        amount:
-          result.payment.amount,
-        domain:
-          result.domain.domain_name,
-        gateway:
-          'ecocash_usd',
-      });
 
       sessionStorage.removeItem(
         REGISTRATION_DRAFT_KEY
       );
 
-      setStep('instructions');
+      /*
+       * Tell Billing which freshly-created order should open.
+       * DashboardBilling consumes and removes this key.
+       */
+      sessionStorage.setItem(
+        'runtime_checkout_order_id',
+        result.order.id
+      );
+
+      setRegistrationModalOpen(
+        false
+      );
+
+      setPendingRegisterDomain(
+        null
+      );
+
+      setActiveView(
+        'dashboard'
+      );
+
+      setDashboardSubView(
+        'billing'
+      );
+
+      resetState();
+
+      showNotification(
+        `Order ${result.order.reference} created. Choose how you want to pay.`,
+        'success'
+      );
     } catch (error) {
       console.error(
         'Domain registration order failed:',
@@ -1300,7 +1099,7 @@ const [placedOrder, setPlacedOrder] =
         : step === 'nameservers'
           ? 'Nameservers'
           : step === 'payment'
-            ? 'Review and payment'
+            ? 'Review order'
             : placedOrder?.gateway === 'pesepay'
               ? 'PesePay payment'
               : 'EcoCash USD payment';
@@ -1962,133 +1761,25 @@ const [placedOrder, setPlacedOrder] =
                     </div>
                   </div>
 
-                  <div>
-                    <h3 className="mb-3 text-sm font-semibold text-zinc-950">
-                      Payment method
-                    </h3>
+                  <div className="rounded-xl border border-[#3120ff]/15 bg-[#3120ff]/5 p-4">
+                    <div className="flex items-start gap-3">
+                      <Lock className="mt-0.5 h-4 w-4 shrink-0 text-[#3120ff]" />
 
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <GatewayButton
-                        active={
-                          gateway ===
-                          'ecocash_usd'
-                        }
-                        title="EcoCash USD"
-                        description="Manual payment. Admin verifies your screenshot before processing."
-                        onClick={() =>
-                          setGateway(
-                            'ecocash_usd'
-                          )
-                        }
-                      />
-
-                      <GatewayButton
-                        active={
-                          gateway ===
-                          'pesepay'
-                        }
-                        title="PesePay"
-                        description="Choose from the payment methods currently available through PesePay."
-                        onClick={() =>
-                          setGateway(
-                            'pesepay'
-                          )
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  {gateway ===
-                    'ecocash_usd' && (
-                    <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
-                      <p className="text-sm font-semibold text-zinc-950">
-                        How EcoCash USD works
-                      </p>
-
-                      <p className="mt-2 text-xs leading-5 text-zinc-500">
-                        Place the order first. Runtime will then show the exact EcoCash USD payment details and your order reference. Your domain will appear in My Domains as awaiting payment until an admin confirms receipt.
-                      </p>
-                    </div>
-                  )}
-
-                  {gateway ===
-                    'pesepay' && (
-                    <div className="space-y-4 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
                       <div>
-                        <p className="text-sm font-semibold text-zinc-950">
-                          Pay with PesePay
+                        <h3 className="text-sm font-semibold text-zinc-950">
+                          Payment after order creation
+                        </h3>
+
+                        <p className="mt-1.5 text-xs leading-5 text-zinc-600">
+                          Continue to Runtime checkout to use your available Runtime Credit, PesePay, or EcoCash USD.
                         </p>
-                        <p className="mt-2 text-xs leading-5 text-zinc-500">
-                          Choose an available payment method. EcoCash and InnBucks use the seamless flow when PesePay supports it. Other methods continue securely on PesePay when a redirect is required.
+
+                        <p className="mt-2 text-xs leading-5 text-zinc-600">
+                          If your Runtime Credit does not cover the full order, it can be applied first and you can pay the remaining balance with another payment method.
                         </p>
                       </div>
-
-                      {pesepayMethodsLoading && (
-                        <p className="text-xs text-zinc-500">
-                          Loading available payment methods...
-                        </p>
-                      )}
-
-                      {pesepayMethodsError && (
-                        <p className="text-xs text-red-600">
-                          {pesepayMethodsError}
-                        </p>
-                      )}
-
-                      {!pesepayMethodsLoading &&
-                        !pesepayMethodsError &&
-                        pesepayMethods.length === 0 && (
-                        <p className="text-xs text-zinc-500">
-                          No PesePay payment methods are currently available for USD.
-                        </p>
-                      )}
-
-                      {pesepayMethods.length > 0 && (
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          {pesepayMethods.map(
-                            (method) => (
-                              <GatewayButton
-                                key={
-                                  method.code
-                                }
-                                active={
-                                  pesepayMethodCode ===
-                                  method.code
-                                }
-                                title={
-                                  method.name
-                                }
-                                description={
-                                  method.seamless
-                                    ? 'Pay without leaving Runtime.'
-                                    : 'Continue securely on PesePay to complete payment.'
-                                }
-                                onClick={() =>
-                                  setPesepayMethodCode(
-                                    method.code
-                                  )
-                                }
-                              />
-                            )
-                          )}
-                        </div>
-                      )}
-
-                      {selectedPesePayMethod?.requiresPhone && (
-                        <Field
-                          label={`${selectedPesePayMethod.name} phone number`}
-                          required
-                          value={
-                            pesepayPhone
-                          }
-                          placeholder="0771234567"
-                          onChange={
-                            setPesepayPhone
-                          }
-                        />
-                      )}
                     </div>
-                  )}
+                  </div>
                 </div>
               )}
 

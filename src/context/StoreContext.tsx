@@ -703,7 +703,7 @@ const getDomainOrderDetails = async (
   registrantType: 'myself' | 'client',
   ownerDetails: RegistrantDetails,
   nameservers: string[],
-  gateway: any = 'ecocash_usd'
+  gateway: any = 'checkout'
 ) => {
   if (!currentUser) {
     throw new Error(
@@ -749,6 +749,7 @@ const getDomainOrderDetails = async (
    * be created here.
    */
   const payment =
+    gateway === 'checkout' ||
     gateway === 'pesepay'
       ? undefined
       : await paymentService.processCheckout(
@@ -881,7 +882,10 @@ const getDomainOrderDetails = async (
    * Manual EcoCash:
    * order + payment + domain.
    */
-  if (gateway === 'pesepay') {
+  if (
+    gateway === 'checkout' ||
+    gateway === 'pesepay'
+  ) {
     await checkoutRepository
       .createDomainRegistrationWithoutPayment(
         order,

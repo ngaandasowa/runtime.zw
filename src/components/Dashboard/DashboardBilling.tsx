@@ -1199,6 +1199,43 @@ export const DashboardBilling:
      * rejected attempt. A failed Payment document must not
      * hide the customer's Continue payment action.
      */
+    useEffect(() => {
+      const checkoutOrderId =
+        sessionStorage.getItem(
+          'runtime_checkout_order_id'
+        );
+
+      if (
+        !checkoutOrderId ||
+        paymentOrder
+      ) {
+        return;
+      }
+
+      const checkoutOrder =
+        userOrders.find(
+          (order) =>
+            order.id ===
+            checkoutOrderId
+        );
+
+      if (!checkoutOrder) {
+        return;
+      }
+
+      sessionStorage.removeItem(
+        'runtime_checkout_order_id'
+      );
+
+      void openPaymentModal(
+        checkoutOrder
+      );
+    }, [
+      userOrders,
+      paymentOrder,
+    ]);
+
+
     const canContinuePayment = (
       order: Order
     ) => {
