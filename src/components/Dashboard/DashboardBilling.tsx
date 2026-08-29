@@ -30,7 +30,6 @@ export const DashboardBilling:
       domains,
       renewDomain,
       cancelOrder,
-      createPaymentForOrder,
       showNotification,
     } = useStore();
 
@@ -61,6 +60,456 @@ export const DashboardBilling:
     ] = useState<
       string | null
     >(null);
+
+    type RetryGateway =
+      | 'ecocash_usd'
+      | 'pesepay';
+
+    type PesePayMethod = {
+      code: string;
+      name: string;
+      description?: string;
+      seamless: boolean;
+      requiresPhone: boolean;
+    };
+
+    const [
+      paymentOrder,
+      setPaymentOrder,
+    ] = useState<Order | null>(
+      null
+    );
+
+    const [
+      retryGateway,
+      setRetryGateway,
+    ] = useState<RetryGateway>(
+      'pesepay'
+    );
+
+    const [
+      pesePayMethods,
+      setPesePayMethods,
+    ] = useState<PesePayMethod[]>([]);
+
+    const [
+      pesePayMethodCode,
+      setPesePayMethodCode,
+    ] = useState('');
+
+    const [
+      pesePayPhone,
+      setPesePayPhone,
+    ] = useState(
+      currentUser?.phone || ''
+    );
+
+    const [
+      paymentModalBusy,
+      setPaymentModalBusy,
+    ] = useState(false);
+
+    const [
+      paymentModalError,
+      setPaymentModalError,
+    ] = useState<string | null>(
+      null
+    );
+
+    const [
+      paymentModalMessage,
+      setPaymentModalMessage,
+    ] = useState<string | null>(
+      null
+    );
+
+    const API_BASE_URL =
+      import.meta.env.VITE_API_BASE_URL ||
+      (import.meta.env.DEV
+        ? 'http://localhost:4000'
+        : 'https://runtime-api-my3q.onrender.com');
+
+    const authenticatedRequest =
+      async (
+        path: string,
+        options: RequestInit = {}
+      ) => {
+        const authModule =
+          await import(
+            'firebase/auth'
+          );
+
+        const authUser =
+          authModule
+            .getAuth()
+            .currentUser;
+
+        if (!authUser) {
+          throw new Error(
+            'Your session has expired. Please sign in again.'
+          );
+        }
+
+        const token =
+          await authUser
+            .getIdToken();
+
+        const response =
+          await fetch(
+            `${API_BASE_URL}${path}`,
+            {
+              ...options,
+              headers: {
+                'Content-Type':
+                  'application/json',
+                Authorization:
+                  `Bearer ${token}`,
+                ...(options.headers || {}),
+              },
+            }
+          );
+
+        let body: any = null;
+
+        try {
+          body =
+            await response.json();
+        } catch {
+          body = null;
+        }
+
+        if (!response.ok) {
+          throw new Error(
+            body?.message ||
+              `Payment request failed (${response.status}).`
+          );
+        }
+
+        return body;
+      };
+
+    const loadPesePayMethods =
+      async () => {
+        const result =
+          await authenticatedRequest(
+            '/api/payments/pesepay/methods?currencyCode=USD'
+          );
+
+        const methods =
+          Array.isArray(
+            result?.methods
+          )
+            ? result.methods
+            : [];
+
+        setPesePayMethods(
+          methods
+        );
+
+        setPesePayMethodCode(
+          (current) =>
+            methods.some(
+              (
+                method:
+                  PesePayMethod
+              ) =>
+                method.code ===
+                current
+            )
+              ? current
+              : methods[0]?.code ||
+                ''
+        );
+      };
+
+    const openPaymentModal =
+      async (
+        order: Order
+      ) => {
+        setPaymentOrder(
+          order
+        );
+
+        setRetryGateway(
+          'pesepay'
+        );
+
+        setPaymentModalError(
+          null
+        );
+
+        setPaymentModalMessage(
+          null
+        );
+
+        setPesePayPhone(
+          currentUser?.phone || ''
+        );
+
+        setPaymentModalBusy(
+          true
+        );
+
+        try {
+          await loadPesePayMethods();
+        } catch (error) {
+          setPaymentModalError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to load payment methods.'
+          );
+        } finally {
+          setPaymentModalBusy(
+            false
+          );
+        }
+      };
+
+    const checkPesePayAttempt =
+      async (
+        paymentId: string
+      ) => {
+        const maxAttempts = 12;
+
+        for (
+          let attempt = 0;
+          attempt < maxAttempts;
+          attempt += 1
+        ) {
+          const result =
+            await authenticatedRequest(
+              '/api/payments/pesepay/verify',
+              {
+                method: 'POST',
+                body:
+                  JSON.stringify({
+                    paymentId,
+                  }),
+              }
+            );
+
+          if (
+            result?.paymentState ===
+              'success' ||
+            result?.verified
+          ) {
+            return result;
+          }
+
+          if (
+            result?.paymentState ===
+            'failed'
+          ) {
+            return result;
+          }
+
+          await new Promise(
+            (resolve) =>
+              window.setTimeout(
+                resolve,
+                3000
+              )
+          );
+        }
+
+        return {
+          paymentState:
+            'pending',
+          verified: false,
+          transactionStatusDescription:
+            'Runtime has not received a final payment confirmation yet.',
+        };
+      };
+
+    const submitExistingOrderPayment =
+      async () => {
+        if (!paymentOrder) {
+          return;
+        }
+
+        setPaymentModalBusy(
+          true
+        );
+
+        setPaymentModalError(
+          null
+        );
+
+        setPaymentModalMessage(
+          null
+        );
+
+        try {
+          if (
+            retryGateway ===
+            'ecocash_usd'
+          ) {
+            await authenticatedRequest(
+              '/api/payments/order/ecocash',
+              {
+                method: 'POST',
+                body:
+                  JSON.stringify({
+                    orderId:
+                      paymentOrder.id,
+                  }),
+              }
+            );
+
+            setPaymentModalMessage(
+              'EcoCash USD payment is ready. Send the exact order amount to 0783827570 (Ngaavongwe Ndasowampange), then send Runtime the screenshot for verification.'
+            );
+
+            return;
+          }
+
+          const selectedMethod =
+            pesePayMethods.find(
+              (method) =>
+                method.code ===
+                pesePayMethodCode
+            );
+
+          if (!selectedMethod) {
+            throw new Error(
+              'Choose a PesePay payment method.'
+            );
+          }
+
+          if (
+            selectedMethod
+              .requiresPhone &&
+            !pesePayPhone.trim()
+          ) {
+            throw new Error(
+              `Enter the ${selectedMethod.name} phone number.`
+            );
+          }
+
+          const initiation =
+            await authenticatedRequest(
+              '/api/payments/pesepay/initiate',
+              {
+                method: 'POST',
+                body:
+                  JSON.stringify({
+                    orderId:
+                      paymentOrder.id,
+                    paymentMethodCode:
+                      selectedMethod.code,
+                    customerPhoneNumber:
+                      selectedMethod
+                        .requiresPhone
+                        ? pesePayPhone.trim()
+                        : currentUser?.phone ||
+                          '',
+                  }),
+              }
+            );
+
+          const transaction =
+            initiation?.transaction ||
+            {};
+
+          const paymentId =
+            String(
+              initiation?.paymentId ||
+                ''
+            );
+
+          if (!paymentId) {
+            throw new Error(
+              'Runtime could not create the PesePay transaction.'
+            );
+          }
+
+          if (
+            transaction.flow ===
+              'redirect' ||
+            transaction
+              .redirectRequired
+          ) {
+            if (
+              !transaction
+                .redirectUrl
+            ) {
+              throw new Error(
+                'PesePay did not return a checkout URL.'
+              );
+            }
+
+            window.location.assign(
+              String(
+                transaction
+                  .redirectUrl
+              )
+            );
+
+            return;
+          }
+
+          setPaymentModalMessage(
+            'Payment request sent. Complete the prompt on your phone.'
+          );
+
+          const result =
+            await checkPesePayAttempt(
+              paymentId
+            );
+
+          if (
+            result?.paymentState ===
+              'success' ||
+            result?.verified
+          ) {
+            setPaymentModalMessage(
+              'Payment confirmed successfully. Your order is now being processed.'
+            );
+
+            window.setTimeout(
+              () =>
+                window.location
+                  .reload(),
+              800
+            );
+
+            return;
+          }
+
+          if (
+            result?.paymentState ===
+            'failed'
+          ) {
+            setPaymentModalError(
+              result
+                ?.transactionStatusDescription ||
+                'The payment was not completed. Choose a payment method and try again.'
+            );
+
+            setPaymentModalMessage(
+              null
+            );
+
+            return;
+          }
+
+          setPaymentModalMessage(
+            result
+              ?.transactionStatusDescription ||
+              'Payment is still awaiting confirmation. You can close this window and try again later.'
+          );
+        } catch (error) {
+          setPaymentModalError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to start payment.'
+          );
+        } finally {
+          setPaymentModalBusy(
+            false
+          );
+        }
+      };
 
     const userOrders =
       useMemo(
@@ -107,11 +556,48 @@ export const DashboardBilling:
     const paymentForOrder = (
       orderId: string
     ) =>
-      payments.find(
-        (payment) =>
-          payment.order_id ===
-          orderId
+      payments
+        .filter(
+          (payment) =>
+            payment.order_id ===
+            orderId
+        )
+        .sort(
+          (a, b) =>
+            new Date(
+              b.created_at
+            ).getTime() -
+            new Date(
+              a.created_at
+            ).getTime()
+        )[0];
+
+    /*
+     * An unpaid order remains payable after a failed or
+     * rejected attempt. A failed Payment document must not
+     * hide the customer's Continue payment action.
+     */
+    const canContinuePayment = (
+      order: Order
+    ) => {
+      /*
+       * Payment availability is based on the ORDER,
+       * not on the latest payment attempt.
+       *
+       * A pending PesePay attempt may never complete
+       * (no prompt, abandoned prompt, network issue,
+       * insufficient funds, etc.). As long as the
+       * order itself is still unpaid, the customer
+       * must always be able to start another payment.
+       */
+      return [
+        'pending',
+        'unpaid',
+        'payment_pending',
+      ].includes(
+        String(order.status)
       );
+    };
 
     const now =
       new Date();
@@ -207,20 +693,8 @@ export const DashboardBilling:
         );
 
         try {
-          await createPaymentForOrder(
-            order.id
-          );
-
-          showNotification(
-            'Payment details are ready. Open the order to continue.',
-            'success'
-          );
-        } catch (error) {
-          showNotification(
-            error instanceof Error
-              ? error.message
-              : 'Unable to prepare payment.',
-            'error'
+          await openPaymentModal(
+            order
           );
         } finally {
           setStartingPaymentOrderId(
@@ -539,10 +1013,9 @@ export const DashboardBilling:
                           />
 
                           <div className="flex items-center gap-3">
-                            {!payment &&
-                              canCancelOrder(
-                                order
-                              ) && (
+                            {canContinuePayment(
+                              order
+                            ) && (
                               <button
                                 type="button"
                                 disabled={
@@ -559,7 +1032,17 @@ export const DashboardBilling:
                                 {startingPaymentOrderId ===
                                 order.id
                                   ? 'Preparing...'
-                                  : 'Continue payment'}
+                                  : payment?.status ===
+                                      'failed' ||
+                                    payment?.status ===
+                                      'rejected'
+                                    ? 'Try payment again'
+                                    : payment?.status ===
+                                        'pending' ||
+                                      payment?.status ===
+                                        'pending_verification'
+                                      ? 'Pay / try another method'
+                                      : 'Continue payment'}
                               </button>
                             )}
 
@@ -738,12 +1221,9 @@ export const DashboardBilling:
                 </span>
               </div>
 
-              {!paymentForOrder(
-                selectedReceipt.id
-              ) &&
-                canCancelOrder(
-                  selectedReceipt
-                ) && (
+              {canContinuePayment(
+                selectedReceipt
+              ) && (
                 <button
                   type="button"
                   disabled={
@@ -760,7 +1240,25 @@ export const DashboardBilling:
                   {startingPaymentOrderId ===
                   selectedReceipt.id
                     ? 'Preparing payment...'
-                    : 'Continue to payment'}
+                    : ['failed', 'rejected'].includes(
+                        String(
+                          paymentForOrder(
+                            selectedReceipt.id
+                          )?.status ||
+                            ''
+                        )
+                      )
+                      ? 'Try payment again'
+                      : ['pending', 'pending_verification'].includes(
+                          String(
+                            paymentForOrder(
+                              selectedReceipt.id
+                            )?.status ||
+                              ''
+                          )
+                        )
+                        ? 'Pay / try another method'
+                        : 'Continue to payment'}
                 </button>
               )}
 
@@ -791,6 +1289,228 @@ export const DashboardBilling:
             </div>
           </div>
         )}
+        {paymentOrder && (
+          <div className="fixed inset-0 z-80 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
+            <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-2xl bg-white shadow-2xl sm:max-w-lg sm:rounded-2xl">
+              <div className="flex items-start justify-between border-b border-zinc-200 px-5 py-4">
+                <div>
+                  <h2 className="text-base font-bold text-zinc-950">
+                    Pay order
+                  </h2>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    {paymentOrder.reference} · ${paymentOrder.total.toFixed(2)} {paymentOrder.currency || 'USD'}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPaymentOrder(
+                      null
+                    )
+                  }
+                  disabled={
+                    paymentModalBusy
+                  }
+                  className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-950 disabled:opacity-50"
+                  aria-label="Close payment"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="space-y-5 p-5">
+                <div>
+                  <p className="mb-2 text-xs font-semibold text-zinc-700">
+                    Choose how to pay
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setRetryGateway(
+                          'pesepay'
+                        )
+                      }
+                      className={`rounded-xl border p-3 text-left transition ${
+                        retryGateway ===
+                        'pesepay'
+                          ? 'border-[#3120ff] bg-[#3120ff]/5'
+                          : 'border-zinc-200 bg-white hover:border-zinc-300'
+                      }`}
+                    >
+                      <p className="text-sm font-semibold text-zinc-950">
+                        PesePay
+                      </p>
+                      <p className="mt-1 text-[11px] leading-4 text-zinc-500">
+                        Pay using an available PesePay method.
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setRetryGateway(
+                          'ecocash_usd'
+                        )
+                      }
+                      className={`rounded-xl border p-3 text-left transition ${
+                        retryGateway ===
+                        'ecocash_usd'
+                          ? 'border-[#3120ff] bg-[#3120ff]/5'
+                          : 'border-zinc-200 bg-white hover:border-zinc-300'
+                      }`}
+                    >
+                      <p className="text-sm font-semibold text-zinc-950">
+                        EcoCash USD
+                      </p>
+                      <p className="mt-1 text-[11px] leading-4 text-zinc-500">
+                        Manual payment with screenshot verification.
+                      </p>
+                    </button>
+                  </div>
+                </div>
+
+                {retryGateway ===
+                  'pesepay' && (
+                  <div className="space-y-3">
+                    {pesePayMethods.length ===
+                    0 ? (
+                      <p className="text-xs text-zinc-500">
+                        {paymentModalBusy
+                          ? 'Loading payment methods...'
+                          : 'No PesePay methods are available right now.'}
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {pesePayMethods.map(
+                          (method) => (
+                            <button
+                              key={
+                                method.code
+                              }
+                              type="button"
+                              onClick={() =>
+                                setPesePayMethodCode(
+                                  method.code
+                                )
+                              }
+                              className={`flex w-full items-start justify-between rounded-xl border p-3 text-left ${
+                                pesePayMethodCode ===
+                                method.code
+                                  ? 'border-[#3120ff] bg-[#3120ff]/5'
+                                  : 'border-zinc-200'
+                              }`}
+                            >
+                              <div>
+                                <p className="text-sm font-semibold text-zinc-950">
+                                  {method.name}
+                                </p>
+                                {method.description && (
+                                  <p className="mt-1 text-[11px] text-zinc-500">
+                                    {method.description}
+                                  </p>
+                                )}
+                              </div>
+                            </button>
+                          )
+                        )}
+                      </div>
+                    )}
+
+                    {pesePayMethods.find(
+                      (method) =>
+                        method.code ===
+                        pesePayMethodCode
+                    )?.requiresPhone && (
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold text-zinc-700">
+                          EcoCash number
+                        </label>
+                        <input
+                          value={
+                            pesePayPhone
+                          }
+                          onChange={(
+                            event
+                          ) =>
+                            setPesePayPhone(
+                              event
+                                .target
+                                .value
+                            )
+                          }
+                          placeholder="07..."
+                          className="w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-[#3120ff]"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {retryGateway ===
+                  'ecocash_usd' && (
+                  <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-xs leading-5 text-zinc-600">
+                    <p className="font-semibold text-zinc-950">
+                      EcoCash USD
+                    </p>
+                    <p className="mt-1">
+                      Number: 0783827570
+                    </p>
+                    <p>
+                      Name: Ngaavongwe Ndasowampange
+                    </p>
+                    <p className="mt-2">
+                      Runtime will keep the order unpaid until the payment is verified.
+                    </p>
+                  </div>
+                )}
+
+                {paymentModalError && (
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs leading-5 text-rose-700">
+                    {paymentModalError}
+                  </div>
+                )}
+
+                {paymentModalMessage && (
+                  <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-xs leading-5 text-zinc-700">
+                    {paymentModalMessage}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={
+                    submitExistingOrderPayment
+                  }
+                  disabled={
+                    paymentModalBusy ||
+                    (retryGateway ===
+                      'pesepay' &&
+                      !pesePayMethodCode)
+                  }
+                  className="flex w-full items-center justify-center rounded-xl bg-[#3120ff] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#2819d9] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {paymentModalBusy
+                    ? 'Checking payment...'
+                    : retryGateway ===
+                        'ecocash_usd'
+                      ? 'Use EcoCash USD'
+                      : 'Pay with PesePay'}
+                </button>
+
+                {!paymentModalBusy &&
+                  paymentModalError && (
+                  <p className="text-center text-[11px] text-zinc-500">
+                    You can choose another method and try again. A failed attempt does not register the domain.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     );
   };

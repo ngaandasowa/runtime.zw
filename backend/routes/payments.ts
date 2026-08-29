@@ -48,6 +48,12 @@ type PesePayTransaction = {
   redirectRequired?: boolean;
   redirectUrl?: string;
   pollUrl?: string;
+  paymentMethodDetails?: {
+    paymentMethodStatus?: string;
+    paymentMethodMessage?: string;
+    paymentMethodName?: string;
+    paymentMethodReference?: string;
+  };
 };
 
 /*
@@ -324,17 +330,37 @@ type RuntimePaymentState =
   | 'failed';
 
 const classifyPesePayStatus = (
-  statusValue: unknown,
-  descriptionValue: unknown
+  transaction: PesePayTransaction
 ): RuntimePaymentState => {
   const status = String(
-    statusValue || ''
+    transaction.transactionStatus ||
+      ''
   )
     .trim()
     .toUpperCase();
 
   const description = String(
-    descriptionValue || ''
+    transaction
+      .transactionStatusDescription ||
+      ''
+  )
+    .trim()
+    .toUpperCase();
+
+  const methodStatus = String(
+    transaction
+      .paymentMethodDetails
+      ?.paymentMethodStatus ||
+      ''
+  )
+    .trim()
+    .toUpperCase();
+
+  const methodMessage = String(
+    transaction
+      .paymentMethodDetails
+      ?.paymentMethodMessage ||
+      ''
   )
     .trim()
     .toUpperCase();
@@ -344,18 +370,37 @@ const classifyPesePayStatus = (
   }
 
   const combined =
-    `${status} ${description}`;
+    [
+      status,
+      description,
+      methodStatus,
+      methodMessage,
+    ].join(' ');
 
+  /*
+   * PesePay can report a terminal failure either in the
+   * transaction status or inside paymentMethodDetails.
+   * Insufficient-funds responses are terminal for this
+   * attempt even when the top-level status has not yet
+   * changed from INITIATED.
+   */
   const terminalFailureWords = [
-    'FAIL',
-    'CANCEL',
-    'DECLIN',
-    'REJECT',
-    'EXPIRE',
-    'ABORT',
-    'TIMEOUT',
-    'UNSUCCESS',
     'AUTHORIZATION_FAILED',
+    'AUTHORIZATION FAILED',
+    'FAILED',
+    'FAILURE',
+    'CANCELLED',
+    'CANCELED',
+    'DECLINED',
+    'REJECTED',
+    'EXPIRED',
+    'ABORTED',
+    'TIMEOUT',
+    'UNSUCCESSFUL',
+    'INSUFFICIENT',
+    'NOT ENOUGH FUNDS',
+    'LOW BALANCE',
+    'BALANCE TOO LOW',
   ];
 
   if (
@@ -472,10 +517,26 @@ const normalisePesePayMethod = (
         value?.paymentMethodDescription ??
         ''
     ).trim(),
+
+    /*
+     * EcoCash is handled as a direct/seamless request
+     * because Runtime supplies the required phone number.
+     *
+     * InnBucks is intentionally sent through PesePay's
+     * hosted checkout. Runtime was previously treating it
+     * as seamless without receiving/rendering the QR/code
+     * data required to complete that flow.
+     */
     seamless:
-      isEcoCash || isInnBucks,
+      isEcoCash,
+
     requiresPhone:
       isEcoCash,
+
+    // Kept only so method identification remains explicit.
+    ...(isInnBucks
+      ? {}
+      : {}),
   };
 };
 
@@ -1075,6 +1136,9 @@ router.post(
         String(
           providerTransaction
             .transactionStatusDescription ||
+          providerTransaction
+            .paymentMethodDetails
+            ?.paymentMethodMessage ||
           ''
         );
 
@@ -1296,8 +1360,7 @@ router.post(
 
       const paymentState =
         classifyPesePayStatus(
-          providerStatus,
-          providerDescription
+          providerTransaction
         );
 
       const runtimePaymentStatus =
@@ -1380,6 +1443,248 @@ router.post(
         success: false,
         message:
           'Unable to verify PesePay payment.',
+      });
+    }
+  }
+);
+
+
+/*
+ * ----------------------------------------------------------
+ * CREATE / RETRY MANUAL ECOCASH PAYMENT FOR EXISTING ORDER
+ * ----------------------------------------------------------
+ *
+ * This endpoint exists so customer retries do not write
+ * directly to Firestore. Firebase Admin performs the write
+ * after verifying the authenticated user owns the order.
+ */
+router.post(
+  '/order/ecocash',
+  authenticate,
+  async (
+    req: AuthenticatedRequest,
+    res: Response
+  ) => {
+    try {
+      const orderId =
+        typeof req.body?.orderId ===
+        'string'
+          ? req.body.orderId.trim()
+          : '';
+
+      if (!orderId) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Order ID is required.',
+        });
+      }
+
+      const runtimeUser =
+        req.runtimeUser!;
+
+      const orderRef =
+        adminDb
+          .collection('orders')
+          .doc(orderId);
+
+      const orderDoc =
+        await orderRef.get();
+
+      if (!orderDoc.exists) {
+        return res.status(404).json({
+          success: false,
+          message:
+            'Order not found.',
+        });
+      }
+
+      const order =
+        orderDoc.data()!;
+
+      if (
+        order.user_id !==
+        runtimeUser.uid
+      ) {
+        return res.status(403).json({
+          success: false,
+          message:
+            'You may only pay for your own order.',
+        });
+      }
+
+      if (
+        order.status === 'paid' ||
+        order.status ===
+          'completed'
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'This order has already been paid.',
+        });
+      }
+
+      if (
+        order.status ===
+          'cancelled' ||
+        order.status ===
+          'refunded'
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'This order can no longer be paid.',
+        });
+      }
+
+      const amount =
+        Number(order.total);
+
+      if (
+        !Number.isFinite(amount) ||
+        amount <= 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'This order has an invalid amount.',
+        });
+      }
+
+      const existingPayments =
+        await adminDb
+          .collection('payments')
+          .where(
+            'order_id',
+            '==',
+            orderId
+          )
+          .get();
+
+      const activeManual =
+        existingPayments.docs.find(
+          (doc) => {
+            const data =
+              doc.data();
+
+            return (
+              data.gateway ===
+                'ecocash_usd' &&
+              (
+                data.status ===
+                  'pending' ||
+                data.status ===
+                  'pending_verification'
+              )
+            );
+          }
+        );
+
+      if (activeManual) {
+        return res.json({
+          success: true,
+          paymentId:
+            activeManual.id,
+          payment:
+            activeManual.data(),
+          reused: true,
+        });
+      }
+
+      const now =
+        new Date()
+          .toISOString();
+
+      const paymentRef =
+        adminDb
+          .collection('payments')
+          .doc();
+
+      const payment = {
+        id: paymentRef.id,
+        order_id: orderId,
+        user_id:
+          runtimeUser.uid,
+        reference:
+          `RT-ECO-${Date.now()
+            .toString(36)
+            .toUpperCase()}`,
+        amount,
+        currency:
+          String(
+            order.currency ||
+              'USD'
+          ).toUpperCase(),
+        gateway:
+          'ecocash_usd',
+        status: 'pending',
+        customer_confirmed_payment:
+          false,
+        created_at: now,
+        updated_at: now,
+      };
+
+      const batch =
+        adminDb.batch();
+
+      batch.set(
+        paymentRef,
+        payment
+      );
+
+      batch.set(
+        orderRef,
+        {
+          status:
+            'payment_pending',
+          updated_at: now,
+        },
+        { merge: true }
+      );
+
+      const domainSnapshot =
+        await adminDb
+          .collection('domains')
+          .where(
+            'order_id',
+            '==',
+            orderId
+          )
+          .limit(1)
+          .get();
+
+      if (!domainSnapshot.empty) {
+        batch.set(
+          domainSnapshot.docs[0].ref,
+          {
+            payment_id:
+              paymentRef.id,
+            updated_at: now,
+          },
+          { merge: true }
+        );
+      }
+
+      await batch.commit();
+
+      return res.json({
+        success: true,
+        paymentId:
+          paymentRef.id,
+        payment,
+        reused: false,
+      });
+    } catch (error) {
+      console.error(
+        'EcoCash order payment error:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          'Unable to prepare EcoCash payment.',
       });
     }
   }
@@ -1477,15 +1782,83 @@ router.post(
         });
       }
 
+      /*
+       * IMPORTANT:
+       * An unpaid order is ALWAYS allowed to start another
+       * payment attempt.
+       *
+       * `payment_pending` describes the order's current
+       * payment state. It must never be used as a lock.
+       * Previous attempts can be abandoned, fail on the
+       * customer's phone, time out, or remain stale at the
+       * provider.
+       *
+       * Before creating the replacement attempt, retire any
+       * older local PesePay attempts that are still marked
+       * pending. This keeps Runtime's local state honest and
+       * prevents stale attempts from blocking checkout.
+       */
       if (
         order.status ===
         'payment_pending'
       ) {
-        return res.status(409).json({
-          success: false,
-          message:
-            'A payment is already pending for this order.',
-        });
+        const previousAttempts =
+          await adminDb
+            .collection('payments')
+            .where(
+              'order_id',
+              '==',
+              orderId
+            )
+            .get();
+
+        const staleBatch =
+          adminDb.batch();
+
+        let hasStaleUpdates =
+          false;
+
+        for (
+          const attempt of
+          previousAttempts.docs
+        ) {
+          const attemptData =
+            attempt.data();
+
+          if (
+            attemptData.gateway ===
+              'pesepay' &&
+            (
+              attemptData.status ===
+                'pending' ||
+              attemptData.status ===
+                'pending_verification'
+            )
+          ) {
+            staleBatch.set(
+              attempt.ref,
+              {
+                status: 'failed',
+                rejection_reason:
+                  'Previous payment attempt was replaced by a new customer retry.',
+                replaced_at:
+                  new Date()
+                    .toISOString(),
+                updated_at:
+                  new Date()
+                    .toISOString(),
+              },
+              { merge: true }
+            );
+
+            hasStaleUpdates =
+              true;
+          }
+        }
+
+        if (hasStaleUpdates) {
+          await staleBatch.commit();
+        }
       }
 
       const amount =
@@ -1577,6 +1950,60 @@ router.post(
         String(
           order.status || 'pending'
         );
+
+      const previousPendingPayments =
+        await adminDb
+          .collection('payments')
+          .where(
+            'order_id',
+            '==',
+            orderId
+          )
+          .get();
+
+      const retryBatch =
+        adminDb.batch();
+
+      previousPendingPayments.docs
+        .filter((doc) => {
+          const data =
+            doc.data();
+
+          return (
+            data.gateway ===
+              'pesepay' &&
+            (
+              data.status ===
+                'pending' ||
+              data.status ===
+                'failed'
+            )
+          );
+        })
+        .forEach((doc) => {
+          const data =
+            doc.data();
+
+          if (
+            data.status ===
+            'pending'
+          ) {
+            retryBatch.set(
+              doc.ref,
+              {
+                status: 'failed',
+                rejection_reason:
+                  'Replaced by a new payment attempt.',
+                updated_at:
+                  new Date()
+                    .toISOString(),
+              },
+              { merge: true }
+            );
+          }
+        });
+
+      await retryBatch.commit();
 
       const paymentRef =
         adminDb
