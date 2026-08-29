@@ -47,6 +47,8 @@ const supportedEvents:
     'domain_modify_requested',
     'domain_delete_requested',
     'domain_transfer_requested',
+    'wallet_credit_added',
+    'runtime_credit_applied',
   ];
 
 const adminOnlyEvents =
@@ -56,6 +58,21 @@ const adminOnlyEvents =
     'renewal_completed',
     'domain_activated',
     'domain_assigned',
+    'wallet_credit_added',
+    'runtime_credit_applied',
+  ]);
+
+const domainRequiredEvents =
+  new Set<EmailEvent>([
+    'domain_order_created',
+    'renewal_order_created',
+    'renewal_completed',
+    'domain_activated',
+    'domain_assigned',
+    'nameserver_change_requested',
+    'domain_modify_requested',
+    'domain_delete_requested',
+    'domain_transfer_requested',
   ]);
 
 /*
@@ -190,10 +207,7 @@ router.post(
         !data ||
         typeof data.email !==
           'string' ||
-        typeof data.domainName !==
-          'string' ||
-        !data.email.trim() ||
-        !data.domainName.trim()
+        !data.email.trim()
       ) {
         return res
           .status(400)
@@ -201,6 +215,25 @@ router.post(
             success: false,
             message:
               'Invalid notification payload.',
+          });
+      }
+
+      if (
+        domainRequiredEvents.has(
+          event
+        ) &&
+        (
+          typeof data.domainName !==
+            'string' ||
+          !data.domainName.trim()
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              'Domain name is required for this notification.',
           });
       }
 

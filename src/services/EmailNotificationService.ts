@@ -14,15 +14,23 @@ export type EmailNotificationEvent =
   | 'nameserver_change_requested'
   | 'domain_modify_requested'
   | 'domain_delete_requested'
-  | 'domain_transfer_requested';
+  | 'domain_transfer_requested'
+  | 'wallet_credit_added'
+  | 'runtime_credit_applied';
 
 export type EmailNotificationPayload = {
   email: string;
   name?: string;
   orderReference?: string;
   paymentReference?: string;
-  domainName: string;
+  domainName?: string;
   amount?: number;
+  creditApplied?: number;
+  orderTotal?: number;
+  amountPaid?: number;
+  amountRemaining?: number;
+  balanceBefore?: number;
+  balanceAfter?: number;
   years?: number;
   renewalDate?: string;
   registeredAt?: string;

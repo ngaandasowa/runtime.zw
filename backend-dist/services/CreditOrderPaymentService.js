@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { adminDb, } from '../firebaseAdmin.js';
 import { fulfillPaidOrder, } from './OrderFulfillmentService.js';
+import { emailService, } from '../email/emailService.js';
 const money = (value) => Math.round((Number(value) + Number.EPSILON) *
     100) / 100;
 const makeId = (prefix, value) => `${prefix}-${crypto
@@ -39,7 +40,7 @@ export const applyRuntimeCreditToOrder = async ({ orderId, userId, actor, reques
         .collection('payments')
         .where('order_id', '==', cleanOrderId);
     const now = new Date().toISOString();
-    return adminDb.runTransaction(async (transaction) => {
+    const result = await adminDb.runTransaction(async (transaction) => {
         const [orderDoc, walletDoc, existingPaymentDoc, existingLedgerDoc, paymentSnapshot,] = await Promise.all([
             transaction.get(orderRef),
             transaction.get(walletRef),
@@ -282,4 +283,63 @@ export const applyRuntimeCreditToOrder = async ({ orderId, userId, actor, reques
             fulfillment,
         };
     });
+    /*
+     * Email is deliberately sent AFTER the Firestore transaction.
+     * A mail-provider problem must never roll back or duplicate money.
+     */
+    if (!result.alreadyApplied) {
+        try {
+            const [orderDoc, userDoc,] = await Promise.all([
+                orderRef.get(),
+                adminDb
+                    .collection('users')
+                    .doc(cleanUserId)
+                    .get(),
+            ]);
+            const order = orderDoc.exists
+                ? orderDoc.data()
+                : {};
+            const user = userDoc.exists
+                ? userDoc.data()
+                : {};
+            const email = String(order.user_email ||
+                user.email ||
+                '').trim();
+            if (email) {
+                const item = Array.isArray(order.items)
+                    ? order.items[0]
+                    : undefined;
+                const domainName = String(order.domain_name ||
+                    order.metadata
+                        ?.domain_name ||
+                    item?.domain_name ||
+                    '').trim();
+                await emailService
+                    .sendEvent('runtime_credit_applied', {
+                    email,
+                    name: String(user.name ||
+                        order.customer_name ||
+                        '').trim() ||
+                        undefined,
+                    orderReference: String(order.reference ||
+                        cleanOrderId),
+                    paymentReference: `RT-CREDIT-${String(order.reference ||
+                        cleanOrderId)}`,
+                    domainName: domainName ||
+                        undefined,
+                    amount: result.appliedAmount,
+                    creditApplied: result.appliedAmount,
+                    orderTotal: result.orderTotal,
+                    amountPaid: result.amountPaid,
+                    amountRemaining: result.amountDue,
+                    balanceBefore: result.balanceBefore,
+                    balanceAfter: result.balanceAfter,
+                });
+            }
+        }
+        catch (error) {
+            console.error('Runtime Credit application email failed:', error);
+        }
+    }
+    return result;
 };

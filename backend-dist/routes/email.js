@@ -15,6 +15,8 @@ const supportedEvents = [
     'domain_modify_requested',
     'domain_delete_requested',
     'domain_transfer_requested',
+    'wallet_credit_added',
+    'runtime_credit_applied',
 ];
 const adminOnlyEvents = new Set([
     'payment_approved',
@@ -22,6 +24,19 @@ const adminOnlyEvents = new Set([
     'renewal_completed',
     'domain_activated',
     'domain_assigned',
+    'wallet_credit_added',
+    'runtime_credit_applied',
+]);
+const domainRequiredEvents = new Set([
+    'domain_order_created',
+    'renewal_order_created',
+    'renewal_completed',
+    'domain_activated',
+    'domain_assigned',
+    'nameserver_change_requested',
+    'domain_modify_requested',
+    'domain_delete_requested',
+    'domain_transfer_requested',
 ]);
 /*
  * ----------------------------------------------------------
@@ -95,15 +110,23 @@ router.post('/notify', authenticate, async (req, res) => {
         if (!data ||
             typeof data.email !==
                 'string' ||
-            typeof data.domainName !==
-                'string' ||
-            !data.email.trim() ||
-            !data.domainName.trim()) {
+            !data.email.trim()) {
             return res
                 .status(400)
                 .json({
                 success: false,
                 message: 'Invalid notification payload.',
+            });
+        }
+        if (domainRequiredEvents.has(event) &&
+            (typeof data.domainName !==
+                'string' ||
+                !data.domainName.trim())) {
+            return res
+                .status(400)
+                .json({
+                success: false,
+                message: 'Domain name is required for this notification.',
             });
         }
         const runtimeUser = req.runtimeUser;

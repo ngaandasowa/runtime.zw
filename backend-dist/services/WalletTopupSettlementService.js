@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { adminDb, } from '../firebaseAdmin.js';
+import { emailService, } from '../email/emailService.js';
 const toMinorUnits = (value) => Math.round((value + Number.EPSILON) *
     100);
 const fromMinorUnits = (value) => value / 100;
@@ -17,7 +18,7 @@ export const settleWalletTopup = async (input) => {
         .collection('payments')
         .doc(paymentId);
     const now = new Date().toISOString();
-    return adminDb.runTransaction(async (transaction) => {
+    const result = await adminDb.runTransaction(async (transaction) => {
         const paymentDoc = await transaction.get(paymentRef);
         if (!paymentDoc.exists) {
             throw new Error('Payment not found.');
@@ -156,4 +157,52 @@ export const settleWalletTopup = async (input) => {
             alreadySettled: false,
         };
     });
+    /*
+     * Send once, after the balance is safely committed.
+     * Concurrent callback/browser verification stays idempotent because
+     * only the settlement that created the ledger has alreadySettled=false.
+     */
+    if (!result.alreadySettled) {
+        try {
+            const paymentDoc = await paymentRef.get();
+            const payment = paymentDoc.exists
+                ? paymentDoc.data()
+                : {};
+            const userId = String(payment.user_id ||
+                result.walletId ||
+                '').trim();
+            const userDoc = userId
+                ? await adminDb
+                    .collection('users')
+                    .doc(userId)
+                    .get()
+                : null;
+            const user = userDoc?.exists
+                ? userDoc.data()
+                : {};
+            const email = String(payment.user_email ||
+                user.email ||
+                '').trim();
+            if (email) {
+                await emailService
+                    .sendEvent('wallet_credit_added', {
+                    email,
+                    name: String(user.name ||
+                        '').trim() ||
+                        undefined,
+                    paymentReference: String(payment.reference ||
+                        paymentId),
+                    amount: Number(payment.amount ||
+                        (result.balanceAfter -
+                            result.balanceBefore)),
+                    balanceBefore: result.balanceBefore,
+                    balanceAfter: result.balanceAfter,
+                });
+            }
+        }
+        catch (error) {
+            console.error('Runtime Credit top-up email failed:', error);
+        }
+    }
+    return result;
 };

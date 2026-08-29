@@ -137,6 +137,18 @@ const layout = ({ title, intro, data, note, }) => {
 
                       ${row('Amount', money(data.amount))}
 
+                      ${row('Runtime Credit applied', money(data.creditApplied))}
+
+                      ${row('Order total', money(data.orderTotal))}
+
+                      ${row('Paid so far', money(data.amountPaid))}
+
+                      ${row('Remaining to pay', money(data.amountRemaining))}
+
+                      ${row('Credit balance before', money(data.balanceBefore))}
+
+                      ${row('Credit balance after', money(data.balanceAfter))}
+
                       ${row('Period', data.years
         ? `${data.years} ${data.years === 1
             ? 'year'
@@ -274,17 +286,40 @@ const customerContent = (event) => {
                 intro: 'we received your domain transfer request.',
                 note: 'Runtime will process the transfer and update the domain status when the next step is completed.',
             };
+        case 'wallet_credit_added':
+            return {
+                subject: (data) => `Runtime Credit added${typeof data.amount === 'number' ? `: $${data.amount.toFixed(2)}` : ''}`,
+                title: 'Runtime Credit added',
+                intro: 'your Runtime Credit top-up has been confirmed and added to your account.',
+                note: (data) => typeof data.balanceAfter === 'number'
+                    ? `Your available Runtime Credit balance is now $${data.balanceAfter.toFixed(2)} USD.`
+                    : 'Your Runtime Credit balance has been updated.',
+            };
+        case 'runtime_credit_applied':
+            return {
+                subject: (data) => `Runtime Credit applied${data.orderReference ? ` to ${data.orderReference}` : ''}`,
+                title: 'Runtime Credit applied to your order',
+                intro: 'we applied Runtime Credit to your order.',
+                note: (data) => typeof data.amountRemaining === 'number' &&
+                    data.amountRemaining > 0
+                    ? `$${data.amountRemaining.toFixed(2)} USD remains on this order. Sign in to Runtime to complete the remaining payment.`
+                    : 'Your order has no remaining balance from this payment step.',
+            };
     }
 };
 export const buildCustomerEmail = (event, data) => {
     const content = customerContent(event);
+    const resolvedNote = typeof content.note ===
+        'function'
+        ? content.note(data)
+        : content.note;
     return {
         subject: content.subject(data),
         html: layout({
             title: content.title,
             intro: content.intro,
             data,
-            note: content.note,
+            note: resolvedNote,
         }),
     };
 };

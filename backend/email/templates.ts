@@ -10,15 +10,23 @@ export type EmailEvent =
   | 'nameserver_change_requested'
   | 'domain_modify_requested'
   | 'domain_delete_requested'
-  | 'domain_transfer_requested';
+  | 'domain_transfer_requested'
+  | 'wallet_credit_added'
+  | 'runtime_credit_applied';
 
 export type EmailEventData = {
   email: string;
   name?: string;
   orderReference?: string;
   paymentReference?: string;
-  domainName: string;
+  domainName?: string;
   amount?: number;
+  creditApplied?: number;
+  orderTotal?: number;
+  amountPaid?: number;
+  amountRemaining?: number;
+  balanceBefore?: number;
+  balanceAfter?: number;
   years?: number;
   renewalDate?: string;
   registeredAt?: string;
@@ -226,6 +234,36 @@ const layout = ({
                       )}
 
                       ${row(
+                        'Runtime Credit applied',
+                        money(data.creditApplied)
+                      )}
+
+                      ${row(
+                        'Order total',
+                        money(data.orderTotal)
+                      )}
+
+                      ${row(
+                        'Paid so far',
+                        money(data.amountPaid)
+                      )}
+
+                      ${row(
+                        'Remaining to pay',
+                        money(data.amountRemaining)
+                      )}
+
+                      ${row(
+                        'Credit balance before',
+                        money(data.balanceBefore)
+                      )}
+
+                      ${row(
+                        'Credit balance after',
+                        money(data.balanceAfter)
+                      )}
+
+                      ${row(
                         'Period',
                         data.years
                           ? `${data.years} ${
@@ -314,7 +352,11 @@ const customerContent = (
   ) => string;
   title: string;
   intro: string;
-  note?: string;
+  note?:
+    | string
+    | ((
+        data: EmailEventData
+      ) => string);
 } => {
   switch (event) {
     case 'domain_order_created':
@@ -448,6 +490,37 @@ const customerContent = (
         note:
           'Runtime will process the transfer and update the domain status when the next step is completed.',
       };
+
+    case 'wallet_credit_added':
+      return {
+        subject: (data) =>
+          `Runtime Credit added${typeof data.amount === 'number' ? `: $${data.amount.toFixed(2)}` : ''}`,
+        title:
+          'Runtime Credit added',
+        intro:
+          'your Runtime Credit top-up has been confirmed and added to your account.',
+        note:
+          (data) =>
+            typeof data.balanceAfter === 'number'
+              ? `Your available Runtime Credit balance is now $${data.balanceAfter.toFixed(2)} USD.`
+              : 'Your Runtime Credit balance has been updated.',
+      };
+
+    case 'runtime_credit_applied':
+      return {
+        subject: (data) =>
+          `Runtime Credit applied${data.orderReference ? ` to ${data.orderReference}` : ''}`,
+        title:
+          'Runtime Credit applied to your order',
+        intro:
+          'we applied Runtime Credit to your order.',
+        note:
+          (data) =>
+            typeof data.amountRemaining === 'number' &&
+            data.amountRemaining > 0
+              ? `$${data.amountRemaining.toFixed(2)} USD remains on this order. Sign in to Runtime to complete the remaining payment.`
+              : 'Your order has no remaining balance from this payment step.',
+      };
   }
 };
 
@@ -457,6 +530,12 @@ export const buildCustomerEmail = (
 ): BuiltEmail => {
   const content =
     customerContent(event);
+
+  const resolvedNote =
+    typeof content.note ===
+    'function'
+      ? content.note(data)
+      : content.note;
 
   return {
     subject:
@@ -470,7 +549,7 @@ export const buildCustomerEmail = (
           content.intro,
         data,
         note:
-          content.note,
+          resolvedNote,
       }),
   };
 };
