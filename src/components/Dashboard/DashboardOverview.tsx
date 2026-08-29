@@ -1,11 +1,14 @@
-import React from 'react';
-import { useEffect } from 'react';
+import React, {
+  useEffect,
+  useState,
+} from 'react';
 import {
   ArrowRight,
   CheckCircle2,
   Clock3,
   Globe2,
   Plus,
+  WalletCards,
 } from 'lucide-react';
 
 import {
@@ -22,6 +25,103 @@ export const DashboardOverview:
       setDashboardSubView,
       setRegistrationModalOpen,
     } = useStore();
+
+    const [walletBalance, setWalletBalance] =
+      useState(0);
+
+    const [walletLoading, setWalletLoading] =
+      useState(true);
+
+    const API_BASE_URL =
+      import.meta.env.VITE_API_BASE_URL ||
+      (import.meta.env.DEV
+        ? 'http://localhost:4000'
+        : 'https://runtime-api-my3q.onrender.com');
+
+    useEffect(() => {
+      let cancelled = false;
+
+      const loadWallet = async () => {
+        if (!currentUser) {
+          setWalletBalance(0);
+          setWalletLoading(false);
+          return;
+        }
+
+        try {
+          setWalletLoading(true);
+
+          const authModule =
+            await import(
+              'firebase/auth'
+            );
+
+          const authUser =
+            authModule
+              .getAuth()
+              .currentUser;
+
+          if (!authUser) {
+            return;
+          }
+
+          const token =
+            await authUser
+              .getIdToken();
+
+          const response =
+            await fetch(
+              `${API_BASE_URL}/api/wallet/me`,
+              {
+                headers: {
+                  Authorization:
+                    `Bearer ${token}`,
+                },
+              }
+            );
+
+          const body =
+            await response.json();
+
+          if (
+            !response.ok ||
+            !body?.success
+          ) {
+            throw new Error(
+              body?.message ||
+              'Unable to load Runtime Credit.'
+            );
+          }
+
+          if (!cancelled) {
+            setWalletBalance(
+              Number(
+                body.wallet?.balance ||
+                0
+              )
+            );
+          }
+        } catch (error) {
+          console.error(
+            'Unable to load Runtime Credit:',
+            error
+          );
+        } finally {
+          if (!cancelled) {
+            setWalletLoading(false);
+          }
+        }
+      };
+
+      void loadWallet();
+
+      return () => {
+        cancelled = true;
+      };
+    }, [
+      currentUser?.id,
+      API_BASE_URL,
+    ]);
 
     const userDomains =
       domains.filter(
@@ -170,6 +270,43 @@ export const DashboardOverview:
               Register a domain
             </button>
           </div>
+        </section>
+
+        {/* RUNTIME CREDIT */}
+        <section className="flex items-center justify-between gap-4 border-y border-zinc-200 bg-white px-4 py-4 sm:rounded-xl sm:border sm:px-5">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#3120ff]/8 text-[#3120ff]">
+              <WalletCards className="h-5 w-5" />
+            </div>
+
+            <div className="min-w-0">
+              <p className="text-[11px] font-medium text-zinc-500">
+                Runtime Credit
+              </p>
+
+              <p className="mt-0.5 text-xl font-bold text-zinc-950">
+                {walletLoading
+                  ? '...'
+                  : `$${walletBalance.toFixed(2)}`}
+              </p>
+
+              <p className="mt-0.5 text-[11px] text-zinc-400">
+                Available balance
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              setDashboardSubView(
+                'billing'
+              )
+            }
+            className="shrink-0 rounded-xl bg-[#3120ff] px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-[#2819d9]"
+          >
+            Add credit
+          </button>
         </section>
 
         {/* SUMMARY */}

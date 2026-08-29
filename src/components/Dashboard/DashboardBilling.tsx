@@ -1,4 +1,5 @@
 import React, {
+  useEffect,
   useMemo,
   useState,
 } from 'react';
@@ -9,6 +10,7 @@ import {
   Clock3,
   FileText,
   Receipt,
+  WalletCards,
   X,
   XCircle,
 } from 'lucide-react';
@@ -133,6 +135,52 @@ export const DashboardBilling:
       (import.meta.env.DEV
         ? 'http://localhost:4000'
         : 'https://runtime-api-my3q.onrender.com');
+
+    const [
+      walletBalance,
+      setWalletBalance,
+    ] = useState(0);
+
+    const [
+      walletLoading,
+      setWalletLoading,
+    ] = useState(true);
+
+    const [
+      walletTopupOpen,
+      setWalletTopupOpen,
+    ] = useState(false);
+
+    const [
+      walletTopupAmount,
+      setWalletTopupAmount,
+    ] = useState('10');
+
+    const [
+      walletTopupGateway,
+      setWalletTopupGateway,
+    ] = useState<RetryGateway>(
+      'pesepay'
+    );
+
+    const [
+      walletTopupBusy,
+      setWalletTopupBusy,
+    ] = useState(false);
+
+    const [
+      walletTopupError,
+      setWalletTopupError,
+    ] = useState<string | null>(
+      null
+    );
+
+    const [
+      walletTopupMessage,
+      setWalletTopupMessage,
+    ] = useState<string | null>(
+      null
+    );
 
     const authenticatedRequest =
       async (
@@ -589,6 +637,336 @@ export const DashboardBilling:
         }
       };
 
+    const loadWallet =
+      async () => {
+        if (!currentUser) {
+          setWalletBalance(0);
+          setWalletLoading(false);
+          return;
+        }
+
+        try {
+          setWalletLoading(true);
+
+          const result =
+            await authenticatedRequest(
+              '/api/wallet/me'
+            );
+
+          setWalletBalance(
+            Number(
+              result?.wallet?.balance ||
+              0
+            )
+          );
+        } catch (error) {
+          console.error(
+            'Unable to load Runtime Credit:',
+            error
+          );
+        } finally {
+          setWalletLoading(false);
+        }
+      };
+
+    useEffect(() => {
+      void loadWallet();
+    }, [currentUser?.id]);
+
+    const openWalletTopup =
+      async () => {
+        setWalletTopupError(
+          null
+        );
+
+        setWalletTopupMessage(
+          null
+        );
+
+        setWalletTopupGateway(
+          'pesepay'
+        );
+
+        setPesePayPhone(
+          currentUser?.phone || ''
+        );
+
+        setWalletTopupOpen(
+          true
+        );
+
+        if (
+          pesePayMethods.length ===
+            0 &&
+          !pesePayMethodsLoading
+        ) {
+          await loadPesePayMethods();
+        }
+      };
+
+    const submitWalletPesePayTopup =
+      async () => {
+        const amount =
+          Number(
+            walletTopupAmount
+          );
+
+        if (
+          !Number.isFinite(amount) ||
+          amount <= 0
+        ) {
+          setWalletTopupError(
+            'Enter a valid top-up amount.'
+          );
+          return;
+        }
+
+        const selectedMethod =
+          pesePayMethods.find(
+            (method) =>
+              method.code ===
+              pesePayMethodCode
+          );
+
+        if (!selectedMethod) {
+          setWalletTopupError(
+            'Choose a PesePay payment method.'
+          );
+          return;
+        }
+
+        if (
+          selectedMethod
+            .requiresPhone &&
+          !pesePayPhone.trim()
+        ) {
+          setWalletTopupError(
+            `Enter the ${selectedMethod.name} phone number.`
+          );
+          return;
+        }
+
+        setWalletTopupBusy(
+          true
+        );
+
+        setWalletTopupError(
+          null
+        );
+
+        setWalletTopupMessage(
+          null
+        );
+
+        try {
+          const initiation =
+            await authenticatedRequest(
+              '/api/payments/wallet/pesepay/initiate',
+              {
+                method: 'POST',
+                body:
+                  JSON.stringify({
+                    amount,
+                    paymentMethodCode:
+                      selectedMethod.code,
+                    customerPhoneNumber:
+                      selectedMethod
+                        .requiresPhone
+                        ? pesePayPhone.trim()
+                        : currentUser?.phone ||
+                          '',
+                  }),
+              }
+            );
+
+          const transaction =
+            initiation?.transaction ||
+            {};
+
+          const paymentId =
+            String(
+              initiation?.paymentId ||
+              ''
+            );
+
+          if (!paymentId) {
+            throw new Error(
+              'Runtime could not create the top-up payment.'
+            );
+          }
+
+          if (
+            transaction.flow ===
+              'redirect' ||
+            transaction
+              .redirectRequired
+          ) {
+            if (
+              !transaction
+                .redirectUrl
+            ) {
+              throw new Error(
+                'PesePay did not return a checkout URL.'
+              );
+            }
+
+            window.location.assign(
+              String(
+                transaction
+                  .redirectUrl
+              )
+            );
+
+            return;
+          }
+
+          setWalletTopupMessage(
+            'Payment request sent. Complete the prompt on your phone.'
+          );
+
+          const result =
+            await checkPesePayAttempt(
+              paymentId
+            );
+
+          if (
+            result?.paymentState ===
+              'success' ||
+            result?.verified
+          ) {
+            setWalletTopupMessage(
+              'Runtime Credit added successfully.'
+            );
+
+            await loadWallet();
+
+            window.setTimeout(
+              () =>
+                setWalletTopupOpen(
+                  false
+                ),
+              900
+            );
+
+            return;
+          }
+
+          if (
+            result?.paymentState ===
+            'failed'
+          ) {
+            setWalletTopupError(
+              result
+                ?.transactionStatusDescription ||
+                'The top-up payment was not completed.'
+            );
+
+            setWalletTopupMessage(
+              null
+            );
+
+            return;
+          }
+
+          setWalletTopupMessage(
+            result
+              ?.transactionStatusDescription ||
+              'Payment is still awaiting confirmation.'
+          );
+        } catch (error) {
+          setWalletTopupError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to start Runtime Credit top-up.'
+          );
+        } finally {
+          setWalletTopupBusy(
+            false
+          );
+        }
+      };
+
+    const openWalletEcoCashWhatsApp =
+      async () => {
+        const amount =
+          Number(
+            walletTopupAmount
+          );
+
+        if (
+          !Number.isFinite(amount) ||
+          amount <= 0
+        ) {
+          setWalletTopupError(
+            'Enter a valid top-up amount.'
+          );
+          return;
+        }
+
+        setWalletTopupBusy(
+          true
+        );
+
+        setWalletTopupError(
+          null
+        );
+
+        setWalletTopupMessage(
+          null
+        );
+
+        try {
+          const result =
+            await authenticatedRequest(
+              '/api/payments/wallet/ecocash',
+              {
+                method: 'POST',
+                body:
+                  JSON.stringify({
+                    amount,
+                  }),
+              }
+            );
+
+          const paymentReference =
+            result?.payment?.reference ||
+            result?.paymentId ||
+            'Runtime Credit top-up';
+
+          const message =
+            encodeURIComponent(
+              [
+                'Hi Runtime, I have paid to add Runtime Credit using EcoCash USD.',
+                '',
+                `Reference: ${paymentReference}`,
+                `Amount: $${amount.toFixed(2)} USD`,
+                '',
+                'I am attaching my payment screenshot for verification.',
+              ].join('\n')
+            );
+
+          window.open(
+            `https://wa.me/263788350229?text=${message}`,
+            '_blank',
+            'noopener,noreferrer'
+          );
+
+          setWalletTopupMessage(
+            'Screenshot submission opened in WhatsApp. Your Runtime Credit will be added after payment verification.'
+          );
+        } catch (error) {
+          setWalletTopupError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to prepare the EcoCash top-up.'
+          );
+        } finally {
+          setWalletTopupBusy(
+            false
+          );
+        }
+      };
+
     const userOrders =
       useMemo(
         () =>
@@ -868,6 +1246,41 @@ export const DashboardBilling:
             View your orders, payment status and domain renewal dates.
           </p>
         </div>
+
+        {/* RUNTIME CREDIT */}
+        <section className="flex items-center justify-between gap-4 border-y border-zinc-200 bg-white px-4 py-4 sm:rounded-xl sm:border sm:px-5">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#3120ff]/8 text-[#3120ff]">
+              <WalletCards className="h-5 w-5" />
+            </div>
+
+            <div>
+              <p className="text-[11px] font-medium text-zinc-500">
+                Runtime Credit
+              </p>
+
+              <p className="mt-0.5 text-xl font-bold text-zinc-950">
+                {walletLoading
+                  ? '...'
+                  : `$${walletBalance.toFixed(2)}`}
+              </p>
+
+              <p className="mt-0.5 text-[11px] text-zinc-400">
+                Available balance
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              void openWalletTopup()
+            }
+            className="shrink-0 rounded-xl bg-[#3120ff] px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-[#2819d9]"
+          >
+            Add credit
+          </button>
+        </section>
 
         {/* RENEWALS */}
         <section>
@@ -1367,6 +1780,337 @@ export const DashboardBilling:
             </div>
           </div>
         )}
+        {walletTopupOpen && (
+          <div className="fixed inset-0 z-80 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
+            <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-2xl bg-white shadow-2xl sm:max-w-lg sm:rounded-2xl">
+              <div className="flex items-start justify-between border-b border-zinc-200 px-5 py-4">
+                <div>
+                  <h2 className="text-base font-bold text-zinc-950">
+                    Add Runtime Credit
+                  </h2>
+
+                  <p className="mt-1 text-xs text-zinc-500">
+                    Available balance ${walletBalance.toFixed(2)}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={
+                    walletTopupBusy
+                  }
+                  onClick={() =>
+                    setWalletTopupOpen(
+                      false
+                    )
+                  }
+                  className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 disabled:opacity-50"
+                  aria-label="Close top-up"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="space-y-5 p-5">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-zinc-700">
+                    Amount
+                  </label>
+
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-zinc-500">
+                      $
+                    </span>
+
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={
+                        walletTopupAmount
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        setWalletTopupAmount(
+                          event.target.value
+                        )
+                      }
+                      className="w-full rounded-xl border border-zinc-200 py-3 pl-7 pr-3 text-base font-semibold text-zinc-950 outline-none focus:border-[#3120ff]"
+                    />
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {[5, 10, 20, 50].map(
+                      (amount) => (
+                        <button
+                          key={
+                            amount
+                          }
+                          type="button"
+                          onClick={() =>
+                            setWalletTopupAmount(
+                              String(amount)
+                            )
+                          }
+                          className="rounded-lg border border-zinc-200 px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:border-[#3120ff]/30"
+                        >
+                          ${amount}
+                        </button>
+                      )
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="mb-2 text-xs font-semibold text-zinc-700">
+                    Choose how to add credit
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setWalletTopupGateway(
+                          'pesepay'
+                        );
+
+                        setWalletTopupError(
+                          null
+                        );
+
+                        setWalletTopupMessage(
+                          null
+                        );
+
+                        if (
+                          pesePayMethods.length ===
+                            0 &&
+                          !pesePayMethodsLoading
+                        ) {
+                          void loadPesePayMethods();
+                        }
+                      }}
+                      className={`rounded-xl border p-3 text-left transition ${
+                        walletTopupGateway ===
+                        'pesepay'
+                          ? 'border-[#3120ff] bg-[#3120ff]/5'
+                          : 'border-zinc-200 bg-white'
+                      }`}
+                    >
+                      <p className="text-sm font-semibold text-zinc-950">
+                        PesePay
+                      </p>
+
+                      <p className="mt-1 text-[11px] leading-4 text-zinc-500">
+                        Add credit instantly after confirmation.
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setWalletTopupGateway(
+                          'ecocash_usd'
+                        );
+
+                        setWalletTopupError(
+                          null
+                        );
+
+                        setWalletTopupMessage(
+                          null
+                        );
+                      }}
+                      className={`rounded-xl border p-3 text-left transition ${
+                        walletTopupGateway ===
+                        'ecocash_usd'
+                          ? 'border-[#3120ff] bg-[#3120ff]/5'
+                          : 'border-zinc-200 bg-white'
+                      }`}
+                    >
+                      <p className="text-sm font-semibold text-zinc-950">
+                        EcoCash USD
+                      </p>
+
+                      <p className="mt-1 text-[11px] leading-4 text-zinc-500">
+                        Manual screenshot verification.
+                      </p>
+                    </button>
+                  </div>
+                </div>
+
+                {walletTopupGateway ===
+                  'pesepay' && (
+                  <div className="space-y-3">
+                    {pesePayMethods.length ===
+                    0 ? (
+                      <p className="text-xs text-zinc-500">
+                        {pesePayMethodsLoading
+                          ? 'Loading PesePay payment methods...'
+                          : 'No PesePay methods are available right now.'}
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {pesePayMethods.map(
+                          (method) => (
+                            <button
+                              key={
+                                method.code
+                              }
+                              type="button"
+                              onClick={() =>
+                                setPesePayMethodCode(
+                                  method.code
+                                )
+                              }
+                              className={`flex w-full items-start justify-between rounded-xl border p-3 text-left ${
+                                pesePayMethodCode ===
+                                method.code
+                                  ? 'border-[#3120ff] bg-[#3120ff]/5'
+                                  : 'border-zinc-200'
+                              }`}
+                            >
+                              <div>
+                                <p className="text-sm font-semibold text-zinc-950">
+                                  {method.name}
+                                </p>
+
+                                {method.description && (
+                                  <p className="mt-1 text-[11px] text-zinc-500">
+                                    {method.description}
+                                  </p>
+                                )}
+                              </div>
+                            </button>
+                          )
+                        )}
+                      </div>
+                    )}
+
+                    {pesePayMethods.find(
+                      (method) =>
+                        method.code ===
+                        pesePayMethodCode
+                    )?.requiresPhone && (
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold text-zinc-700">
+                          EcoCash number
+                        </label>
+
+                        <input
+                          value={
+                            pesePayPhone
+                          }
+                          onChange={(
+                            event
+                          ) =>
+                            setPesePayPhone(
+                              event
+                                .target
+                                .value
+                            )
+                          }
+                          placeholder="07..."
+                          className="w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-[#3120ff]"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {walletTopupGateway ===
+                  'ecocash_usd' && (
+                  <div className="space-y-4">
+                    <div className="overflow-hidden rounded-xl border border-zinc-200">
+                      <div className="flex items-center justify-between gap-4 border-b border-zinc-100 px-4 py-3">
+                        <span className="text-xs text-zinc-500">
+                          Send Money to
+                        </span>
+
+                        <span className="font-mono text-sm font-bold text-zinc-950">
+                          0783827570
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-4 border-b border-zinc-100 px-4 py-3">
+                        <span className="text-xs text-zinc-500">
+                          EcoCash name
+                        </span>
+
+                        <span className="text-right text-xs font-semibold text-zinc-950">
+                          Ngaavongwe Ndasowampange
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-4 bg-zinc-50 px-4 py-4">
+                        <span className="text-sm font-semibold text-zinc-950">
+                          Top-up amount
+                        </span>
+
+                        <span className="text-lg font-bold text-[#3120ff]">
+                          ${Number(walletTopupAmount || 0).toFixed(2)} USD
+                        </span>
+                      </div>
+                    </div>
+
+                    <p className="text-xs leading-5 text-zinc-500">
+                      Your Runtime Credit is added only after Runtime verifies that the EcoCash USD payment was received.
+                    </p>
+                  </div>
+                )}
+
+                {walletTopupError && (
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs leading-5 text-rose-700">
+                    {walletTopupError}
+                  </div>
+                )}
+
+                {walletTopupMessage && (
+                  <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-xs leading-5 text-zinc-700">
+                    {walletTopupMessage}
+                  </div>
+                )}
+
+                {walletTopupGateway ===
+                  'pesepay' ? (
+                  <button
+                    type="button"
+                    onClick={
+                      submitWalletPesePayTopup
+                    }
+                    disabled={
+                      walletTopupBusy ||
+                      pesePayMethodsLoading ||
+                      !pesePayMethodCode
+                    }
+                    className="flex w-full items-center justify-center rounded-xl bg-[#3120ff] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#2819d9] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {walletTopupBusy
+                      ? 'Checking payment...'
+                      : 'Add credit with PesePay'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={
+                      openWalletEcoCashWhatsApp
+                    }
+                    disabled={
+                      walletTopupBusy
+                    }
+                    className="flex w-full items-center justify-center rounded-xl bg-[#3120ff] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#2819d9] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {walletTopupBusy
+                      ? 'Preparing...'
+                      : "I've paid - send screenshot"}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {paymentOrder && (
           <div className="fixed inset-0 z-80 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
             <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-2xl bg-white shadow-2xl sm:max-w-lg sm:rounded-2xl">
