@@ -131,6 +131,12 @@ const layout = ({ title, intro, data, note, }) => {
                     >
                       ${row('Domain', data.domainName)}
 
+                      ${row('Original domain', data.originalDomainName)}
+
+                      ${row('Replacement domain', data.replacementDomainName)}
+
+                      ${row('Additional charge', money(data.additionalCharge))}
+
                       ${row('Order', data.orderReference)}
 
                       ${row('Payment', data.paymentReference)}
@@ -258,6 +264,13 @@ const customerContent = (event) => {
                 subject: (data) => `${data.domainName} added to your account`,
                 title: 'A domain has been added to your account',
                 intro: 'Runtime has assigned the domain below to your account.',
+            };
+        case 'domain_replaced':
+            return {
+                subject: (data) => `${data.replacementDomainName || data.domainName || 'Your domain'} has replaced the original domain`,
+                title: 'Your domain has been replaced',
+                intro: 'the original domain could not be registered, so Runtime has applied your existing paid order to the replacement domain below.',
+                note: 'You do not need to make another payment. Your existing verified payment was reused and the additional charge is $0.00 USD.',
             };
         case 'nameserver_change_requested':
             return {

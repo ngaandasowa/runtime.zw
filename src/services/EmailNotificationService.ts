@@ -11,6 +11,7 @@ export type EmailNotificationEvent =
   | 'renewal_completed'
   | 'domain_activated'
   | 'domain_assigned'
+  | 'domain_replaced'
   | 'nameserver_change_requested'
   | 'domain_modify_requested'
   | 'domain_delete_requested'
@@ -24,6 +25,9 @@ export type EmailNotificationPayload = {
   orderReference?: string;
   paymentReference?: string;
   domainName?: string;
+  originalDomainName?: string;
+  replacementDomainName?: string;
+  additionalCharge?: number;
   amount?: number;
   creditApplied?: number;
   orderTotal?: number;

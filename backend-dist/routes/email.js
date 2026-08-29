@@ -11,6 +11,7 @@ const supportedEvents = [
     'renewal_completed',
     'domain_activated',
     'domain_assigned',
+    'domain_replaced',
     'nameserver_change_requested',
     'domain_modify_requested',
     'domain_delete_requested',
@@ -24,6 +25,7 @@ const adminOnlyEvents = new Set([
     'renewal_completed',
     'domain_activated',
     'domain_assigned',
+    'domain_replaced',
     'wallet_credit_added',
     'runtime_credit_applied',
 ]);
@@ -33,6 +35,7 @@ const domainRequiredEvents = new Set([
     'renewal_completed',
     'domain_activated',
     'domain_assigned',
+    'domain_replaced',
     'nameserver_change_requested',
     'domain_modify_requested',
     'domain_delete_requested',
