@@ -90,13 +90,20 @@ const layout = ({ title, intro, data, note, }) => {
               >
                 <tr>
                   <td style="padding:28px 28px 18px;">
-                    <div style="
-                      font-size:20px;
-                      font-weight:700;
-                      color:#3120ff;
-                    ">
-                      Runtime
-                    </div>
+                    <img
+                      src="https://runtime.co.zw/runtime-logo.png"
+                      alt="Runtime"
+                      width="140"
+                      style="
+                        display:block;
+                        width:140px;
+                        max-width:100%;
+                        height:auto;
+                        border:0;
+                        outline:none;
+                        text-decoration:none;
+                      "
+                    >
                   </td>
                 </tr>
 

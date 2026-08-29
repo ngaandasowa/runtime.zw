@@ -922,8 +922,12 @@ const EmailPreview:
     ctaUrl,
   }) => (
     <div className="mt-4 overflow-hidden border border-zinc-200 bg-white">
-      <div className="px-6 pb-4 pt-6 text-xl font-bold text-[#3120ff]">
-        Runtime
+      <div className="px-6 pb-4 pt-6">
+        <img
+          src="https://runtime.co.zw/runtime-logo.png"
+          alt="Runtime"
+          className="h-auto w-35 max-w-full"
+        />
       </div>
 
       <div className="px-6 pb-7">
