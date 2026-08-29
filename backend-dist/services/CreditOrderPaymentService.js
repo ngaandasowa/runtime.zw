@@ -156,6 +156,42 @@ export const applyRuntimeCreditToOrder = async ({ orderId, userId, actor, reques
         const amountDue = money(Math.max(0, orderTotal -
             amountPaid));
         const fullyPaid = amountDue <= 0;
+        /*
+         * Firestore requires every transaction read to happen
+         * before the first write. Fulfillment may need a domain
+         * document, so preload it now and pass it into
+         * fulfillPaidOrder later.
+         */
+        const itemType = String(order.purpose ||
+            order.metadata?.purpose ||
+            order.items?.[0]?.item_type ||
+            '')
+            .trim()
+            .toLowerCase();
+        let fulfillmentDomainDoc = null;
+        if (fullyPaid &&
+            itemType ===
+                'domain_renewal') {
+            const domainId = String(order.domain_id ||
+                order.metadata?.domain_id ||
+                '').trim();
+            if (domainId) {
+                fulfillmentDomainDoc =
+                    await transaction.get(adminDb
+                        .collection('domains')
+                        .doc(domainId));
+            }
+        }
+        else if (fullyPaid) {
+            const domainSnapshot = await transaction.get(adminDb
+                .collection('domains')
+                .where('order_id', '==', orderRef.id)
+                .limit(1));
+            fulfillmentDomainDoc =
+                domainSnapshot.empty
+                    ? null
+                    : domainSnapshot.docs[0];
+        }
         transaction.set(walletRef, {
             id: cleanUserId,
             user_id: cleanUserId,
@@ -229,6 +265,7 @@ export const applyRuntimeCreditToOrder = async ({ orderId, userId, actor, reques
                     paymentId: paymentRef.id,
                     now,
                     actor,
+                    preloadedDomainDoc: fulfillmentDomainDoc,
                 });
         }
         return {

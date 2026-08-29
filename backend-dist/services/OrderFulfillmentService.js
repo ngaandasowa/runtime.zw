@@ -17,13 +17,16 @@ const getPrimaryItemType = (order) => String(order.purpose ||
     '')
     .trim()
     .toLowerCase();
-const fulfillDomainRegistration = async ({ transaction, orderRef, paymentId, now, actor = 'Runtime', }) => {
+const fulfillDomainRegistration = async ({ transaction, orderRef, paymentId, now, actor = 'Runtime', preloadedDomainDoc = null, }) => {
     const domainQuery = adminDb
         .collection('domains')
         .where('order_id', '==', orderRef.id)
         .limit(1);
-    const domainSnapshot = await transaction.get(domainQuery);
-    if (domainSnapshot.empty) {
+    const domainSnapshot = preloadedDomainDoc
+        ? null
+        : await transaction.get(domainQuery);
+    if (!preloadedDomainDoc &&
+        domainSnapshot?.empty) {
         /*
          * Do not fail payment settlement just because the
          * resource is not available yet. The paid order is
@@ -34,8 +37,15 @@ const fulfillDomainRegistration = async ({ transaction, orderRef, paymentId, now
             itemType: 'domain_registration',
         };
     }
-    const domainDoc = domainSnapshot.docs[0];
+    const domainDoc = preloadedDomainDoc ||
+        domainSnapshot.docs[0];
     const domain = domainDoc.data();
+    if (!domain) {
+        return {
+            handled: false,
+            itemType: 'domain_registration',
+        };
+    }
     const existingHistory = Array.isArray(domain.history)
         ? domain.history
         : [];
@@ -73,7 +83,7 @@ const fulfillDomainRegistration = async ({ transaction, orderRef, paymentId, now
         resourceId: domainDoc.id,
     };
 };
-const fulfillDomainRenewal = async ({ transaction, order, paymentId, now, actor = 'Runtime', }) => {
+const fulfillDomainRenewal = async ({ transaction, order, paymentId, now, actor = 'Runtime', preloadedDomainDoc = null, }) => {
     const domainId = String(order.domain_id ||
         order.metadata?.domain_id ||
         '').trim();
@@ -86,7 +96,8 @@ const fulfillDomainRenewal = async ({ transaction, order, paymentId, now, actor 
     const domainRef = adminDb
         .collection('domains')
         .doc(domainId);
-    const domainDoc = await transaction.get(domainRef);
+    const domainDoc = preloadedDomainDoc ||
+        await transaction.get(domainRef);
     if (!domainDoc.exists) {
         return {
             handled: false,
@@ -94,6 +105,12 @@ const fulfillDomainRenewal = async ({ transaction, order, paymentId, now, actor 
         };
     }
     const domain = domainDoc.data();
+    if (!domain) {
+        return {
+            handled: false,
+            itemType: 'domain_renewal',
+        };
+    }
     const existingHistory = Array.isArray(domain.history)
         ? domain.history
         : [];

@@ -15,6 +15,10 @@ type FulfillPaidOrderInput = {
   paymentId: string;
   now: string;
   actor?: string;
+  preloadedDomainDoc?:
+    FirebaseFirestore.QueryDocumentSnapshot |
+    FirebaseFirestore.DocumentSnapshot |
+    null;
 };
 
 export type OrderFulfillmentResult = {
@@ -56,6 +60,7 @@ const fulfillDomainRegistration =
     paymentId,
     now,
     actor = 'Runtime',
+    preloadedDomainDoc = null,
   }: FulfillPaidOrderInput):
     Promise<OrderFulfillmentResult> => {
     const domainQuery =
@@ -69,11 +74,16 @@ const fulfillDomainRegistration =
         .limit(1);
 
     const domainSnapshot =
-      await transaction.get(
-        domainQuery
-      );
+      preloadedDomainDoc
+        ? null
+        : await transaction.get(
+            domainQuery
+          );
 
-    if (domainSnapshot.empty) {
+    if (
+      !preloadedDomainDoc &&
+      domainSnapshot?.empty
+    ) {
       /*
        * Do not fail payment settlement just because the
        * resource is not available yet. The paid order is
@@ -87,10 +97,19 @@ const fulfillDomainRegistration =
     }
 
     const domainDoc =
-      domainSnapshot.docs[0];
+      preloadedDomainDoc ||
+      domainSnapshot!.docs[0];
 
     const domain =
       domainDoc.data();
+
+    if (!domain) {
+      return {
+        handled: false,
+        itemType:
+          'domain_registration',
+      };
+    }
 
     const existingHistory =
       Array.isArray(
@@ -170,6 +189,7 @@ const fulfillDomainRenewal =
     paymentId,
     now,
     actor = 'Runtime',
+    preloadedDomainDoc = null,
   }: FulfillPaidOrderInput):
     Promise<OrderFulfillmentResult> => {
     const domainId =
@@ -192,6 +212,7 @@ const fulfillDomainRenewal =
         .doc(domainId);
 
     const domainDoc =
+      preloadedDomainDoc ||
       await transaction.get(
         domainRef
       );
@@ -204,7 +225,15 @@ const fulfillDomainRenewal =
     }
 
     const domain =
-      domainDoc.data()!;
+      domainDoc.data();
+
+    if (!domain) {
+      return {
+        handled: false,
+        itemType:
+          'domain_renewal',
+      };
+    }
 
     const existingHistory =
       Array.isArray(domain.history)
