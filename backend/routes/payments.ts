@@ -17,6 +17,10 @@ import {
   settleOrderPayment,
 } from '../services/PaymentSettlementService.js';
 
+import {
+  settleWalletTopup,
+} from '../services/WalletTopupSettlementService.js';
+
 const router = Router();
 
 const PESEPAY_MAKE_PAYMENT_URL =
@@ -676,6 +680,7 @@ type PesePaySettlementResult = {
   terminal: boolean;
   paymentId: string;
   orderId: string;
+  purpose: 'order_payment' | 'wallet_topup';
   transactionStatus: string;
   transactionStatusDescription: string;
 };
@@ -757,6 +762,11 @@ const settlePesePayPayment = async (
     );
   }
 
+  const purpose =
+    payment.purpose === 'wallet_topup'
+      ? 'wallet_topup'
+      : 'order_payment';
+
   const orderId =
     String(
       payment.order_id ||
@@ -770,8 +780,11 @@ const settlePesePayPayment = async (
     ).trim();
 
   if (
-    !orderId ||
-    !providerReference
+    !providerReference ||
+    (
+      purpose === 'order_payment' &&
+      !orderId
+    )
   ) {
     throw new Error(
       'The PesePay transaction is not ready for verification yet.'
@@ -830,6 +843,37 @@ const settlePesePayPayment = async (
      * The generic settlement service owns all local money,
      * order and fulfillment state from this point onward.
      */
+    if (
+      purpose === 'wallet_topup'
+    ) {
+      await settleWalletTopup({
+        paymentId,
+        actor: 'PesePay',
+        providerStatus:
+          providerStatus ||
+          'SUCCESS',
+        providerStatusDescription:
+          providerDescription,
+        transactionId:
+          providerInternalReference,
+      });
+
+      return {
+        verified: true,
+        paymentState:
+          'success',
+        terminal: true,
+        paymentId,
+        orderId: '',
+        purpose,
+        transactionStatus:
+          providerStatus ||
+          'SUCCESS',
+        transactionStatusDescription:
+          providerDescription,
+      };
+    }
+
     const result =
       await settleOrderPayment({
         paymentId,
@@ -851,6 +895,7 @@ const settlePesePayPayment = async (
       paymentId,
       orderId:
         result.orderId,
+      purpose,
       transactionStatus:
         providerStatus ||
         'SUCCESS',
@@ -886,16 +931,6 @@ const settlePesePayPayment = async (
         );
       }
 
-      const orderRef =
-        adminDb
-          .collection('orders')
-          .doc(orderId);
-
-      const freshOrder =
-        await transaction.get(
-          orderRef
-        );
-
       transaction.set(
         paymentRef,
         {
@@ -930,23 +965,35 @@ const settlePesePayPayment = async (
       );
 
       if (
-        paymentState ===
-          'failed' &&
-        freshOrder.exists &&
-        freshOrder.data()
-          ?.status ===
-          'payment_pending'
+        purpose === 'order_payment' &&
+        orderId &&
+        paymentState === 'failed'
       ) {
-        transaction.set(
-          orderRef,
-          {
-            status:
-              'pending',
-            updated_at:
-              now,
-          },
-          { merge: true }
-        );
+        const orderRef =
+          adminDb
+            .collection('orders')
+            .doc(orderId);
+
+        const freshOrder =
+          await transaction.get(
+            orderRef
+          );
+
+        if (
+          freshOrder.exists &&
+          freshOrder.data()
+            ?.status ===
+            'payment_pending'
+        ) {
+          transaction.set(
+            orderRef,
+            {
+              status: 'pending',
+              updated_at: now,
+            },
+            { merge: true }
+          );
+        }
       }
     }
   );
@@ -959,6 +1006,7 @@ const settlePesePayPayment = async (
       'failed',
     paymentId,
     orderId,
+    purpose,
     transactionStatus:
       providerStatus ||
       'UNKNOWN',
@@ -1265,23 +1313,44 @@ router.post(
         });
       }
 
+      const purpose =
+        payment.purpose ===
+          'wallet_topup'
+          ? 'wallet_topup'
+          : 'order_payment';
+
       const result =
-        await settleOrderPayment({
-          paymentId,
-          actor:
-            runtimeUser.email ||
-            runtimeUser.uid,
-          providerStatus:
-            'MANUALLY_VERIFIED',
-          providerStatusDescription:
-            'Manual EcoCash USD payment verified by Runtime administrator.',
-          transactionId:
-            transactionId ||
-            undefined,
-        });
+        purpose === 'wallet_topup'
+          ? await settleWalletTopup({
+              paymentId,
+              actor:
+                runtimeUser.email ||
+                runtimeUser.uid,
+              providerStatus:
+                'MANUALLY_VERIFIED',
+              providerStatusDescription:
+                'Manual EcoCash USD wallet top-up verified by Runtime administrator.',
+              transactionId:
+                transactionId ||
+                undefined,
+            })
+          : await settleOrderPayment({
+              paymentId,
+              actor:
+                runtimeUser.email ||
+                runtimeUser.uid,
+              providerStatus:
+                'MANUALLY_VERIFIED',
+              providerStatusDescription:
+                'Manual EcoCash USD payment verified by Runtime administrator.',
+              transactionId:
+                transactionId ||
+                undefined,
+            });
 
       return res.json({
         success: true,
+        purpose,
         ...result,
       });
     } catch (error) {
@@ -1398,35 +1467,53 @@ router.post(
               );
             }
 
+            const purpose =
+              payment.purpose ===
+                'wallet_topup'
+                ? 'wallet_topup'
+                : 'order_payment';
+
             const orderId =
               String(
                 payment.order_id || ''
               ).trim();
 
-            if (!orderId) {
-              throw new Error(
-                'Payment is not linked to an order.'
-              );
+            let orderRef:
+              FirebaseFirestore.DocumentReference | null =
+              null;
+
+            let order:
+              FirebaseFirestore.DocumentData | null =
+              null;
+
+            if (
+              purpose === 'order_payment'
+            ) {
+              if (!orderId) {
+                throw new Error(
+                  'Payment is not linked to an order.'
+                );
+              }
+
+              orderRef =
+                adminDb
+                  .collection('orders')
+                  .doc(orderId);
+
+              const orderDoc =
+                await transaction.get(
+                  orderRef
+                );
+
+              if (!orderDoc.exists) {
+                throw new Error(
+                  'Order linked to payment was not found.'
+                );
+              }
+
+              order =
+                orderDoc.data()!;
             }
-
-            const orderRef =
-              adminDb
-                .collection('orders')
-                .doc(orderId);
-
-            const orderDoc =
-              await transaction.get(
-                orderRef
-              );
-
-            if (!orderDoc.exists) {
-              throw new Error(
-                'Order linked to payment was not found.'
-              );
-            }
-
-            const order =
-              orderDoc.data()!;
 
             transaction.set(
               paymentRef,
@@ -1448,19 +1535,22 @@ router.post(
              * Rejecting one attempt does not cancel the order.
              * The customer remains free to try another method.
              */
-            if (
-              order.status ===
-              'payment_pending'
-            ) {
-              transaction.set(
-                orderRef,
-                {
-                  status: 'pending',
-                  updated_at: now,
-                },
-                { merge: true }
-              );
-            }
+          if (
+  purpose === 'order_payment' &&
+  orderRef !== null &&
+  order !== null &&
+  order.status ===
+    'payment_pending'
+) {
+  transaction.set(
+    orderRef,
+    {
+      status: 'pending',
+      updated_at: now,
+    },
+    { merge: true }
+  );
+}
 
             return {
               paymentId,
@@ -1497,6 +1587,105 @@ router.post(
       return res.status(status).json({
         success: false,
         message,
+      });
+    }
+  }
+);
+
+
+
+/*
+ * ----------------------------------------------------------
+ * CREATE MANUAL ECOCASH WALLET TOP-UP
+ * ----------------------------------------------------------
+ *
+ * This only creates a pending payment attempt.
+ * Runtime Credit is added only after an administrator verifies
+ * the payment through /admin/manual/approve.
+ */
+
+router.post(
+  '/wallet/ecocash',
+  authenticate,
+  async (
+    req: AuthenticatedRequest,
+    res: Response
+  ) => {
+    try {
+      const runtimeUser =
+        req.runtimeUser!;
+
+      const amount =
+        Number(
+          req.body?.amount
+        );
+
+      if (
+        !Number.isFinite(amount) ||
+        amount <= 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Top-up amount must be greater than zero.',
+        });
+      }
+
+      const roundedAmount =
+        Math.round(
+          (amount + Number.EPSILON) *
+          100
+        ) / 100;
+
+      const now =
+        new Date().toISOString();
+
+      const paymentRef =
+        adminDb
+          .collection('payments')
+          .doc();
+
+      const payment = {
+        id: paymentRef.id,
+        purpose: 'wallet_topup',
+        user_id:
+          runtimeUser.uid,
+        reference:
+          `RT-CREDIT-${Date.now()
+            .toString(36)
+            .toUpperCase()}`,
+        amount:
+          roundedAmount,
+        currency: 'USD',
+        gateway:
+          'ecocash_usd',
+        status: 'pending',
+        customer_confirmed_payment:
+          false,
+        created_at: now,
+        updated_at: now,
+      };
+
+      await paymentRef.set(
+        payment
+      );
+
+      return res.json({
+        success: true,
+        paymentId:
+          paymentRef.id,
+        payment,
+      });
+    } catch (error) {
+      console.error(
+        'EcoCash wallet top-up error:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          'Unable to prepare Runtime Credit top-up.',
       });
     }
   }
@@ -1657,6 +1846,7 @@ router.post(
 
       const payment = {
         id: paymentRef.id,
+        purpose: 'order_payment',
         order_id: orderId,
         user_id:
           runtimeUser.uid,
@@ -2088,6 +2278,7 @@ router.post(
         paymentRef,
         {
           id: paymentId,
+          purpose: 'order_payment',
           order_id: orderId,
           user_id: runtimeUser.uid,
           reference:

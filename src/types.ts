@@ -105,6 +105,10 @@ export type PaymentGateway =
   | 'stripe_card'
   | 'bank_transfer';
 
+export type PaymentPurpose =
+  | 'order_payment'
+  | 'wallet_topup';
+
 export type PaymentStatus =
   | 'pending'
   | 'pending_verification'
@@ -126,7 +130,18 @@ export type OrderStatus =
 
 export interface Payment {
   id: string;
-  order_id: string;
+
+  /*
+   * Older order-payment records may not have purpose yet.
+   * Treat missing purpose as order_payment during migration.
+   */
+  purpose?: PaymentPurpose;
+
+  /*
+   * Wallet top-ups intentionally have no order_id.
+   */
+  order_id?: string;
+
   user_id: string;
 
   reference: string;
@@ -142,6 +157,7 @@ export interface Payment {
 
   provider_reference?: string;
   transaction_id?: string;
+  wallet_transaction_id?: string;
 
   verified_at?: string;
   verified_by?: string;

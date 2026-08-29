@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import nodeFetch from 'node-fetch';
 import { adminAuth, adminDb, } from '../firebaseAdmin.js';
 import { settleOrderPayment, } from '../services/PaymentSettlementService.js';
+import { settleWalletTopup, } from '../services/WalletTopupSettlementService.js';
 const router = Router();
 const PESEPAY_MAKE_PAYMENT_URL = 'https://api.pesepay.com/api/payments-engine/v2/payments/make-payment';
 const PESEPAY_INITIATE_URL = 'https://api.pesepay.com/api/payments-engine/v1/payments/initiate';
@@ -363,12 +364,16 @@ const settlePesePayPayment = async (paymentId, options = {}) => {
         'pesepay') {
         throw new Error('This is not a PesePay payment.');
     }
+    const purpose = payment.purpose === 'wallet_topup'
+        ? 'wallet_topup'
+        : 'order_payment';
     const orderId = String(payment.order_id ||
         '').trim();
     const providerReference = String(payment.provider_reference ||
         '').trim();
-    if (!orderId ||
-        !providerReference) {
+    if (!providerReference ||
+        (purpose === 'order_payment' &&
+            !orderId)) {
         throw new Error('The PesePay transaction is not ready for verification yet.');
     }
     const providerTransaction = await fetchPesePayStatus(providerReference);
@@ -399,6 +404,27 @@ const settlePesePayPayment = async (paymentId, options = {}) => {
          * The generic settlement service owns all local money,
          * order and fulfillment state from this point onward.
          */
+        if (purpose === 'wallet_topup') {
+            await settleWalletTopup({
+                paymentId,
+                actor: 'PesePay',
+                providerStatus: providerStatus ||
+                    'SUCCESS',
+                providerStatusDescription: providerDescription,
+                transactionId: providerInternalReference,
+            });
+            return {
+                verified: true,
+                paymentState: 'success',
+                terminal: true,
+                paymentId,
+                orderId: '',
+                purpose,
+                transactionStatus: providerStatus ||
+                    'SUCCESS',
+                transactionStatusDescription: providerDescription,
+            };
+        }
         const result = await settleOrderPayment({
             paymentId,
             actor: 'PesePay',
@@ -413,6 +439,7 @@ const settlePesePayPayment = async (paymentId, options = {}) => {
             terminal: true,
             paymentId,
             orderId: result.orderId,
+            purpose,
             transactionStatus: providerStatus ||
                 'SUCCESS',
             transactionStatusDescription: providerDescription,
@@ -435,10 +462,6 @@ const settlePesePayPayment = async (paymentId, options = {}) => {
         if (!freshPayment.exists) {
             throw new Error('Payment disappeared during verification.');
         }
-        const orderRef = adminDb
-            .collection('orders')
-            .doc(orderId);
-        const freshOrder = await transaction.get(orderRef);
         transaction.set(paymentRef, {
             status: runtimePaymentStatus,
             provider_status: providerStatus ||
@@ -458,16 +481,22 @@ const settlePesePayPayment = async (paymentId, options = {}) => {
                 : null,
             updated_at: now,
         }, { merge: true });
-        if (paymentState ===
-            'failed' &&
-            freshOrder.exists &&
-            freshOrder.data()
-                ?.status ===
-                'payment_pending') {
-            transaction.set(orderRef, {
-                status: 'pending',
-                updated_at: now,
-            }, { merge: true });
+        if (purpose === 'order_payment' &&
+            orderId &&
+            paymentState === 'failed') {
+            const orderRef = adminDb
+                .collection('orders')
+                .doc(orderId);
+            const freshOrder = await transaction.get(orderRef);
+            if (freshOrder.exists &&
+                freshOrder.data()
+                    ?.status ===
+                    'payment_pending') {
+                transaction.set(orderRef, {
+                    status: 'pending',
+                    updated_at: now,
+                }, { merge: true });
+            }
         }
     });
     return {
@@ -477,6 +506,7 @@ const settlePesePayPayment = async (paymentId, options = {}) => {
             'failed',
         paymentId,
         orderId,
+        purpose,
         transactionStatus: providerStatus ||
             'UNKNOWN',
         transactionStatusDescription: providerDescription,
@@ -673,17 +703,32 @@ router.post('/admin/manual/approve', authenticate, async (req, res) => {
                 message: 'This payment attempt is no longer awaiting verification. The customer should create a new payment attempt.',
             });
         }
-        const result = await settleOrderPayment({
-            paymentId,
-            actor: runtimeUser.email ||
-                runtimeUser.uid,
-            providerStatus: 'MANUALLY_VERIFIED',
-            providerStatusDescription: 'Manual EcoCash USD payment verified by Runtime administrator.',
-            transactionId: transactionId ||
-                undefined,
-        });
+        const purpose = payment.purpose ===
+            'wallet_topup'
+            ? 'wallet_topup'
+            : 'order_payment';
+        const result = purpose === 'wallet_topup'
+            ? await settleWalletTopup({
+                paymentId,
+                actor: runtimeUser.email ||
+                    runtimeUser.uid,
+                providerStatus: 'MANUALLY_VERIFIED',
+                providerStatusDescription: 'Manual EcoCash USD wallet top-up verified by Runtime administrator.',
+                transactionId: transactionId ||
+                    undefined,
+            })
+            : await settleOrderPayment({
+                paymentId,
+                actor: runtimeUser.email ||
+                    runtimeUser.uid,
+                providerStatus: 'MANUALLY_VERIFIED',
+                providerStatusDescription: 'Manual EcoCash USD payment verified by Runtime administrator.',
+                transactionId: transactionId ||
+                    undefined,
+            });
         return res.json({
             success: true,
+            purpose,
             ...result,
         });
     }
@@ -746,18 +791,28 @@ router.post('/admin/manual/reject', authenticate, async (req, res) => {
                 'verified') {
                 throw new Error('A verified payment cannot be rejected.');
             }
+            const purpose = payment.purpose ===
+                'wallet_topup'
+                ? 'wallet_topup'
+                : 'order_payment';
             const orderId = String(payment.order_id || '').trim();
-            if (!orderId) {
-                throw new Error('Payment is not linked to an order.');
+            let orderRef = null;
+            let order = null;
+            if (purpose === 'order_payment') {
+                if (!orderId) {
+                    throw new Error('Payment is not linked to an order.');
+                }
+                orderRef =
+                    adminDb
+                        .collection('orders')
+                        .doc(orderId);
+                const orderDoc = await transaction.get(orderRef);
+                if (!orderDoc.exists) {
+                    throw new Error('Order linked to payment was not found.');
+                }
+                order =
+                    orderDoc.data();
             }
-            const orderRef = adminDb
-                .collection('orders')
-                .doc(orderId);
-            const orderDoc = await transaction.get(orderRef);
-            if (!orderDoc.exists) {
-                throw new Error('Order linked to payment was not found.');
-            }
-            const order = orderDoc.data();
             transaction.set(paymentRef, {
                 status: 'rejected',
                 rejection_reason: reason,
@@ -770,8 +825,11 @@ router.post('/admin/manual/reject', authenticate, async (req, res) => {
              * Rejecting one attempt does not cancel the order.
              * The customer remains free to try another method.
              */
-            if (order.status ===
-                'payment_pending') {
+            if (purpose === 'order_payment' &&
+                orderRef !== null &&
+                order !== null &&
+                order.status ===
+                    'payment_pending') {
                 transaction.set(orderRef, {
                     status: 'pending',
                     updated_at: now,
@@ -801,6 +859,62 @@ router.post('/admin/manual/reject', authenticate, async (req, res) => {
         return res.status(status).json({
             success: false,
             message,
+        });
+    }
+});
+/*
+ * ----------------------------------------------------------
+ * CREATE MANUAL ECOCASH WALLET TOP-UP
+ * ----------------------------------------------------------
+ *
+ * This only creates a pending payment attempt.
+ * Runtime Credit is added only after an administrator verifies
+ * the payment through /admin/manual/approve.
+ */
+router.post('/wallet/ecocash', authenticate, async (req, res) => {
+    try {
+        const runtimeUser = req.runtimeUser;
+        const amount = Number(req.body?.amount);
+        if (!Number.isFinite(amount) ||
+            amount <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Top-up amount must be greater than zero.',
+            });
+        }
+        const roundedAmount = Math.round((amount + Number.EPSILON) *
+            100) / 100;
+        const now = new Date().toISOString();
+        const paymentRef = adminDb
+            .collection('payments')
+            .doc();
+        const payment = {
+            id: paymentRef.id,
+            purpose: 'wallet_topup',
+            user_id: runtimeUser.uid,
+            reference: `RT-CREDIT-${Date.now()
+                .toString(36)
+                .toUpperCase()}`,
+            amount: roundedAmount,
+            currency: 'USD',
+            gateway: 'ecocash_usd',
+            status: 'pending',
+            customer_confirmed_payment: false,
+            created_at: now,
+            updated_at: now,
+        };
+        await paymentRef.set(payment);
+        return res.json({
+            success: true,
+            paymentId: paymentRef.id,
+            payment,
+        });
+    }
+    catch (error) {
+        console.error('EcoCash wallet top-up error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Unable to prepare Runtime Credit top-up.',
         });
     }
 });
@@ -897,6 +1011,7 @@ router.post('/order/ecocash', authenticate, async (req, res) => {
             .doc();
         const payment = {
             id: paymentRef.id,
+            purpose: 'order_payment',
             order_id: orderId,
             user_id: runtimeUser.uid,
             reference: `RT-ECO-${Date.now()
@@ -1138,6 +1253,7 @@ router.post('/pesepay/initiate', authenticate, async (req, res) => {
         const batch = adminDb.batch();
         batch.set(paymentRef, {
             id: paymentId,
+            purpose: 'order_payment',
             order_id: orderId,
             user_id: runtimeUser.uid,
             reference: merchantReference,
