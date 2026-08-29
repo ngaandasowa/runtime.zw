@@ -84,7 +84,7 @@ export const DashboardBilling:
       retryGateway,
       setRetryGateway,
     ] = useState<RetryGateway>(
-      'pesepay'
+      'ecocash_usd'
     );
 
     const [
@@ -103,6 +103,11 @@ export const DashboardBilling:
     ] = useState(
       currentUser?.phone || ''
     );
+
+    const [
+      pesePayMethodsLoading,
+      setPesePayMethodsLoading,
+    ] = useState(false);
 
     const [
       paymentModalBusy,
@@ -190,36 +195,64 @@ export const DashboardBilling:
 
     const loadPesePayMethods =
       async () => {
-        const result =
-          await authenticatedRequest(
-            '/api/payments/pesepay/methods?currencyCode=USD'
+        setPesePayMethodsLoading(
+          true
+        );
+
+        setPaymentModalError(
+          null
+        );
+
+        try {
+          const result =
+            await authenticatedRequest(
+              '/api/payments/pesepay/methods?currencyCode=USD'
+            );
+
+          const methods =
+            Array.isArray(
+              result?.methods
+            )
+              ? result.methods
+              : [];
+
+          setPesePayMethods(
+            methods
           );
 
-        const methods =
-          Array.isArray(
-            result?.methods
-          )
-            ? result.methods
-            : [];
+          setPesePayMethodCode(
+            (current) =>
+              methods.some(
+                (
+                  method:
+                    PesePayMethod
+                ) =>
+                  method.code ===
+                  current
+              )
+                ? current
+                : methods[0]?.code ||
+                  ''
+          );
+        } catch (error) {
+          setPesePayMethods(
+            []
+          );
 
-        setPesePayMethods(
-          methods
-        );
+          setPesePayMethodCode(
+            ''
+          );
 
-        setPesePayMethodCode(
-          (current) =>
-            methods.some(
-              (
-                method:
-                  PesePayMethod
-              ) =>
-                method.code ===
-                current
-            )
-              ? current
-              : methods[0]?.code ||
-                ''
-        );
+          setPaymentModalError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to load PesePay payment methods.'
+          );
+        } finally {
+          setPesePayMethodsLoading(
+            false
+          );
+        }
       };
 
     const openPaymentModal =
@@ -230,8 +263,14 @@ export const DashboardBilling:
           order
         );
 
+        /*
+         * Restore the original manual EcoCash experience
+         * as the immediately available option.
+         * PesePay methods are loaded only if the customer
+         * explicitly selects PesePay.
+         */
         setRetryGateway(
-          'pesepay'
+          'ecocash_usd'
         );
 
         setPaymentModalError(
@@ -247,22 +286,12 @@ export const DashboardBilling:
         );
 
         setPaymentModalBusy(
-          true
+          false
         );
 
-        try {
-          await loadPesePayMethods();
-        } catch (error) {
-          setPaymentModalError(
-            error instanceof Error
-              ? error.message
-              : 'Unable to load payment methods.'
-          );
-        } finally {
-          setPaymentModalBusy(
-            false
-          );
-        }
+        setPesePayMethodsLoading(
+          false
+        );
       };
 
     const checkPesePayAttempt =
@@ -321,6 +350,78 @@ export const DashboardBilling:
         };
       };
 
+    const openEcoCashWhatsAppForOrder =
+      async () => {
+        if (!paymentOrder) {
+          return;
+        }
+
+        setPaymentModalBusy(
+          true
+        );
+
+        setPaymentModalError(
+          null
+        );
+
+        try {
+          /*
+           * Ensure Runtime has a manual payment record before
+           * opening WhatsApp. The payment remains unverified
+           * until an admin confirms the screenshot/money.
+           */
+          await authenticatedRequest(
+            '/api/payments/order/ecocash',
+            {
+              method: 'POST',
+              body:
+                JSON.stringify({
+                  orderId:
+                    paymentOrder.id,
+                }),
+            }
+          );
+
+          const itemDescription =
+            paymentOrder.items?.[0]
+              ?.description ||
+            'Runtime order';
+
+          const message =
+            encodeURIComponent(
+              [
+                'Hi Runtime, I have paid for my order using EcoCash USD.',
+                '',
+                `Order: ${paymentOrder.reference}`,
+                `Item: ${itemDescription}`,
+                `Amount: $${paymentOrder.total.toFixed(2)} ${paymentOrder.currency || 'USD'}`,
+                '',
+                'I am attaching my payment screenshot for verification.',
+              ].join('\n')
+            );
+
+          window.open(
+            `https://wa.me/263788350229?text=${message}`,
+            '_blank',
+            'noopener,noreferrer'
+          );
+
+          setPaymentModalMessage(
+            'Screenshot submission opened in WhatsApp. Runtime will verify the payment after confirming the money was received.'
+          );
+        } catch (error) {
+          setPaymentModalError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to prepare the EcoCash USD payment.'
+          );
+        } finally {
+          setPaymentModalBusy(
+            false
+          );
+        }
+      };
+
     const submitExistingOrderPayment =
       async () => {
         if (!paymentOrder) {
@@ -340,29 +441,6 @@ export const DashboardBilling:
         );
 
         try {
-          if (
-            retryGateway ===
-            'ecocash_usd'
-          ) {
-            await authenticatedRequest(
-              '/api/payments/order/ecocash',
-              {
-                method: 'POST',
-                body:
-                  JSON.stringify({
-                    orderId:
-                      paymentOrder.id,
-                  }),
-              }
-            );
-
-            setPaymentModalMessage(
-              'EcoCash USD payment is ready. Send the exact order amount to 0783827570 (Ngaavongwe Ndasowampange), then send Runtime the screenshot for verification.'
-            );
-
-            return;
-          }
-
           const selectedMethod =
             pesePayMethods.find(
               (method) =>
@@ -1328,11 +1406,23 @@ export const DashboardBilling:
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
-                      onClick={() =>
+                      onClick={() => {
                         setRetryGateway(
                           'pesepay'
-                        )
-                      }
+                        );
+
+                        setPaymentModalMessage(
+                          null
+                        );
+
+                        if (
+                          pesePayMethods.length ===
+                            0 &&
+                          !pesePayMethodsLoading
+                        ) {
+                          void loadPesePayMethods();
+                        }
+                      }}
                       className={`rounded-xl border p-3 text-left transition ${
                         retryGateway ===
                         'pesepay'
@@ -1350,11 +1440,19 @@ export const DashboardBilling:
 
                     <button
                       type="button"
-                      onClick={() =>
+                      onClick={() => {
                         setRetryGateway(
                           'ecocash_usd'
-                        )
-                      }
+                        );
+
+                        setPaymentModalMessage(
+                          null
+                        );
+
+                        setPaymentModalError(
+                          null
+                        );
+                      }}
                       className={`rounded-xl border p-3 text-left transition ${
                         retryGateway ===
                         'ecocash_usd'
@@ -1378,8 +1476,8 @@ export const DashboardBilling:
                     {pesePayMethods.length ===
                     0 ? (
                       <p className="text-xs text-zinc-500">
-                        {paymentModalBusy
-                          ? 'Loading payment methods...'
+                        {pesePayMethodsLoading
+                          ? 'Loading PesePay payment methods...'
                           : 'No PesePay methods are available right now.'}
                       </p>
                     ) : (
@@ -1451,19 +1549,78 @@ export const DashboardBilling:
 
                 {retryGateway ===
                   'ecocash_usd' && (
-                  <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-xs leading-5 text-zinc-600">
-                    <p className="font-semibold text-zinc-950">
-                      EcoCash USD
-                    </p>
-                    <p className="mt-1">
-                      Number: 0783827570
-                    </p>
-                    <p>
-                      Name: Ngaavongwe Ndasowampange
-                    </p>
-                    <p className="mt-2">
-                      Runtime will keep the order unpaid until the payment is verified.
-                    </p>
+                  <div className="space-y-4">
+                    <div className="overflow-hidden rounded-xl border border-zinc-200">
+                      <div className="flex items-center justify-between gap-4 border-b border-zinc-100 px-4 py-3">
+                        <span className="text-xs text-zinc-500">
+                          Order
+                        </span>
+                        <span className="font-mono text-xs font-semibold text-zinc-950">
+                          {paymentOrder.reference}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-4 border-b border-zinc-100 px-4 py-3">
+                        <span className="text-xs text-zinc-500">
+                          Send Money to
+                        </span>
+                        <span className="font-mono text-sm font-bold text-zinc-950">
+                          0783827570
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-4 border-b border-zinc-100 px-4 py-3">
+                        <span className="text-xs text-zinc-500">
+                          EcoCash name
+                        </span>
+                        <span className="text-right text-xs font-semibold text-zinc-950">
+                          Ngaavongwe Ndasowampange
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-4 border-b border-zinc-100 px-4 py-3">
+                        <span className="text-xs text-zinc-500">
+                          Status
+                        </span>
+                        <span className="text-xs font-semibold text-zinc-700">
+                          Awaiting verification
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-4 bg-zinc-50 px-4 py-4">
+                        <span className="text-sm font-semibold text-zinc-950">
+                          Amount
+                        </span>
+                        <span className="text-lg font-bold text-[#3120ff]">
+                          ${paymentOrder.total.toFixed(2)} {paymentOrder.currency || 'USD'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                      <p className="text-sm font-semibold text-zinc-950">
+                        After you pay
+                      </p>
+
+                      <p className="mt-2 text-xs leading-5 text-zinc-500">
+                        Send your EcoCash payment screenshot to Runtime on WhatsApp. Your order stays unpaid until an admin confirms that the money was received.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={
+                        openEcoCashWhatsAppForOrder
+                      }
+                      disabled={
+                        paymentModalBusy
+                      }
+                      className="flex w-full items-center justify-center rounded-xl bg-[#3120ff] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#2819d9] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {paymentModalBusy
+                        ? 'Preparing WhatsApp...'
+                        : "I've Paid — Send Screenshot on WhatsApp"}
+                    </button>
                   </div>
                 )}
 
@@ -1479,26 +1636,27 @@ export const DashboardBilling:
                   </div>
                 )}
 
-                <button
-                  type="button"
-                  onClick={
-                    submitExistingOrderPayment
-                  }
-                  disabled={
-                    paymentModalBusy ||
-                    (retryGateway ===
-                      'pesepay' &&
-                      !pesePayMethodCode)
-                  }
-                  className="flex w-full items-center justify-center rounded-xl bg-[#3120ff] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#2819d9] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {paymentModalBusy
-                    ? 'Checking payment...'
-                    : retryGateway ===
-                        'ecocash_usd'
-                      ? 'Use EcoCash USD'
-                      : 'Pay with PesePay'}
-                </button>
+                {retryGateway ===
+                  'pesepay' && (
+                  <button
+                    type="button"
+                    onClick={
+                      submitExistingOrderPayment
+                    }
+                    disabled={
+                      paymentModalBusy ||
+                      pesePayMethodsLoading ||
+                      !pesePayMethodCode
+                    }
+                    className="flex w-full items-center justify-center rounded-xl bg-[#3120ff] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#2819d9] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {pesePayMethodsLoading
+                      ? 'Loading PesePay...'
+                      : paymentModalBusy
+                        ? 'Checking payment...'
+                        : 'Pay with PesePay'}
+                  </button>
+                )}
 
                 {!paymentModalBusy &&
                   paymentModalError && (
