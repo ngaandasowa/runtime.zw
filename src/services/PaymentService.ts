@@ -6,8 +6,8 @@ import {
 /*
  * Manual EcoCash USD payment details.
  *
- * These are display/payment instructions only.
- * They are NOT secret API credentials.
+ * Display/payment instructions only.
+ * Never place provider API secrets in this frontend service.
  */
 export const ECOCASH_USD_DETAILS = {
   phone: '0783827570',
@@ -16,85 +16,100 @@ export const ECOCASH_USD_DETAILS = {
   currency: 'USD',
 } as const;
 
-const createPaymentId = () => {
-  return (
-    'pay-' +
-    Date.now().toString(36) +
-    '-' +
-    Math.random()
-      .toString(36)
-      .substring(2, 8)
-  );
-};
+const createPaymentId = () =>
+  'pay-' +
+  Date.now().toString(36) +
+  '-' +
+  Math.random()
+    .toString(36)
+    .substring(2, 8);
 
-const createPaymentReference =
-  () => {
-    return (
-      'RT-' +
-      Date.now()
-        .toString(36)
-        .toUpperCase() +
-      '-' +
-      Math.random()
-        .toString(36)
-        .substring(2, 6)
-        .toUpperCase()
-    );
-  };
+const createPaymentReference = () =>
+  'RT-' +
+  Date.now()
+    .toString(36)
+    .toUpperCase() +
+  '-' +
+  Math.random()
+    .toString(36)
+    .substring(2, 6)
+    .toUpperCase();
+
+export type CheckoutPaymentInput = {
+  orderId: string;
+  userId: string;
+  amount: number;
+  currency: string;
+  gateway: PaymentGateway;
+};
 
 export class PaymentService {
   /*
    * ----------------------------------------------------------
-   * ECOCASH USD
+   * FRONTEND PAYMENT RECORD FACTORY
    * ----------------------------------------------------------
    *
-   * Creates a payment record only.
+   * This service does NOT settle money.
    *
-   * It does NOT mark payment as verified.
+   * Provider-backed payments such as PesePay are created by
+   * the secure backend. The frontend factory remains only for
+   * manual payment records that Runtime intentionally creates
+   * client-side during the current migration.
    */
-  async createEcoCashPayment(
-    orderId: string,
-    userId: string,
-    amount: number
-  ): Promise<Payment> {
+  private createPendingPayment(
+    input: CheckoutPaymentInput
+  ): Payment {
     const now =
       new Date().toISOString();
 
-    const payment: Payment = {
+    return {
       id: createPaymentId(),
-
-      order_id: orderId,
-
-      user_id: userId,
-
+      order_id: input.orderId,
+      user_id: input.userId,
       reference:
         createPaymentReference(),
-
-      amount,
-
-      currency: 'USD',
-
-      gateway: 'ecocash_usd',
-
+      amount: input.amount,
+      currency: input.currency,
+      gateway: input.gateway,
       status: 'pending',
-
       created_at: now,
-
       updated_at: now,
     };
+  }
 
-    return payment;
+  async createEcoCashPayment(
+    orderId: string,
+    userId: string,
+    amount: number,
+    currency = 'USD'
+  ): Promise<Payment> {
+    return this.createPendingPayment({
+      orderId,
+      userId,
+      amount,
+      currency,
+      gateway: 'ecocash_usd',
+    });
   }
 
   /*
    * ----------------------------------------------------------
-   * GENERAL CHECKOUT ENTRY POINT
+   * REUSABLE CHECKOUT ENTRY POINT
    * ----------------------------------------------------------
    *
-   * StoreContext already calls processCheckout()
-   * for registration and renewal.
+   * Existing registration/renewal callers can continue using
+   * processCheckout() while the rest of Runtime migrates.
    *
-   * Keep this function until PesePay is added.
+   * Manual EcoCash:
+   *   creates the pending local payment record.
+   *
+   * PesePay:
+   *   MUST be initiated through /api/payments/pesepay.
+   *
+   * Future Runtime Credit:
+   *   MUST go through the secure backend wallet/checkout
+   *   service, never by manufacturing a verified frontend
+   *   payment.
    */
   async processCheckout(
     orderId: string,
@@ -103,63 +118,34 @@ export class PaymentService {
     userId: string,
     gateway: PaymentGateway
   ): Promise<Payment> {
-    /*
-     * EcoCash direct/manual payment.
-     */
     if (
-      gateway ===
-        'ecocash_usd' ||
+      gateway === 'ecocash_usd' ||
       gateway === 'ecocash'
     ) {
-      return await this.createEcoCashPayment(
+      return this.createEcoCashPayment(
         orderId,
         userId,
-        amount
+        amount,
+        currency
       );
     }
 
-    /*
-     * PesePay will later create the
-     * transaction through a secure backend.
-     *
-     * For now create a pending record.
-     * Never fake a successful payment.
-     */
-    const now =
-      new Date().toISOString();
+    if (gateway === 'pesepay') {
+      throw new Error(
+        'PesePay checkout must be started through the secure Runtime payment API.'
+      );
+    }
 
-    const payment: Payment = {
-      id: createPaymentId(),
-
-      order_id: orderId,
-
-      user_id: userId,
-
-      reference:
-        createPaymentReference(),
-
-      amount,
-
-      currency,
-
-      gateway,
-
-      status: 'pending',
-
-      created_at: now,
-
-      updated_at: now,
-    };
-
-    return payment;
+    throw new Error(
+      `Payment gateway "${String(
+        gateway
+      )}" is not available through the frontend checkout service.`
+    );
   }
 
   /*
-   * ----------------------------------------------------------
-   * CUSTOMER SAYS ECOCASH WAS SENT
-   * ----------------------------------------------------------
-   *
-   * This does NOT verify the money.
+   * Customer confirmation is only a submission state.
+   * It never verifies money.
    */
   markEcoCashSubmitted(
     payment: Payment
@@ -169,25 +155,26 @@ export class PaymentService {
 
     return {
       ...payment,
-
       status:
         'pending_verification',
-
       customer_confirmed_payment:
         true,
-
       customer_confirmed_at:
         now,
-
-      updated_at:
-        now,
+      updated_at: now,
     };
   }
 
   /*
    * ----------------------------------------------------------
-   * ADMIN APPROVAL
+   * LEGACY ADMIN HELPERS
    * ----------------------------------------------------------
+   *
+   * Kept temporarily for import compatibility only.
+   *
+   * StoreContext now sends approval/rejection to the secure
+   * backend. New code MUST NOT use these methods for actual
+   * settlement.
    */
   approveManualPayment(
     payment: Payment,
@@ -199,26 +186,16 @@ export class PaymentService {
 
     return {
       ...payment,
-
       status: 'verified',
-
       verified_at: now,
-
       verified_by: adminId,
-
       transaction_id:
         transactionId.trim() ||
         'Cash received',
-
       updated_at: now,
     };
   }
 
-  /*
-   * ----------------------------------------------------------
-   * ADMIN REJECTION
-   * ----------------------------------------------------------
-   */
   rejectManualPayment(
     payment: Payment,
     adminId: string,
@@ -229,24 +206,15 @@ export class PaymentService {
 
     return {
       ...payment,
-
       status: 'rejected',
-
       verified_by: adminId,
-
       rejection_reason:
         reason ||
         'Payment could not be confirmed.',
-
       updated_at: now,
     };
   }
 
-  /*
-   * ----------------------------------------------------------
-   * WHATSAPP SCREENSHOT LINK
-   * ----------------------------------------------------------
-   */
   getEcoCashWhatsAppUrl(
     runtimeWhatsAppNumber: string,
     orderReference: string,
