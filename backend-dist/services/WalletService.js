@@ -40,10 +40,14 @@ export class WalletService {
         const snapshot = await adminDb
             .collection('wallet_transactions')
             .where('user_id', '==', userId)
-            .orderBy('created_at', 'desc')
-            .limit(safeLimit)
             .get();
-        return snapshot.docs.map((doc) => doc.data());
+        return snapshot.docs
+            .map((doc) => doc.data())
+            .sort((a, b) => new Date(String(b.created_at ||
+            '')).getTime() -
+            new Date(String(a.created_at ||
+                '')).getTime())
+            .slice(0, safeLimit);
     }
     async mutate(input) {
         const userId = input.userId.trim();

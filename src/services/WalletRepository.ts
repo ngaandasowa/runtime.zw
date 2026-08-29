@@ -3,15 +3,13 @@ import {
   doc,
   getDoc,
   getDocs,
-  limit,
-  orderBy,
   query,
   where,
 } from 'firebase/firestore';
 
 import { db } from '../firebase/firebase';
 
-import {
+import type {
   Wallet,
   WalletTransaction,
 } from '../types';
@@ -21,7 +19,11 @@ export class WalletRepository {
     userId: string
   ): Promise<Wallet> {
     const snapshot = await getDoc(
-      doc(db, 'wallets', userId)
+      doc(
+        db,
+        'wallets',
+        userId
+      )
     );
 
     if (!snapshot.exists()) {
@@ -60,19 +62,27 @@ export class WalletRepository {
           'user_id',
           '==',
           userId
-        ),
-        orderBy(
-          'created_at',
-          'desc'
-        ),
-        limit(safeLimit)
+        )
       )
     );
 
-    return snapshot.docs.map(
-      (item) =>
-        item.data() as WalletTransaction
-    );
+    const transactions =
+      snapshot.docs.map(
+        (item) =>
+          item.data() as WalletTransaction
+      );
+
+    return transactions
+      .sort(
+        (a, b) =>
+          new Date(
+            b.created_at
+          ).getTime() -
+          new Date(
+            a.created_at
+          ).getTime()
+      )
+      .slice(0, safeLimit);
   }
 }
 
