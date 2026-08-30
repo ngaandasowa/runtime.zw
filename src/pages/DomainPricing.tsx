@@ -82,10 +82,9 @@ export const DomainPricing: React.FC =
 
               return {
                 ...item,
-                register:
-                  override.register,
-                renew:
-                  override.renew,
+                register: override.register,
+                renew: override.renew,
+                transfer: override.transfer,  
               };
             });
 
