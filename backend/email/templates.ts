@@ -13,7 +13,12 @@ export type EmailEvent =
   | 'domain_delete_requested'
   | 'domain_transfer_requested'
   | 'wallet_credit_added'
-  | 'runtime_credit_applied';
+  | 'runtime_credit_applied'
+  | 'domain_expiry_60_day'
+  | 'domain_expiry_30_day'
+  | 'domain_renewal_payment_reminder'
+  | 'domain_expired'
+  | 'domain_grace_period_ended';
 
 export type EmailEventData = {
   email: string;
@@ -36,6 +41,8 @@ export type EmailEventData = {
   registeredAt?: string;
   reason?: string;
   nameservers?: string[];
+  daysRemaining?: number;
+  graceEndsAt?: string;
 };
 
 export type BuiltEmail = {
@@ -315,6 +322,11 @@ const layout = ({
                       )}
 
                       ${row(
+                        'Grace period ends',
+                        dateText(data.graceEndsAt)
+                      )}
+
+                      ${row(
                         'Nameservers',
                         nsText
                       )}
@@ -527,6 +539,67 @@ const customerContent = (
           'we received your domain transfer request.',
         note:
           'Runtime will process the transfer and update the domain status when the next step is completed.',
+      };
+
+
+    case 'domain_expiry_60_day':
+      return {
+        subject: (data) =>
+          `${data.domainName} renews in 60 days`,
+        title:
+          'Domain renewal reminder',
+        intro:
+          'your domain is due for renewal in 60 days.',
+        note:
+          'No payment is due from this reminder yet. Runtime will create the renewal order closer to the renewal date.',
+      };
+
+    case 'domain_expiry_30_day':
+      return {
+        subject: (data) =>
+          `${data.domainName} renews in 30 days`,
+        title:
+          'Domain renewal reminder',
+        intro:
+          'your domain is due for renewal in 30 days.',
+        note:
+          'Please make sure your account details are current. Runtime will create the renewal order before the domain expires.',
+      };
+
+    case 'domain_renewal_payment_reminder':
+      return {
+        subject: (data) =>
+          `Renewal payment reminder for ${data.domainName}`,
+        title:
+          'Your renewal order is still unpaid',
+        intro:
+          'your domain renewal order is still awaiting payment.',
+        note:
+          'Please complete payment before the renewal date to avoid the domain moving into expired status.',
+      };
+
+    case 'domain_expired':
+      return {
+        subject: (data) =>
+          `${data.domainName} has expired`,
+        title:
+          'Your domain has expired',
+        intro:
+          'the domain below reached its renewal date without a completed renewal payment.',
+        note:
+          'The domain is now marked expired in Runtime. Renewal may still be possible during the grace period.',
+      };
+
+    case 'domain_grace_period_ended':
+      return {
+        subject: (data) =>
+          `Grace period ended for ${data.domainName}`,
+        title:
+          'Domain renewal grace period ended',
+        intro:
+          'the Runtime renewal grace period for this domain has ended.',
+        note:
+          'The domain remains expired. Contact Runtime before taking any further recovery or registration action.',
       };
 
     case 'wallet_credit_added':

@@ -15,6 +15,59 @@ import {
   useStore,
 } from '../../context/StoreContext';
 
+const isRenewalOrder = (
+  order: any
+) =>
+  String(
+    order?.purpose ||
+    order?.metadata?.purpose ||
+    ''
+  ) === 'domain_renewal';
+
+const daysUntil = (
+  value?: string
+) => {
+  if (!value) {
+    return null;
+  }
+
+  const target =
+    new Date(value);
+
+  if (
+    Number.isNaN(
+      target.getTime()
+    )
+  ) {
+    return null;
+  }
+
+  const today =
+    new Date();
+
+  const start =
+    new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate()
+    );
+
+  const end =
+    new Date(
+      target.getFullYear(),
+      target.getMonth(),
+      target.getDate()
+    );
+
+  return Math.round(
+    (
+      end.getTime() -
+      start.getTime()
+    ) /
+      (24 * 60 * 60 * 1000)
+  );
+};
+
 export const DashboardOverview:
   React.FC = () => {
     const {
@@ -139,6 +192,34 @@ export const DashboardOverview:
             currentUser?.id ||
           order.user_email ===
             currentUser?.email
+      );
+
+    const pendingRenewalOrders =
+      userOrders.filter(
+        (order) =>
+          isRenewalOrder(
+            order
+          ) &&
+          order.status ===
+            'pending'
+      );
+
+    const expiringSoon =
+      userDomains.filter(
+        (domain) => {
+          const days =
+            daysUntil(
+              domain.expires_at
+            );
+
+          return (
+            domain.status ===
+              'active' &&
+            days !== null &&
+            days >= 0 &&
+            days <= 60
+          );
+        }
       );
 
     const userPayments =
@@ -341,6 +422,50 @@ export const DashboardOverview:
             />
           </div>
         </section>
+
+        {/* RENEWAL NOTICE */}
+        {(pendingRenewalOrders.length >
+          0 ||
+          expiringSoon.length >
+            0) && (
+          <button
+            type="button"
+            onClick={() =>
+              setDashboardSubView(
+                pendingRenewalOrders.length >
+                  0
+                  ? 'billing'
+                  : 'domains'
+              )
+            }
+            className="flex w-full items-center justify-between gap-4 border-y border-amber-200 bg-amber-50 px-4 py-4 text-left sm:rounded-xl sm:border"
+          >
+            <div>
+              <p className="text-sm font-semibold text-amber-950">
+                Domain renewals
+              </p>
+
+              <p className="mt-1 text-xs text-amber-800">
+                {pendingRenewalOrders.length >
+                0
+                  ? `${pendingRenewalOrders.length} renewal invoice${
+                      pendingRenewalOrders.length ===
+                      1
+                        ? ''
+                        : 's'
+                    } awaiting payment.`
+                  : `${expiringSoon.length} domain${
+                      expiringSoon.length ===
+                      1
+                        ? ''
+                        : 's'
+                    } renewing within 60 days.`}
+              </p>
+            </div>
+
+            <ArrowRight className="h-4 w-4 shrink-0 text-amber-700" />
+          </button>
+        )}
 
         {/* PAYMENT NOTICE */}
         {awaitingPayment >

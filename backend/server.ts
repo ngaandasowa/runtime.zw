@@ -7,6 +7,7 @@ import emailRoutes from './routes/email.js';
 import paymentRoutes from './routes/payments.js';
 import walletRoutes from './routes/wallet.js';
 import emailCampaignRoutes from './routes/emailCampaigns.js';
+import renewalLifecycleRoutes from './routes/renewalLifecycle.js';
 
 const app = express();
 
@@ -130,6 +131,11 @@ app.use(
 app.use(
   '/api/email-campaigns',
   emailCampaignRoutes
+);
+
+app.use(
+  '/api/renewals',
+  renewalLifecycleRoutes
 );
 
 /*

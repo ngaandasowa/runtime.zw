@@ -54,6 +54,37 @@ const toDateInput = (
     .slice(0, 10);
 
 
+const renewalLifecycleLabel = (
+  domain: any
+) => {
+  const state =
+    domain?.renewal_lifecycle?.state;
+
+  const labels:
+    Record<string, string> = {
+      invoice_created:
+        'Invoice created',
+      expired:
+        'Expired · grace period',
+      grace_period_ended:
+        'Grace period ended',
+    };
+
+  return state
+    ? labels[state] ||
+        String(state).replace(/_/g, ' ')
+    : null;
+};
+
+const isRenewalOrder = (
+  order: any
+) =>
+  String(
+    order?.purpose ||
+    order?.metadata?.purpose ||
+    ''
+  ) === 'domain_renewal';
+
 export const AdminCustomerAccount:
   React.FC = () => {
     const {
@@ -244,6 +275,28 @@ export const AdminCustomerAccount:
           orders,
           adminCustomerId,
         ]
+      );
+
+
+    const customerRenewalOrders =
+      useMemo(
+        () =>
+          customerOrders.filter(
+            (order) =>
+              isRenewalOrder(
+                order
+              )
+          ),
+        [
+          customerOrders,
+        ]
+      );
+
+    const pendingRenewalOrders =
+      customerRenewalOrders.filter(
+        (order) =>
+          order.status ===
+          'pending'
       );
 
 
@@ -442,7 +495,7 @@ export const AdminCustomerAccount:
 
 
         {/* STATS */}
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
 
           <StatCard
             label="Domains"
@@ -456,6 +509,14 @@ export const AdminCustomerAccount:
             label="Orders"
             value={
               customerOrders.length
+            }
+            icon={CalendarDays}
+          />
+
+          <StatCard
+            label="Renewal invoices"
+            value={
+              pendingRenewalOrders.length
             }
             icon={CalendarDays}
           />
@@ -560,6 +621,30 @@ export const AdminCustomerAccount:
 
                     </div>
 
+                    <div className="flex flex-wrap items-center gap-2">
+                      {renewalLifecycleLabel(
+                        domain as any
+                      ) && (
+                        <span className="w-fit rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-800">
+                          {renewalLifecycleLabel(
+                            domain as any
+                          )}
+                        </span>
+                      )}
+
+                      {(domain as any)
+                        .renewal_lifecycle
+                        ?.renewal_order_id && (
+                        <span className="font-mono text-[10px] text-zinc-400">
+                          {
+                            (domain as any)
+                              .renewal_lifecycle
+                              .renewal_order_id
+                          }
+                        </span>
+                      )}
+                    </div>
+
                     <span className="w-fit rounded-full border border-zinc-200 px-2.5 py-1 text-xs font-medium capitalize text-zinc-600">
                       {String(
                         domain.status
@@ -611,6 +696,14 @@ export const AdminCustomerAccount:
                       <p className="truncate font-mono text-xs font-semibold text-[#3120ff]">
                         {order.reference}
                       </p>
+
+                      {isRenewalOrder(
+                        order
+                      ) && (
+                        <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-amber-700">
+                          Domain renewal invoice
+                        </p>
+                      )}
 
                       <p className="mt-1 text-xs text-zinc-500">
                         {formatDate(

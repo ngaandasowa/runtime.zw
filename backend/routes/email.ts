@@ -50,6 +50,11 @@ const supportedEvents:
     'domain_transfer_requested',
     'wallet_credit_added',
     'runtime_credit_applied',
+    'domain_expiry_60_day',
+    'domain_expiry_30_day',
+    'domain_renewal_payment_reminder',
+    'domain_expired',
+    'domain_grace_period_ended',
   ];
 
 const adminOnlyEvents =
@@ -62,6 +67,11 @@ const adminOnlyEvents =
     'domain_replaced',
     'wallet_credit_added',
     'runtime_credit_applied',
+    'domain_expiry_60_day',
+    'domain_expiry_30_day',
+    'domain_renewal_payment_reminder',
+    'domain_expired',
+    'domain_grace_period_ended',
   ]);
 
 const domainRequiredEvents =
@@ -76,6 +86,11 @@ const domainRequiredEvents =
     'domain_modify_requested',
     'domain_delete_requested',
     'domain_transfer_requested',
+    'domain_expiry_60_day',
+    'domain_expiry_30_day',
+    'domain_renewal_payment_reminder',
+    'domain_expired',
+    'domain_grace_period_ended',
   ]);
 
 /*

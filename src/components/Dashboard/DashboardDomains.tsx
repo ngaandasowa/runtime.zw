@@ -105,11 +105,44 @@ const activityLabel = (
   );
 };
 
+const isRenewalOrder = (
+  order: any
+) =>
+  String(
+    order?.purpose ||
+    order?.metadata?.purpose ||
+    ''
+  ) === 'domain_renewal';
+
+const renewalLifecycleLabel = (
+  domain: any
+) => {
+  const state =
+    domain?.renewal_lifecycle?.state;
+
+  const labels:
+    Record<string, string> = {
+      invoice_created:
+        'Renewal invoice ready',
+      expired:
+        'Expired · grace period',
+      grace_period_ended:
+        'Grace period ended',
+    };
+
+  return state
+    ? labels[state] ||
+        String(state).replace(/_/g, ' ')
+    : null;
+};
+
 export const DashboardDomains: React.FC =
   () => {
     const {
       currentUser,
       domains,
+      orders,
+      setDashboardSubView,
       setRegistrationModalOpen,
       updateDomainNameservers,
       requestDomainModify,
@@ -248,6 +281,33 @@ export const DashboardDomains: React.FC =
           search,
         ]
       );
+
+    const pendingRenewalOrders =
+      orders.filter(
+        (order) =>
+          isRenewalOrder(
+            order
+          ) &&
+          (
+            order.user_id ===
+              currentUser?.id ||
+            order.user_email ===
+              currentUser?.email
+          ) &&
+          order.status ===
+            'pending'
+      );
+
+    const renewalOrderForDomain =
+      (domainId: string) =>
+        pendingRenewalOrders.find(
+          (order: any) =>
+            String(
+              order.domain_id ||
+              order.metadata?.domain_id ||
+              ''
+            ) === domainId
+        );
 
     const openDetails = (
       domain: Domain
@@ -706,6 +766,38 @@ export const DashboardDomains: React.FC =
               />
             </div>
 
+            {pendingRenewalOrders.length >
+              0 && (
+              <button
+                type="button"
+                onClick={() =>
+                  setDashboardSubView(
+                    'billing'
+                  )
+                }
+                className="mb-4 flex w-full items-center justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left"
+              >
+                <div>
+                  <p className="text-xs font-bold text-amber-950">
+                    Renewal payment required
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-amber-800">
+                    {pendingRenewalOrders.length}{' '}
+                    renewal invoice
+                    {pendingRenewalOrders.length ===
+                    1
+                      ? ''
+                      : 's'}{' '}
+                    awaiting payment.
+                  </p>
+                </div>
+
+                <span className="text-xs font-bold text-[#3120ff]">
+                  View billing
+                </span>
+              </button>
+            )}
+
             <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
               {userDomains.length ===
               0 ? (
@@ -783,24 +875,62 @@ export const DashboardDomains: React.FC =
                             )}
                             /year
                           </p>
+
+                          {renewalLifecycleLabel(
+                            domain as any
+                          ) && (
+                            <p className="mt-1 text-[10px] font-semibold text-amber-700">
+                              {renewalLifecycleLabel(
+                                domain as any
+                              )}
+                            </p>
+                          )}
+
+                          {renewalOrderForDomain(
+                            domain.id
+                          ) && (
+                            <p className="mt-0.5 font-mono text-[10px] text-zinc-400">
+                              {
+                                renewalOrderForDomain(
+                                  domain.id
+                                )?.reference
+                              }
+                            </p>
+                          )}
                         </div>
 
                         <div className="flex flex-wrap gap-2 sm:justify-end">
-                          {(domain.status ===
-                            'active' ||
-                            domain.status ===
-                              'expired') && (
+                          {renewalOrderForDomain(
+                            domain.id
+                          ) ? (
                             <button
                               type="button"
                               onClick={() =>
-                                openRenewal(
-                                  domain
+                                setDashboardSubView(
+                                  'billing'
                                 )
                               }
                               className="rounded-lg bg-[#3120ff] px-3 py-2 text-xs font-semibold text-white hover:bg-[#2819d9]"
                             >
-                              Renew
+                              Pay renewal
                             </button>
+                          ) : (
+                            (domain.status ===
+                              'active' ||
+                              domain.status ===
+                                'expired') && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openRenewal(
+                                    domain
+                                  )
+                                }
+                                className="rounded-lg bg-[#3120ff] px-3 py-2 text-xs font-semibold text-white hover:bg-[#2819d9]"
+                              >
+                                Renew
+                              </button>
+                            )
                           )}
 
                           <button
