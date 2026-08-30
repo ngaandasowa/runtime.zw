@@ -300,7 +300,11 @@ export const AdminShell:
               <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
                 <div className="flex items-center gap-2.5">
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#3120ff]/10 text-[#3120ff]">
-                    <ShieldAlert className="h-4 w-4" />
+                    <img
+                      src="/android-chrome-192x192.png"
+                      alt="Runtime Admin"
+                      className="h-8 w-8"
+                    />
                   </div>
 
                   <div>
