@@ -193,6 +193,8 @@ export const DomainRegistrationModal: React.FC = () => {
   const [nameserverError, setNameserverError] = useState<
     string | null
   >(null);
+  const [isResolvingNameservers, setIsResolvingNameservers] =
+    useState(false);
 
 const [gateway, setGateway] =
   useState<Gateway>('ecocash_usd');
@@ -320,6 +322,7 @@ const [placedOrder, setPlacedOrder] =
       false
     );
     setNameserverError(null);
+    setIsResolvingNameservers(false);
     setGateway('ecocash_usd');
     setPesepayMethods([]);
     setPesepayMethodCode('');
@@ -712,7 +715,95 @@ const [placedOrder, setPlacedOrder] =
     setStep('nameservers');
   };
 
-  const continueFromNameservers = () => {
+  const resolveCustomNameserverIps = async () => {
+    const activeNameservers =
+      customNameservers
+        .map((value) =>
+          value.trim().toLowerCase()
+        )
+        .filter(Boolean);
+
+    if (activeNameservers.length === 0) {
+      return [] as string[];
+    }
+
+    const existingIps =
+      activeNameservers.map(
+        (_, index) =>
+          customNameserverIps[index]?.trim() || ''
+      );
+
+    if (
+      existingIps.length === activeNameservers.length &&
+      existingIps.every(isValidIpAddress)
+    ) {
+      return existingIps;
+    }
+
+    setIsResolvingNameservers(true);
+    setNameserverError(null);
+
+    try {
+      const result = await postAuthenticated(
+        '/api/nameservers/resolve',
+        {
+          nameservers: activeNameservers,
+        }
+      );
+
+      const resolved = Array.isArray(result?.results)
+        ? result.results
+        : [];
+
+      const resolvedIps =
+        activeNameservers.map(
+          (hostname) => {
+            const match =
+              resolved.find(
+                (item: any) =>
+                  String(
+                    item?.hostname || ''
+                  )
+                    .trim()
+                    .toLowerCase() ===
+                  hostname
+              );
+
+            return String(
+              match?.ip || ''
+            ).trim();
+          }
+        );
+
+      const failedIndex =
+        resolvedIps.findIndex(
+          (ip) =>
+            !isValidIpAddress(ip)
+        );
+
+      if (failedIndex >= 0) {
+        throw new Error(
+          `Runtime could not resolve ${activeNameservers[failedIndex]} to an IP address. Please confirm the nameserver with your hosting or DNS provider.`
+        );
+      }
+
+      setCustomNameserverIps([
+        ...resolvedIps,
+        ...Array(
+          Math.max(
+            0,
+            4 - resolvedIps.length
+          )
+        ).fill(''),
+      ].slice(0, 4));
+
+      return resolvedIps;
+    } finally {
+      setIsResolvingNameservers(false);
+    }
+  };
+
+  const continueFromNameservers = async () => {
     if (!useDefaultNameservers) {
       const active =
         customNameservers
@@ -735,42 +826,28 @@ const [placedOrder, setPlacedOrder] =
         return;
       }
 
-      if (zispaRequired) {
-        for (
-          let index = 0;
-          index < 2;
-          index += 1
-        ) {
-          const hostname =
-            customNameservers[
-              index
-            ]?.trim();
-
-          const ip =
-            customNameserverIps[
-              index
-            ]?.trim();
-
-          if (
-            !hostname ||
-            !ip
-          ) {
-            setNameserverError(
-              'The first two custom nameservers require both a hostname and an IP address for the registry template.'
-            );
-            return;
-          }
-
-          if (
-            !isValidIpAddress(
-              ip
-            )
-          ) {
-            setNameserverError(
-              `Enter a valid IP address for nameserver ${index + 1}.`
-            );
-            return;
-          }
+      /*
+       * ZISPA needs nameserver IP addresses in the registry template,
+       * but clients should only need to know the hostnames supplied by
+       * their hosting or DNS provider. Runtime resolves the IPs itself.
+       *
+       * If the visitor is not signed in yet, resolution is deferred to
+       * completeOrder(), after authentication, so the public registration
+       * flow is not blocked by an authenticated API call.
+       */
+      if (
+        zispaRequired &&
+        currentUser
+      ) {
+        try {
+          await resolveCustomNameserverIps();
+        } catch (error) {
+          setNameserverError(
+            error instanceof Error
+              ? error.message
+              : 'Runtime could not resolve these nameservers. Please confirm them with your hosting or DNS provider.'
+          );
+          return;
         }
       }
     }
@@ -1166,6 +1243,17 @@ const [placedOrder, setPlacedOrder] =
     setIsProcessing(true);
 
     try {
+      let nameserverIps =
+        finalNameserverIps();
+
+      if (
+        zispaRequired &&
+        !useDefaultNameservers
+      ) {
+        nameserverIps =
+          await resolveCustomNameserverIps();
+      }
+
       const result =
         await registerNewDomain(
           availabilityResult.domain,
@@ -1177,7 +1265,7 @@ const [placedOrder, setPlacedOrder] =
             : basicOwnerDetails(),
           finalNameservers(),
           gateway,
-          finalNameserverIps()
+          nameserverIps
         );
 
       if (gateway === 'pesepay') {
@@ -2085,7 +2173,7 @@ const [placedOrder, setPlacedOrder] =
                             key={
                               index
                             }
-                            className="grid gap-3 sm:grid-cols-2"
+                            className="grid gap-3"
                           >
                             <Field
                               label={`Nameserver ${index + 1}${
@@ -2114,44 +2202,29 @@ const [placedOrder, setPlacedOrder] =
                                 setCustomNameservers(
                                   copy
                                 );
-                              }}
-                            />
 
-                            <Field
-                              label={`IP address ${index + 1}${
-                                zispaRequired &&
-                                index < 2
-                                  ? ' *'
-                                  : ' (optional)'
-                              }`}
-                              value={
-                                customNameserverIps[
-                                  index
-                                ] ||
-                                ''
-                              }
-                              placeholder="203.0.113.10"
-                              mono
-                              onChange={(
-                                newValue
-                              ) => {
-                                const copy =
+                                const ipCopy =
                                   [
                                     ...customNameserverIps,
                                   ];
 
-                                copy[
+                                ipCopy[
                                   index
-                                ] =
-                                  newValue.trim();
+                                ] = '';
 
                                 setCustomNameserverIps(
-                                  copy
+                                  ipCopy
                                 );
                               }}
                             />
                           </div>
                         )
+                      )}
+
+                      {zispaRequired && (
+                        <p className="text-[11px] leading-4 text-zinc-500">
+                          Enter only the nameserver names from your hosting or DNS provider. Runtime will find their IP addresses automatically for the registry.
+                        </p>
                       )}
 
                       {nameserverError && (
@@ -2608,10 +2681,17 @@ const [placedOrder, setPlacedOrder] =
                       onClick={
                         continueFromNameservers
                       }
-                      className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#3120ff] px-4 text-sm font-semibold text-white transition hover:bg-[#2819d9] sm:px-5"
+                      disabled={
+                        isResolvingNameservers
+                      }
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#3120ff] px-4 text-sm font-semibold text-white transition hover:bg-[#2819d9] disabled:cursor-not-allowed disabled:opacity-60 sm:px-5"
                     >
-                      Continue
-                      <ArrowRight className="h-4 w-4" />
+                      {isResolvingNameservers
+                        ? 'Checking nameservers...'
+                        : 'Continue'}
+                      {!isResolvingNameservers && (
+                        <ArrowRight className="h-4 w-4" />
+                      )}
                     </button>
                   )}
 

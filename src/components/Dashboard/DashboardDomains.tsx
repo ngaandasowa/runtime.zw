@@ -222,9 +222,19 @@ export const DashboardDomains: React.FC =
       );
 
     const [
+      savingOwner,
+      setSavingOwner,
+    ] = useState(false);
+
+    const [
       cancelConfirm,
       setCancelConfirm,
     ] = useState('');
+
+    const [
+      cancellingDomain,
+      setCancellingDomain,
+    ] = useState(false);
 
     const [
       transferDomain,
@@ -322,6 +332,15 @@ export const DashboardDomains: React.FC =
             ) === domainId
         );
 
+    const canModifyRegisteredDomain = (
+      domain: Domain
+    ) =>
+      domain.status === 'active' ||
+      domain.status === 'expired';
+
+    const registrationPendingMessage =
+      'Available after domain registration.';
+
     const openDetails = (
       domain: Domain
     ) => {
@@ -336,6 +355,18 @@ export const DashboardDomains: React.FC =
     const openNameservers = (
       domain: Domain
     ) => {
+      if (
+        !canModifyRegisteredDomain(
+          domain
+        )
+      ) {
+        showNotification(
+          'Nameservers can be changed after your domain is registered.',
+          'info'
+        );
+        return;
+      }
+
       const next = [
         ...domain.nameservers,
       ];
@@ -384,6 +415,17 @@ export const DashboardDomains: React.FC =
           !selectedDomain ||
           savingNameservers
         ) {
+          return;
+        }
+
+        if (
+          !canModifyRegisteredDomain(
+            selectedDomain
+          )
+        ) {
+          setNameserverError(
+            'Nameservers can be changed after your domain is registered.'
+          );
           return;
         }
 
@@ -549,10 +591,25 @@ export const DashboardDomains: React.FC =
             null
           );
         } catch (error) {
-          setNameserverError(
+          const message =
             error instanceof Error
               ? error.message
-              : 'Unable to save the nameserver change.'
+              : '';
+
+          const technicalPermissionError =
+            /missing or insufficient permissions|permission[- ]denied|firebase/i.test(
+              message
+            );
+
+          setNameserverError(
+            technicalPermissionError
+              ? canModifyRegisteredDomain(
+                  selectedDomain
+                )
+                ? 'We could not save your nameserver change. Please try again.'
+                : 'Nameservers can be changed after your domain is registered.'
+              : message ||
+                  'Unable to save the nameserver change.'
           );
         } finally {
           setSavingNameservers(
@@ -564,6 +621,18 @@ export const DashboardDomains: React.FC =
     const openOwner = (
       domain: Domain
     ) => {
+      if (
+        !canModifyRegisteredDomain(
+          domain
+        )
+      ) {
+        showNotification(
+          'Owner details can be changed after your domain is registered.',
+          'info'
+        );
+        return;
+      }
+
       setSelectedDomain(
         domain
       );
@@ -577,28 +646,63 @@ export const DashboardDomains: React.FC =
       );
     };
 
-    const saveOwner = () => {
-      if (
-        !selectedDomain ||
-        !editOwner
-      ) {
-        return;
-      }
+    const saveOwner =
+      async () => {
+        if (
+          !selectedDomain ||
+          !editOwner ||
+          savingOwner
+        ) {
+          return;
+        }
 
-      requestDomainModify(
-        selectedDomain.id,
-        editOwner,
-        selectedDomain.nameservers
-      );
+        try {
+          setSavingOwner(true);
 
-      setModalMode(
-        null
-      );
-    };
+          await requestDomainModify(
+            selectedDomain.id,
+            editOwner,
+            selectedDomain.nameservers
+          );
+
+          setModalMode(
+            null
+          );
+        } catch (error) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : '';
+
+          showNotification(
+            /missing or insufficient permissions|permission[- ]denied|firebase/i.test(
+              message
+            )
+              ? 'We could not save the owner details. Please try again.'
+              : message ||
+                  'Unable to save the owner details.',
+            'error'
+          );
+        } finally {
+          setSavingOwner(false);
+        }
+      };
 
     const openCancel = (
       domain: Domain
     ) => {
+      if (
+        !canModifyRegisteredDomain(
+          domain
+        )
+      ) {
+        showNotification(
+          'Domain cancellation is available after registration. Cancel the order instead if registration has not completed.',
+          'info'
+        );
+        return;
+      }
+
       setSelectedDomain(
         domain
       );
@@ -611,22 +715,45 @@ export const DashboardDomains: React.FC =
     };
 
     const confirmCancel =
-      () => {
+      async () => {
         if (
-          !selectedDomain
+          !selectedDomain ||
+          cancellingDomain
         ) {
           return;
         }
 
-        const success =
-          requestDomainDelete(
+        try {
+          setCancellingDomain(
+            true
+          );
+
+          await requestDomainDelete(
             selectedDomain.id,
             cancelConfirm
           );
 
-        if (success) {
           setModalMode(
             null
+          );
+        } catch (error) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : '';
+
+          showNotification(
+            /missing or insufficient permissions|permission[- ]denied|firebase/i.test(
+              message
+            )
+              ? 'We could not submit the cancellation request. Please try again.'
+              : message ||
+                  'Unable to submit the cancellation request.',
+            'error'
+          );
+        } finally {
+          setCancellingDomain(
+            false
           );
         }
       };
@@ -1211,17 +1338,33 @@ export const DashboardDomains: React.FC =
                   />
                 )}
 
-                <ActionButton
-                  icon={
-                    Server
-                  }
-                  label="Change Nameservers"
-                  onClick={() =>
-                    openNameservers(
-                      selectedDomain
-                    )
-                  }
-                />
+                {canModifyRegisteredDomain(
+                  selectedDomain
+                ) ? (
+                  <ActionButton
+                    icon={
+                      Server
+                    }
+                    label="Change Nameservers"
+                    onClick={() =>
+                      openNameservers(
+                        selectedDomain
+                      )
+                    }
+                  />
+                ) : (
+                  <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-left text-xs text-zinc-500">
+                    <Server className="h-4 w-4 shrink-0" />
+                    <div>
+                      <p className="font-semibold text-zinc-700">
+                        Change Nameservers
+                      </p>
+                      <p className="mt-0.5 text-[10px] leading-4 text-zinc-500">
+                        {registrationPendingMessage}
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 <ActionButton
                   icon={
@@ -1247,18 +1390,34 @@ export const DashboardDomains: React.FC =
                   }
                 />
 
-                <ActionButton
-                  icon={
-                    Trash2
-                  }
-                  label="Request Cancellation"
-                  danger
-                  onClick={() =>
-                    openCancel(
-                      selectedDomain
-                    )
-                  }
-                />
+                {canModifyRegisteredDomain(
+                  selectedDomain
+                ) ? (
+                  <ActionButton
+                    icon={
+                      Trash2
+                    }
+                    label="Request Cancellation"
+                    danger
+                    onClick={() =>
+                      openCancel(
+                        selectedDomain
+                      )
+                    }
+                  />
+                ) : (
+                  <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-left text-xs text-zinc-500">
+                    <Trash2 className="h-4 w-4 shrink-0" />
+                    <div>
+                      <p className="font-semibold text-zinc-700">
+                        Request Cancellation
+                      </p>
+                      <p className="mt-0.5 text-[10px] leading-4 text-zinc-500">
+                        Available after domain registration. Cancel the order instead while registration is pending.
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             </Modal>
           )}
@@ -1497,6 +1656,15 @@ export const DashboardDomains: React.FC =
                     Runtime will automatically resolve the IP address for every nameserver when you save. You only need to enter the nameserver hostnames.
                   </p>
                 )}
+
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+                  <p className="text-[11px] font-semibold text-amber-900">
+                    DNS propagation
+                  </p>
+                  <p className="mt-0.5 text-[11px] leading-5 text-amber-800">
+                    After saving, nameserver changes may take up to 24 hours to fully propagate and become active.
+                  </p>
+                </div>
               </div>
 
               {nameserverError && (
@@ -1627,9 +1795,18 @@ export const DashboardDomains: React.FC =
                   onClick={
                     saveOwner
                   }
-                  className="rounded-xl bg-[#3120ff] px-4 py-2.5 text-xs font-bold text-white"
+                  disabled={
+                    savingOwner
+                  }
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#3120ff] px-4 py-2.5 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Submit Update
+                  {savingOwner && (
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  )}
+
+                  {savingOwner
+                    ? 'Saving...'
+                    : 'Submit Update'}
                 </button>
               </div>
             </Modal>
@@ -1675,6 +1852,7 @@ export const DashboardDomains: React.FC =
                 <button
                   type="button"
                   disabled={
+                    cancellingDomain ||
                     cancelConfirm
                       .trim()
                       .toLowerCase() !==
@@ -1683,9 +1861,15 @@ export const DashboardDomains: React.FC =
                   onClick={
                     confirmCancel
                   }
-                  className="rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40"
+                  className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  Request Cancellation
+                  {cancellingDomain && (
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  )}
+
+                  {cancellingDomain
+                    ? 'Submitting...'
+                    : 'Request Cancellation'}
                 </button>
               </div>
             </Modal>

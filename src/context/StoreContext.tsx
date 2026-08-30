@@ -57,7 +57,7 @@ const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ||
   (import.meta.env.DEV
     ? 'http://localhost:4000'
-    : '');
+    : 'https://runtime-api-my3q.onrender.com');
 
 const callAdminPaymentApi =
   async (
@@ -105,6 +105,58 @@ const callAdminPaymentApi =
       throw new Error(
         data?.message ||
         `Payment action failed (${response.status}).`
+      );
+    }
+
+    return data;
+  };
+
+
+const callDomainManagementApi =
+  async (
+    body: Record<string, unknown>
+  ) => {
+    const authUser =
+      getAuth().currentUser;
+
+    if (!authUser) {
+      throw new Error(
+        'Authentication required.'
+      );
+    }
+
+    const token =
+      await authUser.getIdToken();
+
+    const response =
+      await fetch(
+        `${API_BASE_URL}/api/payments/customer/domain-update`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type':
+              'application/json',
+            Authorization:
+              `Bearer ${token}`,
+          },
+          body:
+            JSON.stringify(body),
+        }
+      );
+
+    let data: any = null;
+
+    try {
+      data =
+        await response.json();
+    } catch {
+      data = null;
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        data?.message ||
+        'Unable to save the domain update.'
       );
     }
 
@@ -175,8 +227,8 @@ interface StoreContextType {
     nameservers: string[],
     nameserverIps?: string[]
   ) => Promise<void>;
-  requestDomainModify: (domainId: string, updatedOwner: RegistrantDetails, nameservers: string[]) => void;
-  requestDomainDelete: (domainId: string, confirmationText: string) => boolean;
+  requestDomainModify: (domainId: string, updatedOwner: RegistrantDetails, nameservers: string[]) => Promise<void>;
+  requestDomainDelete: (domainId: string, confirmationText: string) => Promise<void>;
   requestDomainTransfer: (domainName: string, authCode: string) => Promise<void>;
   updateDomainStatus: (
     domainId: string,
@@ -992,6 +1044,12 @@ const getDomainOrderDetails = async (
       nameservers: string[],
       nameserverIps: string[] = []
     ): Promise<void> => {
+      if (!currentUser) {
+        throw new Error(
+          'You must be signed in to update nameservers.'
+        );
+      }
+
       const domain =
         domains.find(
           (item) =>
@@ -1001,6 +1059,31 @@ const getDomainOrderDetails = async (
       if (!domain) {
         throw new Error(
           'Domain not found.'
+        );
+      }
+
+      const ownsDomain =
+        domain.user_id ===
+          currentUser.id ||
+        domain.user_email ===
+          currentUser.email;
+
+      if (
+        !ownsDomain &&
+        currentUser.role !==
+          'super_admin'
+      ) {
+        throw new Error(
+          'You cannot update this domain.'
+        );
+      }
+
+      if (
+        domain.status !== 'active' &&
+        domain.status !== 'expired'
+      ) {
+        throw new Error(
+          'Nameservers can be changed after your domain is registered.'
         );
       }
 
@@ -1014,6 +1097,14 @@ const getDomainOrderDetails = async (
                 .toLowerCase()
           )
           .filter(Boolean);
+
+      if (
+        normalizedNameservers.length < 2
+      ) {
+        throw new Error(
+          'At least two nameservers are required.'
+        );
+      }
 
       const normalizedIps =
         nameserverIps
@@ -1075,63 +1166,31 @@ const getDomainOrderDetails = async (
         return;
       }
 
-      const now =
-        new Date()
-          .toISOString();
-
-      const historyId =
-        'hist-ns-' +
-        crypto.randomUUID();
-
-      const updated: Domain = {
-        ...domain,
-        nameservers:
-          normalizedNameservers,
-        nameserver_ips:
-          normalizedIps,
-        updated_at:
-          now,
-        history: [
-          ...(domain.history || []),
-          {
-            id:
-              historyId,
-            domain_id:
-              domain.id,
-            action:
-              'MODIFY' as const,
-            description:
-              'Nameserver change requested.',
-            status:
-              'pending',
-            actor:
-              currentUser?.email ||
-              'customer',
-            created_at:
-              now,
-          },
-        ],
-      };
-
       /*
-       * IMPORTANT:
-       * Persist first. Do not show success, create a registry request,
-       * mutate local state or send email until Firestore confirms the save.
+       * Customer domain changes go through the authenticated backend.
+       * Firebase Admin performs the write after ownership/status checks,
+       * so customer Firestore rules cannot cause a false permission error.
        */
-      await domainRepository
-        .updateDomain(
+      const result =
+        await callDomainManagementApi({
+          action:
+            'nameservers',
           domainId,
-          {
-            nameservers:
-              updated.nameservers,
-            nameserver_ips:
-              updated.nameserver_ips,
-            history:
-              updated.history,
-            updated_at:
-              updated.updated_at,
-          }
+          nameservers:
+            normalizedNameservers,
+          nameserverIps:
+            normalizedIps,
+        });
+
+      const updated =
+        result?.domain as
+          Domain | undefined;
+
+      if (!updated) {
+        throw new Error(
+          'The nameserver change was saved but the updated domain could not be returned.'
         );
+      }
 
       setDomains(
         (prev) =>
@@ -1145,10 +1204,10 @@ const getDomainOrderDetails = async (
       );
 
       if (
-        (domain as any)
+        (updated as any)
           .processing_type ===
           'zispa' ||
-        domain.domain_name
+        updated.domain_name
           .toLowerCase()
           .endsWith('.co.zw')
       ) {
@@ -1157,8 +1216,7 @@ const getDomainOrderDetails = async (
             .createRequest(
               updated,
               'M',
-              currentUser
-                ?.email ||
+              currentUser.email ||
                 'customer'
             );
 
@@ -1170,221 +1228,294 @@ const getDomainOrderDetails = async (
         );
       }
 
-      /*
-       * Email is now sent only after the domain update is safely stored.
-       * Backend nameserver-email dedupe protects against repeated requests.
-       */
       emailNotificationService
         .notifyQuietly(
           'nameserver_change_requested',
           {
             email:
-              domain.user_email,
+              updated.user_email,
             name:
-              domain
+              updated
                 .owner_details
                 ?.full_name,
             domainName:
-              domain.domain_name,
+              updated.domain_name,
             nameservers:
               normalizedNameservers,
           }
         );
 
       showNotification(
-        'Nameserver change request received.',
+        'Nameservers updated successfully. DNS changes may take up to 24 hours to fully propagate.',
         'success'
       );
     };
 
-  const requestDomainModify = (
-    domainId: string,
-    updatedOwner: RegistrantDetails,
-    nameservers: string[]
-  ) => {
-    const domain = domains.find((item) => item.id === domainId);
-
-    if (!domain) {
-      showNotification('Domain not found.', 'error');
-      return;
-    }
-
-    const now = new Date().toISOString();
-
-    const updated: Domain = {
-      ...domain,
-      owner_details: updatedOwner,
-      nameservers,
-      updated_at: now,
-      history: [
-        ...domain.history,
-        {
-          id: 'hist-' + Math.random().toString(36).substring(2, 9),
-          domain_id: domain.id,
-          action: 'MODIFY',
-          description: 'Domain details update requested.',
-          status: 'pending',
-          actor: currentUser?.email || 'customer',
-          created_at: now,
-        },
-      ],
-    };
-
-    setDomains((prev) =>
-      prev.map((item) =>
-        item.id === domainId ? updated : item
-      )
-    );
-
-    void domainRepository
-      .updateDomain(domainId, {
-        owner_details: updated.owner_details,
-        nameservers: updated.nameservers,
-        history: updated.history,
-        updated_at: updated.updated_at,
-      })
-      .catch((error) => {
-        console.error('Failed to save domain modification:', error);
-        showNotification(
-          'Unable to save the domain update.',
-          'error'
+  const requestDomainModify =
+    async (
+      domainId: string,
+      updatedOwner: RegistrantDetails,
+      nameservers: string[]
+    ): Promise<void> => {
+      if (!currentUser) {
+        throw new Error(
+          'You must be signed in to update owner details.'
         );
-      });
+      }
 
-    if ((domain as any).processing_type === 'zispa') {
-      const request = registryService.createRequest(
-        updated,
-        'M',
-        currentUser?.email || 'customer'
+      const domain =
+        domains.find(
+          (item) =>
+            item.id === domainId
+        );
+
+      if (!domain) {
+        throw new Error(
+          'Domain not found.'
+        );
+      }
+
+      const ownsDomain =
+        domain.user_id ===
+          currentUser.id ||
+        domain.user_email ===
+          currentUser.email;
+
+      if (
+        !ownsDomain &&
+        currentUser.role !==
+          'super_admin'
+      ) {
+        throw new Error(
+          'You cannot update this domain.'
+        );
+      }
+
+      if (
+        domain.status !== 'active' &&
+        domain.status !== 'expired'
+      ) {
+        throw new Error(
+          'Owner details can be changed after your domain is registered.'
+        );
+      }
+
+      const result =
+        await callDomainManagementApi({
+          action:
+            'owner',
+          domainId,
+          ownerDetails:
+            updatedOwner,
+          nameservers,
+        });
+
+      const updated =
+        result?.domain as
+          Domain | undefined;
+
+      if (!updated) {
+        throw new Error(
+          'The owner details were saved but the updated domain could not be returned.'
+        );
+      }
+
+      setDomains(
+        (prev) =>
+          prev.map(
+            (item) =>
+              item.id ===
+              domainId
+                ? updated
+                : item
+          )
       );
 
-      setRegistryRequests((prev) => [
-        request,
-        ...prev,
-      ]);
-    }
+      if (
+        (updated as any)
+          .processing_type ===
+          'zispa'
+      ) {
+        const request =
+          registryService
+            .createRequest(
+              updated,
+              'M',
+              currentUser.email ||
+                'customer'
+            );
 
-    emailNotificationService.notifyQuietly(
-      'domain_modify_requested',
-      {
-        email:
-          domain.user_email,
-
-        name:
-          updatedOwner.full_name ||
-          domain.owner_details
-            ?.full_name,
-
-        domainName:
-          domain.domain_name,
-
-        nameservers,
+        setRegistryRequests(
+          (prev) => [
+            request,
+            ...prev,
+          ]
+        );
       }
-    );
 
-    showNotification(
-      'Domain update request received.',
-      'success'
-    );
-  };
+      emailNotificationService
+        .notifyQuietly(
+          'domain_modify_requested',
+          {
+            email:
+              updated.user_email,
 
-  const requestDomainDelete = (
-    domainId: string,
-    confirmationText: string
-  ): boolean => {
-    const domain = domains.find((item) => item.id === domainId);
+            name:
+              updatedOwner.full_name ||
+              updated.owner_details
+                ?.full_name,
 
-    if (!domain) {
-      return false;
-    }
+            domainName:
+              updated.domain_name,
 
-    if (
-      confirmationText.trim().toLowerCase() !==
-      domain.domain_name.toLowerCase()
-    ) {
+            nameservers:
+              updated.nameservers,
+          }
+        );
+
       showNotification(
-        `Confirmation mismatch. You must type "${domain.domain_name}" exactly.`,
-        'error'
+        'Owner details update submitted successfully.',
+        'success'
       );
-
-      return false;
-    }
-
-    const now = new Date().toISOString();
-
-    const updated: Domain = {
-      ...domain,
-      status: 'pending_delete',
-      updated_at: now,
-      history: [
-        ...domain.history,
-        {
-          id: 'hist-' + Math.random().toString(36).substring(2, 9),
-          domain_id: domain.id,
-          action: 'DELETE',
-          description: 'Domain cancellation request received.',
-          status: 'pending_delete',
-          actor: currentUser?.email || 'customer',
-          created_at: now,
-        },
-      ],
     };
 
-    setDomains((prev) =>
-      prev.map((item) =>
-        item.id === domainId ? updated : item
-      )
-    );
-
-    void domainRepository
-      .updateDomain(domainId, {
-        status: updated.status,
-        history: updated.history,
-        updated_at: updated.updated_at,
-      })
-      .catch((error) => {
-        console.error('Failed to save domain cancellation:', error);
-        showNotification(
-          'Unable to save the cancellation request.',
-          'error'
+  const requestDomainDelete =
+    async (
+      domainId: string,
+      confirmationText: string
+    ): Promise<void> => {
+      if (!currentUser) {
+        throw new Error(
+          'You must be signed in to request domain cancellation.'
         );
-      });
+      }
 
-    if ((domain as any).processing_type === 'zispa') {
-      const request = registryService.createRequest(
-        updated,
-        'D',
-        currentUser?.email || 'customer'
+      const domain =
+        domains.find(
+          (item) =>
+            item.id === domainId
+        );
+
+      if (!domain) {
+        throw new Error(
+          'Domain not found.'
+        );
+      }
+
+      const ownsDomain =
+        domain.user_id ===
+          currentUser.id ||
+        domain.user_email ===
+          currentUser.email;
+
+      if (
+        !ownsDomain &&
+        currentUser.role !==
+          'super_admin'
+      ) {
+        throw new Error(
+          'You cannot cancel this domain.'
+        );
+      }
+
+      if (
+        domain.status !== 'active' &&
+        domain.status !== 'expired'
+      ) {
+        throw new Error(
+          'Domain cancellation is available after registration. Cancel the order instead if registration has not completed.'
+        );
+      }
+
+      if (
+        confirmationText
+          .trim()
+          .toLowerCase() !==
+        domain.domain_name
+          .toLowerCase()
+      ) {
+        throw new Error(
+          `Type "${domain.domain_name}" exactly to confirm cancellation.`
+        );
+      }
+
+      /*
+       * Cancellation is backend-owned just like nameserver and owner
+       * updates. No local status/history change happens before persistence.
+       */
+      const result =
+        await callDomainManagementApi({
+          action:
+            'cancel',
+          domainId,
+          confirmationText:
+            confirmationText.trim(),
+        });
+
+      const updated =
+        result?.domain as
+          Domain | undefined;
+
+      if (!updated) {
+        throw new Error(
+          'The cancellation request was saved but the updated domain could not be returned.'
+        );
+      }
+
+      setDomains(
+        (prev) =>
+          prev.map(
+            (item) =>
+              item.id ===
+              domainId
+                ? updated
+                : item
+          )
       );
 
-      setRegistryRequests((prev) => [
-        request,
-        ...prev,
-      ]);
-    }
+      if (
+        (updated as any)
+          .processing_type ===
+          'zispa'
+      ) {
+        const request =
+          registryService
+            .createRequest(
+              updated,
+              'D',
+              currentUser.email ||
+                'customer'
+            );
 
-    emailNotificationService.notifyQuietly(
-      'domain_delete_requested',
-      {
-        email:
-          domain.user_email,
-
-        name:
-          domain.owner_details
-            ?.full_name,
-
-        domainName:
-          domain.domain_name,
+        setRegistryRequests(
+          (prev) => [
+            request,
+            ...prev,
+          ]
+        );
       }
-    );
 
-    showNotification(
-      `Cancellation request for ${domain.domain_name} has been received.`,
-      'info'
-    );
+      emailNotificationService
+        .notifyQuietly(
+          'domain_delete_requested',
+          {
+            email:
+              updated.user_email,
 
-    return true;
-  };
+            name:
+              updated.owner_details
+                ?.full_name,
+
+            domainName:
+              updated.domain_name,
+          }
+        );
+
+      showNotification(
+        `Cancellation request for ${updated.domain_name} has been received.`,
+        'info'
+      );
+    };
 
   const requestDomainTransfer = async (
     domainName: string,
@@ -2200,9 +2331,7 @@ const getDomainOrderDetails = async (
                 item.order_id ===
                   originalOrder.id &&
                 item.status ===
-                  'verified' &&
-                item.gateway !==
-                  'runtime_credit'
+                  'verified'
             )
           : [];
 
@@ -2375,9 +2504,7 @@ const getDomainOrderDetails = async (
                 item.order_id ===
                   originalOrder.id &&
                 item.status ===
-                  'verified' &&
-                item.gateway !==
-                  'runtime_credit'
+                  'verified'
             )
           : [];
 

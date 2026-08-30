@@ -652,6 +652,212 @@ router.post('/pesepay/verify', authenticate, async (req, res) => {
  * rules blocking an administrator and prevents the UI from hiding a
  * domain when persistence actually failed.
  */
+/*
+ * ----------------------------------------------------------
+ * CUSTOMER DOMAIN UPDATE
+ * ----------------------------------------------------------
+ *
+ * Customer-facing domain changes must not write directly to Firestore.
+ * The authenticated backend verifies ownership and domain state, then
+ * Firebase Admin performs the write.
+ */
+router.post('/customer/domain-update', authenticate, async (req, res) => {
+    try {
+        const runtimeUser = req.runtimeUser;
+        const domainId = typeof req.body?.domainId ===
+            'string'
+            ? req.body.domainId.trim()
+            : '';
+        const action = typeof req.body?.action ===
+            'string'
+            ? req.body.action.trim()
+            : '';
+        if (!domainId ||
+            ![
+                'nameservers',
+                'owner',
+                'cancel',
+            ].includes(action)) {
+            return res.status(400).json({
+                success: false,
+                message: 'A valid domain update is required.',
+            });
+        }
+        const domainRef = adminDb
+            .collection('domains')
+            .doc(domainId);
+        const result = await adminDb.runTransaction(async (transaction) => {
+            const snapshot = await transaction.get(domainRef);
+            if (!snapshot.exists) {
+                throw new Error('Domain not found.');
+            }
+            const domain = snapshot.data();
+            const ownsDomain = domain.user_id ===
+                runtimeUser.uid ||
+                (runtimeUser.email &&
+                    domain.user_email ===
+                        runtimeUser.email);
+            const isAdmin = runtimeUser.role ===
+                'super_admin';
+            if (!ownsDomain &&
+                !isAdmin) {
+                const error = new Error('You cannot update this domain.');
+                error.statusCode = 403;
+                throw error;
+            }
+            if (![
+                'active',
+                'expired',
+            ].includes(String(domain.status))) {
+                const error = new Error(action ===
+                    'nameservers'
+                    ? 'Nameservers can be changed after your domain is registered.'
+                    : action ===
+                        'owner'
+                        ? 'Owner details can be changed after your domain is registered.'
+                        : 'Domain cancellation is available after registration. Cancel the order instead if registration has not completed.');
+                error.statusCode = 409;
+                throw error;
+            }
+            const now = new Date()
+                .toISOString();
+            const existingHistory = Array.isArray(domain.history)
+                ? domain.history
+                : [];
+            const changes = {
+                updated_at: now,
+            };
+            let description = 'Domain details update requested.';
+            let historyAction = 'MODIFY';
+            let historyStatus = 'pending';
+            if (action ===
+                'nameservers') {
+                const nameservers = Array.isArray(req.body?.nameservers)
+                    ? req.body.nameservers
+                        .map((value) => String(value || '')
+                        .trim()
+                        .replace(/\.$/, '')
+                        .toLowerCase())
+                        .filter(Boolean)
+                    : [];
+                if (nameservers.length < 2 ||
+                    nameservers.length > 4) {
+                    const error = new Error('Enter between two and four nameservers.');
+                    error.statusCode = 400;
+                    throw error;
+                }
+                if (new Set(nameservers).size !==
+                    nameservers.length) {
+                    const error = new Error('Nameservers must be unique.');
+                    error.statusCode = 400;
+                    throw error;
+                }
+                const nameserverIps = Array.isArray(req.body
+                    ?.nameserverIps)
+                    ? req.body
+                        .nameserverIps
+                        .slice(0, nameservers.length)
+                        .map((value) => String(value || '').trim())
+                    : [];
+                changes.nameservers =
+                    nameservers;
+                changes.nameserver_ips =
+                    nameserverIps;
+                description =
+                    'Nameserver change requested.';
+            }
+            else if (action ===
+                'owner') {
+                const ownerDetails = req.body
+                    ?.ownerDetails;
+                if (!ownerDetails ||
+                    typeof ownerDetails !==
+                        'object' ||
+                    Array.isArray(ownerDetails)) {
+                    const error = new Error('Valid owner details are required.');
+                    error.statusCode = 400;
+                    throw error;
+                }
+                changes.owner_details =
+                    ownerDetails;
+                if (Array.isArray(req.body
+                    ?.nameservers)) {
+                    changes.nameservers =
+                        req.body.nameservers;
+                }
+            }
+            else {
+                const confirmationText = typeof req.body
+                    ?.confirmationText ===
+                    'string'
+                    ? req.body
+                        .confirmationText
+                        .trim()
+                        .toLowerCase()
+                    : '';
+                const expected = String(domain.domain_name ||
+                    '')
+                    .trim()
+                    .toLowerCase();
+                if (!confirmationText ||
+                    confirmationText !==
+                        expected) {
+                    const error = new Error(`Type "${domain.domain_name}" exactly to confirm cancellation.`);
+                    error.statusCode = 400;
+                    throw error;
+                }
+                changes.status =
+                    'pending_delete';
+                description =
+                    'Domain cancellation request received.';
+                historyAction =
+                    'DELETE';
+                historyStatus =
+                    'pending_delete';
+            }
+            const nextHistory = [
+                ...existingHistory,
+                {
+                    id: `hist-${crypto.randomUUID()}`,
+                    domain_id: domainId,
+                    action: historyAction,
+                    description,
+                    status: historyStatus,
+                    actor: runtimeUser.email ||
+                        runtimeUser.uid,
+                    created_at: now,
+                },
+            ];
+            changes.history =
+                nextHistory;
+            transaction.set(domainRef, changes, {
+                merge: true,
+            });
+            return {
+                ...domain,
+                ...changes,
+                id: domain.id ||
+                    domainId,
+            };
+        });
+        return res.json({
+            success: true,
+            domain: result,
+        });
+    }
+    catch (error) {
+        console.error('Customer domain update error:', error);
+        const statusCode = Number(error?.statusCode) || 500;
+        return res
+            .status(statusCode)
+            .json({
+            success: false,
+            message: error instanceof Error
+                ? error.message
+                : 'Unable to save the domain update.',
+        });
+    }
+});
 router.post('/admin/domain-status', authenticate, async (req, res) => {
     try {
         const runtimeUser = req.runtimeUser;
