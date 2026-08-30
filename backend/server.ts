@@ -8,6 +8,7 @@ import paymentRoutes from './routes/payments.js';
 import walletRoutes from './routes/wallet.js';
 import emailCampaignRoutes from './routes/emailCampaigns.js';
 import renewalLifecycleRoutes from './routes/renewalLifecycle.js';
+import nameserverRoutes from './routes/nameservers.js';
 
 const app = express();
 
@@ -109,7 +110,7 @@ app.get(
 
 /*
  * ----------------------------------------------------------
- * EMAIL API
+ * API ROUTES
  * ----------------------------------------------------------
  */
 
@@ -136,6 +137,11 @@ app.use(
 app.use(
   '/api/renewals',
   renewalLifecycleRoutes
+);
+
+app.use(
+  '/api/nameservers',
+  nameserverRoutes
 );
 
 /*

@@ -22,6 +22,14 @@ import {
   RegistrantDetails,
 } from '../../types';
 import { nameserverService } from '../../services/NameserverService';
+import { getAuth } from 'firebase/auth';
+
+const API_BASE_URL =
+  import.meta.env
+    .VITE_API_BASE_URL ||
+  (import.meta.env.DEV
+    ? 'http://localhost:4000'
+    : 'https://runtime-api-my3q.onrender.com');
 
 type ModalMode =
   | 'details'
@@ -201,6 +209,11 @@ export const DashboardDomains: React.FC =
     );
 
     const [
+      savingNameservers,
+      setSavingNameservers,
+    ] = useState(false);
+
+    const [
       editOwner,
       setEditOwner,
     ] =
@@ -366,9 +379,10 @@ export const DashboardDomains: React.FC =
     };
 
     const saveNameservers =
-      () => {
+      async () => {
         if (
-          !selectedDomain
+          !selectedDomain ||
+          savingNameservers
         ) {
           return;
         }
@@ -376,7 +390,10 @@ export const DashboardDomains: React.FC =
         const active =
           editNameservers
             .map((item) =>
-              item.trim()
+              item
+                .trim()
+                .replace(/\.$/, '')
+                .toLowerCase()
             )
             .filter(Boolean);
 
@@ -396,57 +413,152 @@ export const DashboardDomains: React.FC =
           return;
         }
 
-        const activeIps =
-          editNameservers
-            .map(
-              (
-                hostname,
-                index
-              ) => ({
-                hostname:
-                  hostname.trim(),
-                ip:
-                  editNameserverIps[
-                    index
-                  ]?.trim() ||
-                  '',
-              })
-            )
-            .filter(
-              (entry) =>
-                Boolean(
-                  entry.hostname
+        try {
+          setSavingNameservers(true);
+          setNameserverError(null);
+
+          const needsRegistryIps =
+            selectedDomain
+              .processing_type ===
+              'zispa' ||
+            selectedDomain
+              .domain_name
+              .toLowerCase()
+              .endsWith('.co.zw');
+
+          let resolvedIps:
+            string[] = [];
+
+          if (needsRegistryIps) {
+            const authUser =
+              getAuth()
+                .currentUser;
+
+            if (!authUser) {
+              throw new Error(
+                'Authentication required.'
+              );
+            }
+
+            const token =
+              await authUser
+                .getIdToken();
+
+            const response =
+              await fetch(
+                `${API_BASE_URL}/api/nameservers/resolve`,
+                {
+                  method:
+                    'POST',
+                  headers: {
+                    'Content-Type':
+                      'application/json',
+                    Authorization:
+                      `Bearer ${token}`,
+                  },
+                  body:
+                    JSON.stringify({
+                      nameservers:
+                        active,
+                    }),
+                }
+              );
+
+            const body =
+              await response
+                .json()
+                .catch(
+                  () => ({})
+                );
+
+            if (
+              !response.ok ||
+              body?.success ===
+                false
+            ) {
+              throw new Error(
+                body?.message ||
+                  'Unable to resolve the nameserver IP addresses.'
+              );
+            }
+
+            const results =
+              Array.isArray(
+                body?.results
+              )
+                ? body.results
+                : [];
+
+            resolvedIps =
+              active.map(
+                (hostname) => {
+                  const match =
+                    results.find(
+                      (
+                        item: any
+                      ) =>
+                        String(
+                          item?.hostname ||
+                          ''
+                        )
+                          .toLowerCase() ===
+                        hostname
+                          .toLowerCase()
+                    );
+
+                  return String(
+                    match?.ip ||
+                    ''
+                  ).trim();
+                }
+              );
+
+            const missingIndex =
+              resolvedIps.findIndex(
+                (ip) =>
+                  !ip
+              );
+
+            if (
+              missingIndex !== -1
+            ) {
+              throw new Error(
+                `Runtime could not resolve an IP address for ${active[missingIndex]}. Make sure the nameserver hostname has a public A or AAAA record, then try again.`
+              );
+            }
+
+            setEditNameserverIps([
+              ...resolvedIps,
+              ...Array(
+                Math.max(
+                  0,
+                  4 -
+                    resolvedIps.length
                 )
-            )
-            .map(
-              (entry) =>
-                entry.ip
-            );
+              ).fill(''),
+            ]);
+          }
 
-        if (
-          selectedDomain
-            .processing_type ===
-            'zispa' &&
-          (
-            !activeIps[0] ||
-            !activeIps[1]
-          )
-        ) {
-          setNameserverError(
-            'The first two nameservers require IP addresses for the registry template.'
+          await updateDomainNameservers(
+            selectedDomain.id,
+            active,
+            resolvedIps
           );
-          return;
+
+          setModalMode(
+            null
+          );
+        } catch (error) {
+          setNameserverError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to save the nameserver change.'
+          );
+        } finally {
+          setSavingNameservers(
+            false
+          );
         }
-
-        updateDomainNameservers(
-          selectedDomain.id,
-          active,
-          activeIps
-        );
-
-        setModalMode(
-          null
-        );
       };
 
     const openOwner = (
@@ -1348,7 +1460,6 @@ export const DashboardDomains: React.FC =
                       key={
                         index
                       }
-                      className="grid gap-3 sm:grid-cols-2"
                     >
                       <Field
                         label={`Nameserver ${index + 1}${index < 2 ? ' *' : ''}`}
@@ -1373,35 +1484,18 @@ export const DashboardDomains: React.FC =
                           );
                         }}
                       />
-
-                      <Field
-                        label={`IP address ${index + 1}${selectedDomain.processing_type === 'zispa' && index < 2 ? ' *' : ''}`}
-                        value={
-                          editNameserverIps[
-                            index
-                          ] ||
-                          ''
-                        }
-                        placeholder="203.0.113.10"
-                        onChange={(
-                          next
-                        ) => {
-                          const copy = [
-                            ...editNameserverIps,
-                          ];
-
-                          copy[
-                            index
-                          ] =
-                            next;
-
-                          setEditNameserverIps(
-                            copy
-                          );
-                        }}
-                      />
                     </div>
                   )
+                )}
+
+                {(selectedDomain.processing_type ===
+                  'zispa' ||
+                  selectedDomain.domain_name
+                    .toLowerCase()
+                    .endsWith('.co.zw')) && (
+                  <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-[11px] leading-5 text-zinc-500">
+                    Runtime will automatically resolve the IP address for every nameserver when you save. You only need to enter the nameserver hostnames.
+                  </p>
                 )}
               </div>
 
@@ -1420,9 +1514,18 @@ export const DashboardDomains: React.FC =
                   onClick={
                     saveNameservers
                   }
-                  className="rounded-xl bg-[#3120ff] px-4 py-2.5 text-xs font-bold text-white"
+                  disabled={
+                    savingNameservers
+                  }
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#3120ff] px-4 py-2.5 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Save Changes
+                  {savingNameservers && (
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  )}
+
+                  {savingNameservers
+                    ? 'Resolving & saving...'
+                    : 'Save Changes'}
                 </button>
               </div>
             </Modal>

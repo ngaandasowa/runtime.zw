@@ -174,7 +174,7 @@ interface StoreContextType {
     domainId: string,
     nameservers: string[],
     nameserverIps?: string[]
-  ) => void;
+  ) => Promise<void>;
   requestDomainModify: (domainId: string, updatedOwner: RegistrantDetails, nameservers: string[]) => void;
   requestDomainDelete: (domainId: string, confirmationText: string) => boolean;
   requestDomainTransfer: (domainName: string, authCode: string) => Promise<void>;
@@ -986,97 +986,216 @@ const getDomainOrderDetails = async (
   };
 };
 
-  const updateDomainNameservers = (
-    domainId: string,
-    nameservers: string[],
-    nameserverIps: string[] = []
-  ) => {
-    const domain = domains.find((item) => item.id === domainId);
-
-    if (!domain) {
-      showNotification('Domain not found.', 'error');
-      return;
-    }
-
-    const now = new Date().toISOString();
-
-    const updated = {
-      ...domain,
-      nameservers,
-      nameserver_ips:
-        nameserverIps,
-      updated_at: now,
-      history: [
-        ...domain.history,
-        {
-          id: 'hist-' + Math.random().toString(36).substring(2, 9),
-          domain_id: domain.id,
-          action: 'MODIFY' as const,
-          description: 'Nameserver change requested.',
-          status: 'pending',
-          actor: currentUser?.email || 'customer',
-          created_at: now,
-        },
-      ],
-    };
-
-    setDomains((prev) =>
-      prev.map((item) =>
-        item.id === domainId ? updated : item
-      )
-    );
-
-    void domainRepository
-      .updateDomain(domainId, {
-        nameservers: updated.nameservers,
-        nameserver_ips:
-          updated.nameserver_ips,
-        history: updated.history,
-        updated_at: updated.updated_at,
-      })
-      .catch((error) => {
-        console.error('Failed to save nameserver update:', error);
-        showNotification(
-          'Unable to save the nameserver change.',
-          'error'
+  const updateDomainNameservers =
+    async (
+      domainId: string,
+      nameservers: string[],
+      nameserverIps: string[] = []
+    ): Promise<void> => {
+      const domain =
+        domains.find(
+          (item) =>
+            item.id === domainId
         );
-      });
 
-    if ((domain as any).processing_type === 'zispa') {
-      const request = registryService.createRequest(
-        updated,
-        'M',
-        currentUser?.email || 'customer'
+      if (!domain) {
+        throw new Error(
+          'Domain not found.'
+        );
+      }
+
+      const normalizedNameservers =
+        nameservers
+          .map(
+            (item) =>
+              item
+                .trim()
+                .replace(/\.$/, '')
+                .toLowerCase()
+          )
+          .filter(Boolean);
+
+      const normalizedIps =
+        nameserverIps
+          .slice(
+            0,
+            normalizedNameservers.length
+          )
+          .map(
+            (item) =>
+              item.trim()
+          );
+
+      const currentNameservers =
+        (domain.nameservers || [])
+          .map(
+            (item) =>
+              item
+                .trim()
+                .replace(/\.$/, '')
+                .toLowerCase()
+          )
+          .filter(Boolean);
+
+      const currentIps =
+        (domain.nameserver_ips || [])
+          .slice(
+            0,
+            currentNameservers.length
+          )
+          .map(
+            (item) =>
+              item.trim()
+          );
+
+      const sameNameservers =
+        JSON.stringify(
+          currentNameservers
+        ) ===
+        JSON.stringify(
+          normalizedNameservers
+        );
+
+      const sameIps =
+        JSON.stringify(
+          currentIps
+        ) ===
+        JSON.stringify(
+          normalizedIps
+        );
+
+      if (
+        sameNameservers &&
+        sameIps
+      ) {
+        showNotification(
+          'These nameservers are already saved.',
+          'info'
+        );
+        return;
+      }
+
+      const now =
+        new Date()
+          .toISOString();
+
+      const historyId =
+        'hist-ns-' +
+        crypto.randomUUID();
+
+      const updated: Domain = {
+        ...domain,
+        nameservers:
+          normalizedNameservers,
+        nameserver_ips:
+          normalizedIps,
+        updated_at:
+          now,
+        history: [
+          ...(domain.history || []),
+          {
+            id:
+              historyId,
+            domain_id:
+              domain.id,
+            action:
+              'MODIFY' as const,
+            description:
+              'Nameserver change requested.',
+            status:
+              'pending',
+            actor:
+              currentUser?.email ||
+              'customer',
+            created_at:
+              now,
+          },
+        ],
+      };
+
+      /*
+       * IMPORTANT:
+       * Persist first. Do not show success, create a registry request,
+       * mutate local state or send email until Firestore confirms the save.
+       */
+      await domainRepository
+        .updateDomain(
+          domainId,
+          {
+            nameservers:
+              updated.nameservers,
+            nameserver_ips:
+              updated.nameserver_ips,
+            history:
+              updated.history,
+            updated_at:
+              updated.updated_at,
+          }
+        );
+
+      setDomains(
+        (prev) =>
+          prev.map(
+            (item) =>
+              item.id ===
+              domainId
+                ? updated
+                : item
+          )
       );
 
-      setRegistryRequests((prev) => [
-        request,
-        ...prev,
-      ]);
-    }
+      if (
+        (domain as any)
+          .processing_type ===
+          'zispa' ||
+        domain.domain_name
+          .toLowerCase()
+          .endsWith('.co.zw')
+      ) {
+        const request =
+          registryService
+            .createRequest(
+              updated,
+              'M',
+              currentUser
+                ?.email ||
+                'customer'
+            );
 
-    emailNotificationService.notifyQuietly(
-      'nameserver_change_requested',
-      {
-        email:
-          domain.user_email,
-
-        name:
-          domain.owner_details
-            ?.full_name,
-
-        domainName:
-          domain.domain_name,
-
-        nameservers,
+        setRegistryRequests(
+          (prev) => [
+            request,
+            ...prev,
+          ]
+        );
       }
-    );
 
-    showNotification(
-      'Nameserver change request received.',
-      'success'
-    );
-  };
+      /*
+       * Email is now sent only after the domain update is safely stored.
+       * Backend nameserver-email dedupe protects against repeated requests.
+       */
+      emailNotificationService
+        .notifyQuietly(
+          'nameserver_change_requested',
+          {
+            email:
+              domain.user_email,
+            name:
+              domain
+                .owner_details
+                ?.full_name,
+            domainName:
+              domain.domain_name,
+            nameservers:
+              normalizedNameservers,
+          }
+        );
+
+      showNotification(
+        'Nameserver change request received.',
+        'success'
+      );
+    };
 
   const requestDomainModify = (
     domainId: string,

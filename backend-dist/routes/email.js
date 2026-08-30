@@ -1,7 +1,72 @@
 import { Router, } from 'express';
+import { createHash } from 'node:crypto';
 import { adminAuth, adminDb, } from '../firebaseAdmin.js';
 import { emailService, } from '../email/emailService.js';
 const router = Router();
+const claimNameserverNotification = async (runtimeUser, data) => {
+    /*
+     * Short-window idempotency for nameserver-change emails.
+     * This protects against double clicks, repeated client requests,
+     * browser retries and duplicate endpoint calls without blocking
+     * a legitimate future change forever.
+     */
+    const bucketMs = 5 * 60 * 1000;
+    const bucket = Math.floor(Date.now() /
+        bucketMs);
+    const normalizedNameservers = Array.isArray(data.nameservers)
+        ? data.nameservers
+            .map((item) => String(item)
+            .trim()
+            .replace(/\.$/, '')
+            .toLowerCase())
+            .filter(Boolean)
+        : [];
+    const fingerprint = [
+        runtimeUser.uid,
+        data.email
+            .trim()
+            .toLowerCase(),
+        String(data.domainName ||
+            '')
+            .trim()
+            .toLowerCase(),
+        normalizedNameservers
+            .join(','),
+        String(bucket),
+    ].join('|');
+    const id = createHash('sha256')
+        .update(fingerprint)
+        .digest('hex');
+    const ref = adminDb
+        .collection('email_notification_dedupe')
+        .doc(`nameserver-${id}`);
+    return adminDb.runTransaction(async (transaction) => {
+        const existing = await transaction.get(ref);
+        if (existing.exists) {
+            return {
+                claimed: false,
+                ref,
+            };
+        }
+        transaction.create(ref, {
+            event: 'nameserver_change_requested',
+            uid: runtimeUser.uid,
+            email: data.email,
+            domain_name: data.domainName ||
+                '',
+            nameservers: normalizedNameservers,
+            created_at: new Date()
+                .toISOString(),
+            expires_at: new Date(Date.now() +
+                bucketMs * 2)
+                .toISOString(),
+        });
+        return {
+            claimed: true,
+            ref,
+        };
+    });
+};
 const supportedEvents = [
     'domain_order_created',
     'renewal_order_created',
@@ -186,11 +251,40 @@ router.post('/notify', authenticate, async (req, res) => {
                 message: 'You may only send notifications for your own account.',
             });
         }
+        let nameserverDedupe = null;
+        if (event ===
+            'nameserver_change_requested') {
+            nameserverDedupe =
+                await claimNameserverNotification(runtimeUser, data);
+            if (!nameserverDedupe
+                .claimed) {
+                return res.json({
+                    success: true,
+                    deduplicated: true,
+                });
+            }
+        }
         /*
          * Send transactional email.
          */
-        await emailService
-            .sendEvent(event, data);
+        try {
+            await emailService
+                .sendEvent(event, data);
+        }
+        catch (error) {
+            /*
+             * If sending genuinely fails, release the dedupe claim so a
+             * later retry is allowed.
+             */
+            if (nameserverDedupe
+                ?.claimed) {
+                await nameserverDedupe
+                    .ref
+                    .delete()
+                    .catch(() => undefined);
+            }
+            throw error;
+        }
         return res.json({
             success: true,
         });
