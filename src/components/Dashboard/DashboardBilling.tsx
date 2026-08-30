@@ -21,6 +21,7 @@ import {
 
 import {
   Order,
+  Payment,
 } from '../../types';
 
 export const DashboardBilling:
@@ -1310,6 +1311,74 @@ export const DashboardBilling:
             ).getTime()
         )[0];
 
+    const orderForPayment = (
+      orderId?: string
+    ) => {
+      if (!orderId) {
+        return null;
+      }
+
+      return (
+        userOrders.find(
+          (order) =>
+            order.id === orderId
+        ) || null
+      );
+    };
+
+    const effectiveOrderStatus = (
+      order: Order,
+      payment?: Payment
+    ) => {
+      /*
+       * Order cancellation always wins over an older payment attempt.
+       * A pending/rejected payment document must never make a cancelled
+       * order look payable again.
+       */
+      if (
+        String(order.status) ===
+        'cancelled'
+      ) {
+        return 'cancelled';
+      }
+
+      if (
+        [
+          'paid',
+          'completed',
+        ].includes(
+          String(order.status)
+        )
+      ) {
+        return 'paid';
+      }
+
+      return (
+        payment?.status ||
+        order.status
+      );
+    };
+
+    const effectivePaymentStatus = (
+      payment: Payment
+    ) => {
+      const linkedOrder =
+        orderForPayment(
+          payment.order_id
+        );
+
+      if (
+        linkedOrder &&
+        String(
+          linkedOrder.status
+        ) === 'cancelled'
+      ) {
+        return 'cancelled';
+      }
+
+      return payment.status;
+    };
+
     /*
      * An unpaid order remains payable after a failed or
      * rejected attempt. A failed Payment document must not
@@ -1342,6 +1411,14 @@ export const DashboardBilling:
       sessionStorage.removeItem(
         'runtime_checkout_order_id'
       );
+
+      if (
+        String(
+          checkoutOrder.status
+        ) === 'cancelled'
+      ) {
+        return;
+      }
 
       void openPaymentModal(
         checkoutOrder
@@ -1817,8 +1894,10 @@ export const DashboardBilling:
                         <div className="mt-3 flex items-center justify-between gap-3">
                           <PaymentStatus
                             status={
-                              payment?.status ||
-                              order.status
+                              effectiveOrderStatus(
+                                order,
+                                payment
+                              )
                             }
                           />
 
@@ -1988,7 +2067,9 @@ export const DashboardBilling:
                       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                         <PaymentStatus
                           status={
-                            payment.status
+                            effectivePaymentStatus(
+                              payment
+                            )
                           }
                         />
 

@@ -321,6 +321,7 @@ export const DashboardOverview:
       return ![
         'paid',
         'completed',
+        'cancelled',
       ].includes(
         String(
           linkedOrder.status
@@ -339,6 +340,15 @@ export const DashboardOverview:
           linkedOrderForDomain(
             domain
           );
+
+        if (
+          linkedOrder &&
+          String(
+            linkedOrder.status
+          ) === 'cancelled'
+        ) {
+          return 'cancelled';
+        }
 
         if (
           linkedOrder &&

@@ -276,16 +276,50 @@ export const DashboardDomains: React.FC =
                   currentUser?.email
             )
             .filter(
-              (domain) =>
-                ![
-                  'cancelled',
-                  'registry_rejected',
-                  'replaced',
-                ].includes(
-                  String(
-                    domain.status
+              (domain) => {
+                if (
+                  [
+                    'cancelled',
+                    'registry_rejected',
+                    'replaced',
+                  ].includes(
+                    String(
+                      domain.status
+                    )
                   )
-                )
+                ) {
+                  return false;
+                }
+
+                if (
+                  domain.status ===
+                  'pending_payment'
+                ) {
+                  const linkedOrderId =
+                    (domain as any)
+                      .order_id;
+
+                  const linkedOrder =
+                    linkedOrderId
+                      ? orders.find(
+                          (order) =>
+                            order.id ===
+                            linkedOrderId
+                        )
+                      : null;
+
+                  if (
+                    linkedOrder &&
+                    String(
+                      linkedOrder.status
+                    ) === 'cancelled'
+                  ) {
+                    return false;
+                  }
+                }
+
+                return true;
+              }
             )
             .filter(
               (domain) =>
@@ -300,6 +334,7 @@ export const DashboardDomains: React.FC =
             ),
         [
           domains,
+          orders,
           currentUser,
           search,
         ]
