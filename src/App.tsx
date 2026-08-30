@@ -309,9 +309,10 @@ const AppContent: React.FC = () => {
         <Route
           path="/pricing"
           element={
-            <PublicLayout>
-              <PricingSection />
-            </PublicLayout>
+            <Navigate
+              to="/domain-pricing"
+              replace
+            />
           }
         />
 
