@@ -15,6 +15,7 @@ import {
 
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
+import { SEO } from './components/SEO';
 
 import { Hero } from './components/Home/Hero';
 import { PlatformModules } from './components/Home/PlatformModules';
@@ -271,6 +272,8 @@ const AppContent: React.FC = () => {
 
   return (
     <>
+      <SEO />
+
       <Routes>
 
         {/* -------------------------------------------------- */}

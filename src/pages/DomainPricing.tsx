@@ -37,7 +37,57 @@ export const DomainPricing: React.FC =
           const data =
             await domainService.getPricing();
 
-          setPricing(data);
+          /*
+           * Runtime Zimbabwe pricing overrides.
+           *
+           * Keep the upstream API for every other extension,
+           * but Runtime controls the public registration and
+           * renewal prices for these Zimbabwe extensions.
+           */
+          const runtimeZimbabwePrices: Record<
+            string,
+            {
+              register: number;
+              renew: number;
+            }
+          > = {
+            '.co.zw': {
+              register: 2,
+              renew: 2,
+            },
+            '.org.zw': {
+              register: 3,
+              renew: 3,
+            },
+            '.ac.zw': {
+              register: 3,
+              renew: 3,
+            },
+          };
+
+          const adjustedPricing =
+            data.map((item) => {
+              const override =
+                runtimeZimbabwePrices[
+                  item.tld.toLowerCase()
+                ];
+
+              if (!override) {
+                return item;
+              }
+
+              return {
+                ...item,
+                register:
+                  override.register,
+                renew:
+                  override.renew,
+              };
+            });
+
+          setPricing(
+            adjustedPricing
+          );
         } catch (error) {
           console.error(error);
 
@@ -76,15 +126,15 @@ export const DomainPricing: React.FC =
         <section className="border-b border-zinc-200 bg-[linear-gradient(135deg,#f8f9ff_0%,#ffffff_55%,#eef0ff_100%)] px-4 py-20 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-4xl text-center">
             <h1 className="text-4xl font-bold tracking-tight text-zinc-950 sm:text-6xl">
-              Domain pricing.
+              Domain registration pricing.
             </h1>
 
             <p className="mx-auto mt-5 max-w-xl text-base leading-7 text-zinc-600">
-              Registration,
+              Compare registration,
               renewal and transfer
-              pricing for our
-              supported domain
-              extensions.
+              prices for .co.zw,
+              .org.zw, .ac.zw and
+              other supported domains.
             </p>
           </div>
         </section>
