@@ -228,6 +228,25 @@ router.get('/', authenticate, requireSuperAdmin, async (_req, res) => {
         });
     }
 });
+router.get('/customers', authenticate, requireSuperAdmin, async (_req, res) => {
+    try {
+        const snapshot = await adminDb.collection('users').get();
+        const customers = snapshot.docs
+            .map((doc) => ({ id: doc.id, ...doc.data() }))
+            .filter((user) => String(user.role || 'customer') === 'customer' && typeof user.email === 'string' && user.email.trim())
+            .map((user) => ({
+            id: user.id,
+            name: String(user.name || user.full_name || '').trim(),
+            email: String(user.email).trim().toLowerCase(),
+        }))
+            .sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email));
+        return res.json({ success: true, customers });
+    }
+    catch (error) {
+        console.error('Load campaign customers failed:', error);
+        return res.status(500).json({ success: false, message: 'Unable to load customers.' });
+    }
+});
 router.get('/:campaignId/recipients', authenticate, requireSuperAdmin, async (req, res) => {
     try {
         const snapshot = await adminDb
@@ -267,6 +286,14 @@ router.post('/', authenticate, requireSuperAdmin, async (req, res) => {
             '').trim();
         const ctaUrl = String(req.body?.ctaUrl ||
             '').trim();
+        const audience = String(req.body?.audience || 'all_customers').trim();
+        const targetUserId = String(req.body?.targetUserId || '').trim();
+        if (!['all_customers', 'single_customer'].includes(audience)) {
+            return res.status(400).json({ success: false, message: 'Choose a valid campaign audience.' });
+        }
+        if (audience === 'single_customer' && !targetUserId) {
+            return res.status(400).json({ success: false, message: 'Choose a customer for this campaign.' });
+        }
         if (!subject ||
             !title ||
             !message) {
@@ -295,27 +322,24 @@ router.post('/', authenticate, requireSuperAdmin, async (req, res) => {
                 message: 'CTA URL must start with http:// or https://.',
             });
         }
-        const usersSnapshot = await adminDb
-            .collection('users')
-            .get();
-        const recipients = usersSnapshot.docs
-            .map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-        }))
-            .filter((user) => String(user.role ||
-            'customer') ===
-            'customer' &&
-            typeof user.email ===
-                'string' &&
+        const usersSnapshot = await adminDb.collection('users').get();
+        const eligibleCustomers = usersSnapshot.docs
+            .map((doc) => ({ id: doc.id, ...doc.data() }))
+            .filter((user) => String(user.role || 'customer') === 'customer' &&
+            typeof user.email === 'string' &&
             user.email.trim());
+        const recipients = audience === 'single_customer'
+            ? eligibleCustomers.filter((user) => user.id === targetUserId)
+            : eligibleCustomers;
         if (recipients.length ===
             0) {
             return res
                 .status(400)
                 .json({
                 success: false,
-                message: 'No eligible customer email addresses were found.',
+                message: audience === 'single_customer'
+                    ? 'The selected customer was not found or does not have an eligible email address.'
+                    : 'No eligible customer email addresses were found.',
             });
         }
         const now = new Date()
@@ -330,7 +354,10 @@ router.post('/', authenticate, requireSuperAdmin, async (req, res) => {
             message,
             cta_label: ctaLabel || null,
             cta_url: ctaUrl || null,
-            audience: 'all_customers',
+            audience,
+            target_user_id: audience === 'single_customer' ? recipients[0].id : null,
+            target_email: audience === 'single_customer' ? String(recipients[0].email).trim().toLowerCase() : null,
+            target_name: audience === 'single_customer' ? String(recipients[0].name || recipients[0].full_name || '').trim() : null,
             status: 'draft',
             created_by: req.runtimeUser.uid,
             created_by_email: req.runtimeUser.email,

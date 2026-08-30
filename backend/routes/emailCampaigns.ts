@@ -400,6 +400,30 @@ router.get(
 );
 
 router.get(
+  '/customers',
+  authenticate,
+  requireSuperAdmin,
+  async (_req, res) => {
+    try {
+      const snapshot = await adminDb.collection('users').get();
+      const customers = snapshot.docs
+        .map((doc) => ({ id: doc.id, ...doc.data() } as any))
+        .filter((user: any) => String(user.role || 'customer') === 'customer' && typeof user.email === 'string' && user.email.trim())
+        .map((user: any) => ({
+          id: user.id,
+          name: String(user.name || user.full_name || '').trim(),
+          email: String(user.email).trim().toLowerCase(),
+        }))
+        .sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email));
+      return res.json({ success: true, customers });
+    } catch (error) {
+      console.error('Load campaign customers failed:', error);
+      return res.status(500).json({ success: false, message: 'Unable to load customers.' });
+    }
+  }
+);
+
+router.get(
   '/:campaignId/recipients',
   authenticate,
   requireSuperAdmin,
@@ -496,6 +520,17 @@ router.post(
           ''
         ).trim();
 
+      const audience = String(req.body?.audience || 'all_customers').trim();
+      const targetUserId = String(req.body?.targetUserId || '').trim();
+
+      if (!['all_customers', 'single_customer'].includes(audience)) {
+        return res.status(400).json({ success: false, message: 'Choose a valid campaign audience.' });
+      }
+
+      if (audience === 'single_customer' && !targetUserId) {
+        return res.status(400).json({ success: false, message: 'Choose a customer for this campaign.' });
+      }
+
       if (
         !subject ||
         !title ||
@@ -538,30 +573,19 @@ router.post(
           });
       }
 
-      const usersSnapshot =
-        await adminDb
-          .collection('users')
-          .get();
+      const usersSnapshot = await adminDb.collection('users').get();
 
-      const recipients =
-        usersSnapshot.docs
-          .map(
-            (doc) => ({
-              id: doc.id,
-              ...doc.data(),
-            })
-          )
-          .filter(
-            (user: any) =>
-              String(
-                user.role ||
-                'customer'
-              ) ===
-                'customer' &&
-              typeof user.email ===
-                'string' &&
-              user.email.trim()
-          );
+      const eligibleCustomers = usersSnapshot.docs
+        .map((doc) => ({ id: doc.id, ...doc.data() }))
+        .filter((user: any) =>
+          String(user.role || 'customer') === 'customer' &&
+          typeof user.email === 'string' &&
+          user.email.trim()
+        );
+
+      const recipients = audience === 'single_customer'
+        ? eligibleCustomers.filter((user: any) => user.id === targetUserId)
+        : eligibleCustomers;
 
       if (
         recipients.length ===
@@ -572,7 +596,9 @@ router.post(
           .json({
             success: false,
             message:
-              'No eligible customer email addresses were found.',
+              audience === 'single_customer'
+                ? 'The selected customer was not found or does not have an eligible email address.'
+                : 'No eligible customer email addresses were found.',
           });
       }
 
@@ -600,8 +626,10 @@ router.post(
             ctaLabel || null,
           cta_url:
             ctaUrl || null,
-          audience:
-            'all_customers',
+          audience,
+          target_user_id: audience === 'single_customer' ? recipients[0].id : null,
+          target_email: audience === 'single_customer' ? String((recipients[0] as any).email).trim().toLowerCase() : null,
+          target_name: audience === 'single_customer' ? String((recipients[0] as any).name || (recipients[0] as any).full_name || '').trim() : null,
           status:
             'draft' as CampaignStatus,
           created_by:

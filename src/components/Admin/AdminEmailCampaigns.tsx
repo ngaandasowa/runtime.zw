@@ -17,6 +17,7 @@ import {
   Send,
   Trash2,
   Users,
+  UserRound,
   X,
   XCircle,
 } from 'lucide-react';
@@ -41,6 +42,9 @@ type Campaign = {
   cta_label?: string | null;
   cta_url?: string | null;
   audience: string;
+  target_user_id?: string | null;
+  target_email?: string | null;
+  target_name?: string | null;
   status:
     | 'draft'
     | 'sending'
@@ -50,6 +54,16 @@ type Campaign = {
   updated_at?: string;
   counts: CampaignCounts;
 };
+
+type CustomerOption = {
+  id: string;
+  name: string;
+  email: string;
+};
+
+type AudienceMode =
+  | 'all_customers'
+  | 'single_customer';
 
 const API_BASE_URL =
   import.meta.env
@@ -206,6 +220,26 @@ export const AdminEmailCampaigns:
       useState('');
 
     const [
+      audienceMode,
+      setAudienceMode,
+    ] = useState<AudienceMode>('all_customers');
+
+    const [
+      targetUserId,
+      setTargetUserId,
+    ] = useState('');
+
+    const [
+      customers,
+      setCustomers,
+    ] = useState<CustomerOption[]>([]);
+
+    const [
+      customersLoading,
+      setCustomersLoading,
+    ] = useState(false);
+
+    const [
       editingId,
       setEditingId,
     ] =
@@ -249,11 +283,24 @@ export const AdminEmailCampaigns:
         []
       );
 
+    const loadCustomers = useCallback(async () => {
+      setCustomersLoading(true);
+      try {
+        const result = await campaignApi('/customers');
+        setCustomers(result.customers || []);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Unable to load customers.');
+      } finally {
+        setCustomersLoading(false);
+      }
+    }, []);
+
     useEffect(
       () => {
         void loadCampaigns();
+        void loadCustomers();
       },
-      [loadCampaigns]
+      [loadCampaigns, loadCustomers]
     );
 
     const totals =
@@ -292,6 +339,8 @@ export const AdminEmailCampaigns:
       setMessage('');
       setCtaLabel('');
       setCtaUrl('');
+      setAudienceMode('all_customers');
+      setTargetUserId('');
       setEditingId(null);
     };
 
@@ -347,6 +396,8 @@ export const AdminEmailCampaigns:
         campaign.cta_url ||
         ''
       );
+      setAudienceMode(campaign.audience === 'single_customer' ? 'single_customer' : 'all_customers');
+      setTargetUserId(campaign.target_user_id || '');
       setEditingId(
         campaign.id
       );
@@ -410,6 +461,8 @@ export const AdminEmailCampaigns:
                       message,
                       ctaLabel,
                       ctaUrl,
+                      audience: audienceMode,
+                      targetUserId: audienceMode === 'single_customer' ? targetUserId : undefined,
                     }),
                 }
               );
@@ -691,6 +744,32 @@ export const AdminEmailCampaigns:
             )}
 
             <div className="mt-5 space-y-4">
+              <div>
+                <span className="text-xs font-bold text-zinc-700">Recipients</span>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <button type="button" disabled={Boolean(editingId)} onClick={() => { setAudienceMode('all_customers'); setTargetUserId(''); }} className={`rounded-xl border px-4 py-3 text-left text-sm ${audienceMode === 'all_customers' ? 'border-[#3120ff] bg-[#3120ff]/5 text-[#3120ff]' : 'border-zinc-200 text-zinc-700'} disabled:opacity-60`}>
+                    <span className="flex items-center gap-2 font-bold"><Users className="h-4 w-4" />All customers</span>
+                    <span className="mt-1 block text-xs text-zinc-500">Create one queued recipient for every customer with an email.</span>
+                  </button>
+                  <button type="button" disabled={Boolean(editingId)} onClick={() => setAudienceMode('single_customer')} className={`rounded-xl border px-4 py-3 text-left text-sm ${audienceMode === 'single_customer' ? 'border-[#3120ff] bg-[#3120ff]/5 text-[#3120ff]' : 'border-zinc-200 text-zinc-700'} disabled:opacity-60`}>
+                    <span className="flex items-center gap-2 font-bold"><UserRound className="h-4 w-4" />One customer</span>
+                    <span className="mt-1 block text-xs text-zinc-500">Send this campaign only to a selected Runtime customer.</span>
+                  </button>
+                </div>
+                {audienceMode === 'single_customer' && (
+                  <label className="mt-3 block">
+                    <span className="text-xs font-bold text-zinc-700">Select customer</span>
+                    <select required disabled={Boolean(editingId) || customersLoading} value={targetUserId} onChange={(event) => setTargetUserId(event.target.value)} className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-3 text-sm text-zinc-900 outline-none focus:border-[#3120ff] focus:ring-2 focus:ring-[#3120ff]/10">
+                      <option value="">{customersLoading ? 'Loading customers...' : 'Choose a customer'}</option>
+                      {customers.map((customer) => (
+                        <option key={customer.id} value={customer.id}>{customer.name ? `${customer.name} — ${customer.email}` : customer.email}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {editingId && <p className="mt-2 text-xs text-zinc-500">Recipients are locked after a draft is created. Create a new draft to use a different audience.</p>}
+              </div>
+
               <Field
                 label="Email subject"
                 value={subject}
@@ -1018,7 +1097,7 @@ const ReviewModal:
               />
               <ReviewField
                 label="Audience"
-                value={`${campaign.counts.total} customer${campaign.counts.total === 1 ? '' : 's'}`}
+                value={campaign.audience === 'single_customer' ? `${campaign.target_name || campaign.target_email || 'Selected customer'} (${campaign.target_email || '1 recipient'})` : `${campaign.counts.total} customer${campaign.counts.total === 1 ? '' : 's'}`}
               />
               <ReviewField
                 label="Status"
