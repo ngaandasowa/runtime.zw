@@ -49,19 +49,23 @@ export const DomainPricing: React.FC =
             {
               register: number;
               renew: number;
+              transfer: number;
             }
           > = {
             '.co.zw': {
               register: 2,
               renew: 2,
+              transfer: 2,
             },
             '.org.zw': {
               register: 3,
               renew: 3,
+              transfer: 3,
             },
             '.ac.zw': {
               register: 3,
               renew: 3,
+              transfer: 3,
             },
           };
 
