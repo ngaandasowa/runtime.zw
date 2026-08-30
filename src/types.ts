@@ -184,6 +184,12 @@ export interface Payment {
   transaction_id?: string;
   wallet_transaction_id?: string;
 
+  /*
+   * False for internal Runtime Credit allocations.
+   * These records may satisfy an order but are not new cash received.
+   */
+  revenue_recognized?: boolean;
+
   verified_at?: string;
   verified_by?: string;
 

@@ -165,7 +165,9 @@ export const AdminDashboard:
             payment
           ) =>
             total +
-            payment.amount,
+            Number(
+              payment.amount || 0
+            ),
           0
         );
 
@@ -324,12 +326,72 @@ export const AdminDashboard:
             ) : (
               recentOrders.map(
                 (order) => {
-                  const payment =
-                    payments.find(
+                  const orderPayments =
+                    payments.filter(
                       (item) =>
                         item.order_id ===
-                        order.id
+                          order.id
                     );
+
+                  const verifiedTotal =
+                    orderPayments
+                      .filter(
+                        (item) =>
+                          item.status ===
+                            'verified'
+                      )
+                      .reduce(
+                        (
+                          total,
+                          item
+                        ) =>
+                          total +
+                          Number(
+                            item.amount || 0
+                          ),
+                        0
+                      );
+
+                  const latestExternalPayment =
+                    orderPayments
+                      .filter(
+                        (item) =>
+                          item.gateway !==
+                            'runtime_credit'
+                      )
+                      .sort(
+                        (a, b) =>
+                          new Date(
+                            b.updated_at ||
+                              b.created_at ||
+                              0
+                          ).getTime() -
+                          new Date(
+                            a.updated_at ||
+                              a.created_at ||
+                              0
+                          ).getTime()
+                      )[0];
+
+                  const effectiveStatus =
+                    order.status ===
+                      'cancelled'
+                      ? 'cancelled'
+                      : (
+                          order.status ===
+                            'paid' ||
+                          order.status ===
+                            'completed' ||
+                          verifiedTotal + 0.0001 >=
+                            Number(
+                              order.total || 0
+                            )
+                        )
+                        ? 'verified'
+                        : latestExternalPayment
+                            ?.status ||
+                          order.status ||
+                          'pending';
 
                   return (
                     <div
@@ -360,12 +422,7 @@ export const AdminDashboard:
 
                         <PaymentBadge
                           status={
-                            order.status ===
-                            'cancelled'
-                              ? 'cancelled'
-                              : payment?.status ||
-                                order.status ||
-                                'pending'
+                            effectiveStatus
                           }
                         />
                       </div>

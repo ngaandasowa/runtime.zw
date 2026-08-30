@@ -2200,7 +2200,9 @@ const getDomainOrderDetails = async (
                 item.order_id ===
                   originalOrder.id &&
                 item.status ===
-                  'verified'
+                  'verified' &&
+                item.gateway !==
+                  'runtime_credit'
             )
           : [];
 
@@ -2373,7 +2375,9 @@ const getDomainOrderDetails = async (
                 item.order_id ===
                   originalOrder.id &&
                 item.status ===
-                  'verified'
+                  'verified' &&
+                item.gateway !==
+                  'runtime_credit'
             )
           : [];
 

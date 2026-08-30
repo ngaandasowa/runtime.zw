@@ -122,7 +122,7 @@ export const AdminOrdersPayments:
                 .filter(
                   (item) =>
                     item.order_id ===
-                    order.id
+                      order.id
                 )
                 .sort(
                   (a, b) =>
@@ -266,7 +266,9 @@ export const AdminOrdersPayments:
       payments.filter(
         (payment) =>
           payment.status ===
-          'verified'
+            'verified' &&
+          payment.gateway !==
+            'runtime_credit'
       ).length;
 
     const cancelledCount =

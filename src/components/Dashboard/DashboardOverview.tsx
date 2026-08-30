@@ -279,11 +279,88 @@ export const DashboardOverview:
           'active'
       ).length;
 
+    const linkedOrderForDomain = (
+      domain: any
+    ) => {
+      const orderId =
+        domain?.order_id as
+          | string
+          | undefined;
+
+      if (!orderId) {
+        return null;
+      }
+
+      return (
+        userOrders.find(
+          (order) =>
+            order.id === orderId
+        ) || null
+      );
+    };
+
+    const isDomainAwaitingPayment = (
+      domain: any
+    ) => {
+      if (
+        domain.status !==
+        'pending_payment'
+      ) {
+        return false;
+      }
+
+      const linkedOrder =
+        linkedOrderForDomain(
+          domain
+        );
+
+      if (!linkedOrder) {
+        return true;
+      }
+
+      return ![
+        'paid',
+        'completed',
+      ].includes(
+        String(
+          linkedOrder.status
+        )
+      );
+    };
+
+    const overviewDomainStatus = (
+      domain: any
+    ) => {
+      if (
+        domain.status ===
+          'pending_payment'
+      ) {
+        const linkedOrder =
+          linkedOrderForDomain(
+            domain
+          );
+
+        if (
+          linkedOrder &&
+          [
+            'paid',
+            'completed',
+          ].includes(
+            String(
+              linkedOrder.status
+            )
+          )
+        ) {
+          return 'pending_registration';
+        }
+      }
+
+      return domain.status;
+    };
+
     const awaitingPayment =
       visibleDomains.filter(
-        (domain) =>
-          domain.status ===
-          'pending_payment'
+        isDomainAwaitingPayment
       ).length;
 
     const processingCount =
@@ -301,7 +378,9 @@ export const DashboardOverview:
       userPayments.filter(
         (payment) =>
           payment.status ===
-          'verified'
+            'verified' &&
+          payment.gateway !==
+            'runtime_credit'
       ).length;
 
     const recentDomains =
@@ -568,14 +647,18 @@ export const DashboardOverview:
                                 domain.expires_at
                               ).toLocaleDateString()}`
                             : statusLabel(
-                                domain.status
+                                overviewDomainStatus(
+                                  domain
+                                )
                               )}
                         </p>
                       </div>
 
                       <DomainStatus
                         status={
-                          domain.status
+                          overviewDomainStatus(
+                            domain
+                          )
                         }
                       />
                     </button>

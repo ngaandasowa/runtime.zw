@@ -1172,15 +1172,19 @@ export const DashboardBilling:
           return payments
             .filter(
               (payment) =>
-                payment.user_id ===
-                  currentUser?.id ||
+                payment.gateway !==
+                  'runtime_credit' &&
                 (
-                  Boolean(
-                    payment.order_id
-                  ) &&
-                  userOrderIds.has(
-                    String(
+                  payment.user_id ===
+                    currentUser?.id ||
+                  (
+                    Boolean(
                       payment.order_id
+                    ) &&
+                    userOrderIds.has(
+                      String(
+                        payment.order_id
+                      )
                     )
                   )
                 )

@@ -377,7 +377,9 @@ export const AdminCustomerAccount:
       customerPayments.filter(
         (payment) =>
           payment.status ===
-          'verified'
+            'verified' &&
+          payment.gateway !==
+            'runtime_credit'
       );
 
 
