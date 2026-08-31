@@ -26,6 +26,14 @@ export class RuntimePricingService {
           currency: 'USD',
           last_synced: new Date().toISOString(),
         },
+         {
+          tld: '.com',
+          register_price: 12.50,
+          renew_price: 13.99,
+          transfer_price: 12.50,
+          currency: 'USD',
+          last_synced: new Date().toISOString(),
+        },
         {
           tld: '.org.zw',
           register_price: 1.80,
@@ -42,14 +50,6 @@ export class RuntimePricingService {
           currency: 'USD',
           last_synced: new Date().toISOString(),
         },
-        {
-          tld: '.com',
-          register_price: 12.50,
-          renew_price: 13.99,
-          transfer_price: 12.50,
-          currency: 'USD',
-          last_synced: new Date().toISOString(),
-        }
       ];
     } catch (error) {
       console.error('Failed to sync Runtime upstream pricing', error);

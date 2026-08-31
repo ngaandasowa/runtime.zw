@@ -1,4 +1,5 @@
 import React, {
+  useEffect,
   useMemo,
   useState,
 } from 'react';
@@ -22,6 +23,10 @@ import {
 import {
   useStore,
 } from '../../context/StoreContext';
+
+import {
+  analyticsService,
+} from '../../services/AnalyticsService';
 
 import {
   DashboardOverview,
@@ -78,6 +83,25 @@ export const DashboardShell:
       mobileOpen,
       setMobileOpen,
     ] = useState(false);
+
+    useEffect(() => {
+      const viewMap: Record<MainView, string> = {
+        overview: 'Customer Dashboard - Overview',
+        domains: 'Customer Dashboard - My Domains',
+        billing: 'Customer Dashboard - Orders & Payments',
+        account: 'Customer Dashboard - Account',
+        build_projects: 'Customer Dashboard - Projects',
+        build_deployments: 'Customer Dashboard - Deployments',
+        build_databases: 'Customer Dashboard - Databases',
+        develop_keys: 'Customer Dashboard - API Keys',
+        develop_webhooks: 'Customer Dashboard - Webhooks',
+        develop_logs: 'Customer Dashboard - Logs',
+      };
+
+      analyticsService.trackPageView(
+        viewMap[dashboardSubView as MainView] || 'Customer Dashboard'
+      );
+    }, [dashboardSubView]);
 
     const primaryNav: NavItem[] = [
       {

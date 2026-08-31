@@ -13,6 +13,10 @@ import {
   DomainPricingRow,
 } from '../services/DomainService';
 
+import {
+  analyticsService,
+} from '../services/AnalyticsService';
+
 export const DomainPricing: React.FC =
   () => {
     const [pricing, setPricing] =
@@ -30,6 +34,12 @@ export const DomainPricing: React.FC =
       useState<string | null>(
         null
       );
+
+    useEffect(() => {
+      analyticsService.trackPageView(
+        'Domain Pricing'
+      );
+    }, []);
 
     useEffect(() => {
       const load = async () => {
@@ -56,6 +66,11 @@ export const DomainPricing: React.FC =
               register: 2,
               renew: 2,
               transfer: 2,
+            },
+            '.com': {
+              register: 14,
+              renew: 14,
+              transfer: 15,
             },
             '.org.zw': {
               register: 3,

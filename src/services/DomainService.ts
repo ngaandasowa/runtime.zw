@@ -54,6 +54,7 @@ export type DomainPricingRow = {
   transfer?: number;
 };
 
+import { analyticsService } from './AnalyticsService';
 
 export const getCoZwRegistrationEligibility = (rawDomain: string) => {
   const domain = rawDomain.trim().toLowerCase().replace(/\.$/, '');
@@ -94,6 +95,12 @@ export const RUNTIME_ZW_PRICES: Record<
     transfer: 2,
   },
 
+   '.com': {
+    register: 14,
+    renew: 14,
+    transfer: 15,
+  },
+
   '.org.zw': {
     register: 3,
     renew: 3,
@@ -114,11 +121,8 @@ export const MANUAL_ZW_TLDS = [
 
 export const POPULAR_EXTENSIONS = [
   '.co.zw',
-  '.online',
   '.com',
-  '.net',
-  '.org',
-  
+
 ];
 
 class DomainService {
@@ -1625,6 +1629,12 @@ class DomainService {
         rawDomain
       );
 
+    // Track domain check
+    analyticsService.trackDomainCheck(
+      domain,
+      false
+    ); // We'll update this after we know availability
+
     if (
       !domain ||
       !domain.includes('.')
@@ -1714,6 +1724,12 @@ class DomainService {
 
       const eligibility = getCoZwRegistrationEligibility(domain);
 
+      // Track domain availability
+      analyticsService.trackDomainCheck(
+        domain,
+        availability
+      );
+
       return {
         domain,
         isAvailable: availability,
@@ -1786,6 +1802,12 @@ class DomainService {
       this.cleanDomain(
         rawInput
       );
+
+    // Track domain search
+    analyticsService.trackDomainSearch(
+      input,
+      'registration'
+    );
 
     if (!input) {
       return [];
@@ -1924,6 +1946,11 @@ class DomainService {
   transferDomain(
     domain: string
   ) {
+    // Track domain transfer initiation
+    analyticsService.trackDomainTransfer(
+      domain
+    );
+
     window.location.href =
       this.getTransferUrl(
         domain
@@ -1942,6 +1969,11 @@ class DomainService {
   registerDomain(
     domain: string
   ) {
+    // Track domain registration initiation
+    analyticsService.trackDomainRegistration(
+      domain
+    );
+
     window.location.href =
       this.getRegistrationUrl(
         domain

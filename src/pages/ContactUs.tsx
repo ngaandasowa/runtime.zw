@@ -1,9 +1,21 @@
-import React from 'react';
+import React, {
+  useEffect,
+} from 'react';
 import { Mail } from 'lucide-react';
 import { FaWhatsapp } from 'react-icons/fa';
 
+import {
+  analyticsService,
+} from '../services/AnalyticsService';
+
 export const ContactUs: React.FC = () => {
   const whatsappNumber = '263788350229';
+
+  useEffect(() => {
+    analyticsService.trackPageView(
+      'Contact Us'
+    );
+  }, []);
 
   return (
     <div className="bg-white">

@@ -20,6 +20,10 @@ import {
   User,
 } from '../types';
 
+import {
+  analyticsService,
+} from './AnalyticsService';
+
 export const toRuntimeUser = (
   user: FirebaseUser
 ): User => ({
@@ -84,9 +88,19 @@ export const firebaseAuthService = {
         password
       );
 
-    return toRuntimeUser(
+    const user = toRuntimeUser(
       result.user
     );
+
+    // Track sign-in event
+    analyticsService.trackSignIn(
+      email,
+      'email'
+    );
+
+    analyticsService.setUser(user);
+
+    return user;
   },
 
   async signUp(
@@ -114,9 +128,19 @@ export const firebaseAuthService = {
       }
     );
 
-    return toRuntimeUser(
+    const user = toRuntimeUser(
       result.user
     );
+
+    // Track sign-up event
+    analyticsService.trackSignUp(
+      email,
+      'email'
+    );
+
+    analyticsService.setUser(user);
+
+    return user;
   },
 
   async signInWithGoogle() {
@@ -134,9 +158,19 @@ export const firebaseAuthService = {
         provider
       );
 
-    return toRuntimeUser(
+    const user = toRuntimeUser(
       result.user
     );
+
+    // Track Google sign-in event
+    analyticsService.trackSignIn(
+      result.user.email || '',
+      'google'
+    );
+
+    analyticsService.setUser(user);
+
+    return user;
   },
 
   async resetPassword(
@@ -149,6 +183,9 @@ export const firebaseAuthService = {
   },
 
   async signOut() {
+    // Track sign-out event
+    analyticsService.trackSignOut();
+
     await signOut(
       auth
     );

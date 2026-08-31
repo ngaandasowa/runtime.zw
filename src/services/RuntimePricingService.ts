@@ -17,6 +17,17 @@ export class RuntimePricingService {
       updated_at: new Date().toISOString(),
     },
     {
+      id: 'price-com',
+      tld: '.com',
+      upstream_price: 12.50,
+      runtime_registration_price: 14.00,
+      runtime_renewal_price: 1.00,
+      registry_cost: 12.50,
+      currency: 'USD',
+      active: true,
+      updated_at: new Date().toISOString(),
+    },
+    {
       id: 'price-org-zw',
       tld: '.org.zw',
       upstream_price: 1.80,

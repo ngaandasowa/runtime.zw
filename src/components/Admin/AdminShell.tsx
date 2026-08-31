@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 
 import {
+  BarChart3,
   CreditCard,
   DollarSign,
   FileText,
@@ -23,6 +24,10 @@ import {
 import {
   AdminDashboard,
 } from './AdminDashboard';
+
+import {
+  AdminAnalytics,
+} from './AdminAnalytics';
 
 import {
   AdminRegistryManager,
@@ -63,6 +68,7 @@ import {
 type NavItem = {
   id:
     | 'dashboard'
+    | 'analytics'
     | 'customers'
     | 'orders'
     | 'domains'
@@ -116,6 +122,11 @@ export const AdminShell:
         id: 'dashboard',
         label: 'Overview',
         icon: LayoutDashboard,
+      },
+      {
+        id: 'analytics',
+        label: 'Analytics',
+        icon: BarChart3,
       },
       {
         id: 'customers',
@@ -362,6 +373,11 @@ export const AdminShell:
               {adminSubView ===
                 'dashboard' && (
                 <AdminDashboard />
+              )}
+
+              {adminSubView ===
+                'analytics' && (
+                <AdminAnalytics />
               )}
 
               {adminSubView ===

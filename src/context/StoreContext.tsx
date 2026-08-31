@@ -721,6 +721,11 @@ const getDomainOrderDetails = async (
       renew: 2,
       transfer: 2,
     },
+    '.com': {
+      register: 14,
+      renew: 14,
+      transfer: 15,
+    },
     '.org.zw': {
       register: 3,
       renew: 3,

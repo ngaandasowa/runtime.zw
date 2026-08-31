@@ -7,6 +7,7 @@ import walletRoutes from './routes/wallet.js';
 import emailCampaignRoutes from './routes/emailCampaigns.js';
 import renewalLifecycleRoutes from './routes/renewalLifecycle.js';
 import nameserverRoutes from './routes/nameservers.js';
+import analyticsRoutes from './routes/analytics.js';
 const app = express();
 /*
  * ----------------------------------------------------------
@@ -76,6 +77,7 @@ app.use('/api/wallet', walletRoutes);
 app.use('/api/email-campaigns', emailCampaignRoutes);
 app.use('/api/renewals', renewalLifecycleRoutes);
 app.use('/api/nameservers', nameserverRoutes);
+app.use('/api/analytics', analyticsRoutes);
 /*
  * ----------------------------------------------------------
  * ERROR HANDLER

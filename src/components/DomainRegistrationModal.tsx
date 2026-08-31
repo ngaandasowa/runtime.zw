@@ -20,6 +20,7 @@ import {
   domainService,
   DomainAvailabilityResult,
   getCoZwRegistrationEligibility,
+  RUNTIME_ZW_PRICES,
 } from '../services/DomainService';
 import { nameserverService } from '../services/NameserverService';
 import { RegistrantDetails, RegistrantType } from '../types';
@@ -256,6 +257,23 @@ const [placedOrder, setPlacedOrder] =
   if (zispaTld) {
     setRenewPrice(
       ZISPA_PRICES[zispaTld]
+    );
+
+    return;
+  }
+
+  /*
+   * Check if this TLD has Runtime custom pricing
+   * (including .com and other non-ZISPA TLDs)
+   */
+  const normalized = domain.trim().toLowerCase();
+  const customTld = Object.keys(RUNTIME_ZW_PRICES)
+    .sort((a, b) => b.length - a.length)
+    .find((tld) => normalized.endsWith(tld));
+
+  if (customTld) {
+    setRenewPrice(
+      RUNTIME_ZW_PRICES[customTld].renew
     );
 
     return;

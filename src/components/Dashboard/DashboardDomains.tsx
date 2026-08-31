@@ -1,4 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import {
   AlertCircle,
   ArrowLeftRight,
@@ -23,6 +27,10 @@ import {
 } from '../../types';
 import { nameserverService } from '../../services/NameserverService';
 import { getAuth } from 'firebase/auth';
+
+import {
+  analyticsService,
+} from '../../services/AnalyticsService';
 
 const API_BASE_URL =
   import.meta.env
@@ -159,6 +167,12 @@ export const DashboardDomains: React.FC =
       renewDomain,
       showNotification,
     } = useStore();
+
+    useEffect(() => {
+      analyticsService.trackPageView(
+        'Dashboard My Domains'
+      );
+    }, []);
 
     const [
       activeTab,

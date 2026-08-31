@@ -1,4 +1,7 @@
-import React, { useState } from 'react';
+import React, {
+  useEffect,
+  useState,
+} from 'react';
 
 import {
   ArrowRight,
@@ -20,6 +23,10 @@ import {
   DomainAvailabilityResult,
   WhoisContact,
 } from '../services/DomainService';
+
+import {
+  analyticsService,
+} from '../services/AnalyticsService';
 
 type DetailRowProps = {
   label: string;
@@ -172,6 +179,12 @@ export const WhoisLookup: React.FC = () => {
     setPendingRegisterDomain,
     setRegistrationModalOpen,
   } = useStore();
+
+  useEffect(() => {
+    analyticsService.trackPageView(
+      'WHOIS Lookup'
+    );
+  }, []);
 
   const [query, setQuery] =
     useState('');

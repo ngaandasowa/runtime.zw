@@ -15,6 +15,10 @@ import {
   useStore,
 } from '../../context/StoreContext';
 
+import {
+  analyticsService,
+} from '../../services/AnalyticsService';
+
 const isRenewalOrder = (
   order: any
 ) =>
@@ -78,6 +82,12 @@ export const DashboardOverview:
       setDashboardSubView,
       setRegistrationModalOpen,
     } = useStore();
+
+    useEffect(() => {
+      analyticsService.trackPageView(
+        'Dashboard Overview'
+      );
+    }, []);
 
     const [walletBalance, setWalletBalance] =
       useState(0);

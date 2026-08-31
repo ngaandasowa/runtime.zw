@@ -88,6 +88,7 @@ export const Hero: React.FC = () => {
        * the upstream Ngaatec prices.
        */
       map['.co.zw'] = 2;
+      map['.com'] = 14;
       map['.org.zw'] = 3;
       map['.ac.zw'] = 3;
 
@@ -104,6 +105,7 @@ export const Hero: React.FC = () => {
        */
       setPrices({
         '.co.zw': 2,
+        '.com': 14,
         '.org.zw': 3,
         '.ac.zw': 3,
       });
@@ -313,14 +315,8 @@ const whatsappRegistration = (
   >
 
         <h1 className="max-w-3xl text-5xl font-bold tracking-tight text-zinc-950 sm:text-6xl lg:text-7xl">
-          Find your place online.
+          Name what’s next
         </h1>
-
-        <p className="mt-5 max-w-2xl text-base leading-7 text-zinc-600 sm:text-lg">
-          Runtime is a technology platform for domains, cloud infrastructure
-          and developer services. Register and manage domains today, with more
-          tools launching soon.
-        </p>
 
         <div className="mt-8 flex items-center rounded-full border border-zinc-200 bg-white p-1 shadow-sm">
           <button
