@@ -3,6 +3,9 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 
+// Initialize Firebase Admin SDK before anything else
+import './firebaseAdmin.js';
+
 import emailRoutes from './routes/email.js';
 import paymentRoutes from './routes/payments.js';
 import walletRoutes from './routes/wallet.js';
