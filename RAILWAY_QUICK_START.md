@@ -1,6 +1,8 @@
 # Railway Quick Start (5 Minutes)
 
-## TL;DR - Deploy Express Backend
+## TL;DR - Deploy Entire Express Backend
+
+Same as your Render deployment - all services in one Express server, now on Railway.
 
 ### 1. Get Firebase Credentials
 - Firebase Console → Your Project → Settings → Service Accounts
@@ -30,13 +32,23 @@ railway up
 ### 3. Get Your Backend URL
 Railway shows URL like: `https://your-project-production-xxx.up.railway.app`
 
-Your API is live at:
+Your entire backend is live at:
 ```
-https://your-project-production-xxx.up.railway.app/api/analytics
+https://your-project-production-xxx.up.railway.app
 ```
 
+All services available:
+- `GET /` - Health check
+- `POST /api/email/*` - Email service
+- `POST /api/payments/*` - Payment processing
+- `POST /api/wallet/*` - Wallet management
+- `POST /api/email-campaigns/*` - Email campaigns
+- `POST /api/renewals/*` - Renewal lifecycle
+- `GET /api/nameservers/*` - Nameserver management
+- `GET /api/analytics/*` - Analytics
+
 ### 4. Done! 
-Analytics endpoints are ready to use.
+Your entire backend is production-ready.
 
 ---
 
@@ -53,20 +65,34 @@ Analytics endpoints are ready to use.
 ## Test Deployment
 
 ```bash
-# After deploying, test the API
-curl https://your-project-production-xxx.up.railway.app/api/analytics
+# After deploying, test the backend health check
+curl https://your-project-production-xxx.up.railway.app
 
-# Should return JSON like:
+# Should return:
 # {
-#   "success": true,
-#   "data": { "totalUsers": 0, ... }
+#   "status": "ok",
+#   "service": "Runtime API"
 # }
+
+# Test analytics endpoint
+curl https://your-project-production-xxx.up.railway.app/api/analytics
 ```
 
 ---
 
-## Analytics Dashboard Access
+## Your Backend Services (All Deployed)
 
+1. **Email Service** - Send emails and manage templates
+2. **Payment Processing** - Handle domain payments
+3. **Wallet Management** - User wallet operations
+4. **Email Campaigns** - Manage email campaigns
+5. **Renewal Lifecycle** - Manage domain renewals
+6. **Nameserver Management** - Nameserver operations
+7. **Analytics** - Track user activity and page views
+
+All services use the same Railway backend URL.
+
+### Access Analytics Dashboard
 1. Deploy frontend (Vercel, Netlify, etc.)
 2. Sign in and navigate pages (generates events)
 3. Admin → Analytics → View all metrics
