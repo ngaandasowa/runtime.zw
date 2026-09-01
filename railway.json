@@ -1,0 +1,11 @@
+{
+  "$schema": "https://railway.app/schema.json",
+  "build": {
+    "builder": "nixpacks"
+  },
+  "deploy": {
+    "startCommand": "npm run start:backend",
+    "healthcheckPath": "/api/analytics",
+    "healthcheckTimeout": 30
+  }
+}
