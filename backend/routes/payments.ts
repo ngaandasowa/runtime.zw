@@ -3710,7 +3710,7 @@ router.post(
 
       const apiBaseUrl =
         process.env.RUNTIME_API_URL ||
-        'https://runtime-api-my3q.onrender.com';
+        'https://api.runtime.co.zw';
 
       const frontendUrl =
         process.env.RUNTIME_FRONTEND_URL ||

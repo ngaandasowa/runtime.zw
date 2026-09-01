@@ -136,7 +136,7 @@ const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ||
   (import.meta.env.DEV
     ? 'http://localhost:4000'
-    : 'https://runtime-api-my3q.onrender.com');
+    : 'https://api.runtime.co.zw');
 
 export const DomainRegistrationModal: React.FC = () => {
   const {

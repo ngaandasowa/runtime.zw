@@ -2037,7 +2037,7 @@ router.post('/pesepay/initiate', authenticate, async (req, res) => {
         await batch.commit();
         const { integrationKey, encryptionKey, } = getPesePayCredentials();
         const apiBaseUrl = process.env.RUNTIME_API_URL ||
-            'https://runtime-api-my3q.onrender.com';
+            'https://api.runtime.co.zw';
         const frontendUrl = process.env.RUNTIME_FRONTEND_URL ||
             'https://runtime.co.zw';
         const resultUrl = `${apiBaseUrl}/api/payments/pesepay/result?paymentId=${encodeURIComponent(paymentId)}`;
