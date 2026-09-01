@@ -4,18 +4,6 @@ import React, {
 } from 'react';
 
 import {
-  BarChart3,
-  TrendingUp,
-  Users,
-  CreditCard,
-  Globe,
-  Eye,
-  LogIn,
-  LogOut,
-  ShoppingCart,
-} from 'lucide-react';
-
-import {
   analyticsRepository,
   type AnalyticsData,
   type ConversionMetrics,
@@ -82,34 +70,28 @@ export const AdminAnalytics: React.FC =
       }
     };
 
-    if (loading) {
-      return (
-        <div className="flex items-center justify-center h-96">
-          <div className="text-gray-500">
-            Loading analytics...
-          </div>
-        </div>
-      );
-    }
-
     return (
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-gray-900">
-            Analytics Dashboard
-          </h1>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold text-[#3120ff]">ANALYTICS</p>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight text-zinc-950 sm:text-3xl">
+              Dashboard
+            </h1>
+          </div>
 
           <div className="flex gap-2">
             <button
               onClick={() =>
                 setDaysBack(7)
               }
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              disabled={loading}
+              className={`rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
                 daysBack === 7
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
+                  ? 'bg-[#3120ff] text-white'
+                  : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+              } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               7 Days
             </button>
@@ -118,11 +100,12 @@ export const AdminAnalytics: React.FC =
               onClick={() =>
                 setDaysBack(30)
               }
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              disabled={loading}
+              className={`rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
                 daysBack === 30
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
+                  ? 'bg-[#3120ff] text-white'
+                  : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+              } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               30 Days
             </button>
@@ -131,262 +114,218 @@ export const AdminAnalytics: React.FC =
               onClick={() =>
                 setDaysBack(90)
               }
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              disabled={loading}
+              className={`rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
                 daysBack === 90
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
+                  ? 'bg-[#3120ff] text-white'
+                  : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+              } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               90 Days
             </button>
           </div>
         </div>
 
-        {/* Key Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className={`space-y-6 ${loading ? 'opacity-60 pointer-events-none' : ''}`}>
+          {/* Key Metrics Grid */}
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           {/* Total Users */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 font-medium">
-                  Total Users
-                </p>
-
-                <p className="text-2xl font-bold text-gray-900 mt-2">
-                  {analytics?.totalUsers ||
-                    0}
-                </p>
-              </div>
-
-              <div className="bg-blue-100 p-3 rounded-full">
-                <Users className="w-6 h-6 text-blue-600" />
-              </div>
-            </div>
+          <div className="rounded-lg border border-zinc-200 bg-white p-4">
+            <p className="text-xs font-medium text-zinc-500">
+              Total Users
+            </p>
+            <p className="mt-2 text-2xl font-bold text-zinc-950">
+              {analytics?.totalUsers || 0}
+            </p>
           </div>
 
           {/* Active Users */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 font-medium">
-                  Active Users
-                </p>
-
-                <p className="text-2xl font-bold text-gray-900 mt-2">
-                  {analytics?.activeUsers ||
-                    0}
-                </p>
-              </div>
-
-              <div className="bg-green-100 p-3 rounded-full">
-                <TrendingUp className="w-6 h-6 text-green-600" />
-              </div>
-            </div>
+          <div className="rounded-lg border border-zinc-200 bg-white p-4">
+            <p className="text-xs font-medium text-zinc-500">
+              Active Users
+            </p>
+            <p className="mt-2 text-2xl font-bold text-zinc-950">
+              {analytics?.activeUsers || 0}
+            </p>
           </div>
 
           {/* Total Revenue */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 font-medium">
-                  Total Revenue
-                </p>
-
-                <p className="text-2xl font-bold text-gray-900 mt-2">
-                  $
-                  {(
-                    analytics?.totalPaymentAmount ||
-                    0
-                  ).toFixed(2)}
-                </p>
-              </div>
-
-              <div className="bg-purple-100 p-3 rounded-full">
-                <CreditCard className="w-6 h-6 text-purple-600" />
-              </div>
-            </div>
+          <div className="rounded-lg border border-zinc-200 bg-white p-4">
+            <p className="text-xs font-medium text-zinc-500">
+              Total Revenue
+            </p>
+            <p className="mt-2 text-2xl font-bold text-zinc-950">
+              $
+              {(
+                analytics?.totalPaymentAmount ||
+                0
+              ).toFixed(2)}
+            </p>
           </div>
 
           {/* Payment Count */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 font-medium">
-                  Payments
-                </p>
-
-                <p className="text-2xl font-bold text-gray-900 mt-2">
-                  {analytics?.paymentCount ||
-                    0}
-                </p>
-              </div>
-
-              <div className="bg-yellow-100 p-3 rounded-full">
-                <ShoppingCart className="w-6 h-6 text-yellow-600" />
-              </div>
-            </div>
+          <div className="rounded-lg border border-zinc-200 bg-white p-4">
+            <p className="text-xs font-medium text-zinc-500">
+              Payments
+            </p>
+            <p className="mt-2 text-2xl font-bold text-zinc-950">
+              {analytics?.paymentCount ||
+                0}
+            </p>
           </div>
         </div>
 
         {/* User Activity Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
           {/* Sign Ups */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 font-medium">
-                  Sign Ups
-                </p>
-
-                <p className="text-2xl font-bold text-gray-900 mt-2">
-                  {analytics?.signUps || 0}
-                </p>
-              </div>
-
-              <div className="bg-indigo-100 p-3 rounded-full">
-                <Users className="w-6 h-6 text-indigo-600" />
-              </div>
-            </div>
+          <div className="rounded-lg border border-zinc-200 bg-white p-4">
+            <p className="text-xs font-medium text-zinc-500">
+              Sign Ups
+            </p>
+            <p className="mt-2 text-2xl font-bold text-zinc-950">
+              {analytics?.signUps || 0}
+            </p>
           </div>
 
           {/* Sign Ins */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 font-medium">
-                  Sign Ins
-                </p>
-
-                <p className="text-2xl font-bold text-gray-900 mt-2">
-                  {analytics?.signIns || 0}
-                </p>
-              </div>
-
-              <div className="bg-green-100 p-3 rounded-full">
-                <LogIn className="w-6 h-6 text-green-600" />
-              </div>
-            </div>
+          <div className="rounded-lg border border-zinc-200 bg-white p-4">
+            <p className="text-xs font-medium text-zinc-500">
+              Sign Ins
+            </p>
+            <p className="mt-2 text-2xl font-bold text-zinc-950">
+              {analytics?.signIns || 0}
+            </p>
           </div>
 
           {/* Sign Outs */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 font-medium">
-                  Sign Outs
-                </p>
-
-                <p className="text-2xl font-bold text-gray-900 mt-2">
-                  {analytics?.signOuts || 0}
-                </p>
-              </div>
-
-              <div className="bg-red-100 p-3 rounded-full">
-                <LogOut className="w-6 h-6 text-red-600" />
-              </div>
-            </div>
+          <div className="rounded-lg border border-zinc-200 bg-white p-4">
+            <p className="text-xs font-medium text-zinc-500">
+              Sign Outs
+            </p>
+            <p className="mt-2 text-2xl font-bold text-zinc-950">
+              {analytics?.signOuts || 0}
+            </p>
           </div>
         </div>
 
         {/* Domain Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
           {/* Domain Searches */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 font-medium">
-                  Domain Searches
-                </p>
-
-                <p className="text-2xl font-bold text-gray-900 mt-2">
-                  {analytics?.domainSearches ||
-                    0}
-                </p>
-              </div>
-
-              <div className="bg-cyan-100 p-3 rounded-full">
-                <Eye className="w-6 h-6 text-cyan-600" />
-              </div>
-            </div>
+          <div className="rounded-lg border border-zinc-200 bg-white p-4">
+            <p className="text-xs font-medium text-zinc-500">
+              Domain Searches
+            </p>
+            <p className="mt-2 text-2xl font-bold text-zinc-950">
+              {analytics?.domainSearches ||
+                0}
+            </p>
           </div>
 
           {/* Registrations */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 font-medium">
-                  Registrations
-                </p>
-
-                <p className="text-2xl font-bold text-gray-900 mt-2">
-                  {
-                    analytics?.domainRegistrations ||
-                    0
-                  }
-                </p>
-              </div>
-
-              <div className="bg-emerald-100 p-3 rounded-full">
-                <Globe className="w-6 h-6 text-emerald-600" />
-              </div>
-            </div>
+          <div className="rounded-lg border border-zinc-200 bg-white p-4">
+            <p className="text-xs font-medium text-zinc-500">
+              Registrations
+            </p>
+            <p className="mt-2 text-2xl font-bold text-zinc-950">
+              {
+                analytics?.domainRegistrations ||
+                0
+              }
+            </p>
           </div>
 
           {/* Transfers */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 font-medium">
-                  Transfers
-                </p>
-
-                <p className="text-2xl font-bold text-gray-900 mt-2">
-                  {analytics?.domainTransfers ||
-                    0}
-                </p>
-              </div>
-
-              <div className="bg-orange-100 p-3 rounded-full">
-                <TrendingUp className="w-6 h-6 text-orange-600" />
-              </div>
-            </div>
+          <div className="rounded-lg border border-zinc-200 bg-white p-4">
+            <p className="text-xs font-medium text-zinc-500">
+              Transfers
+            </p>
+            <p className="mt-2 text-2xl font-bold text-zinc-950">
+              {analytics?.domainTransfers ||
+                0}
+            </p>
           </div>
         </div>
 
+        {/* Page Views Overview */}
+        {analytics && (
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+            {/* Total Page Views */}
+            <div className="rounded-lg border border-zinc-200 bg-white p-4">
+              <p className="text-xs font-medium text-zinc-500">
+                Total Page Views
+              </p>
+              <p className="mt-2 text-2xl font-bold text-zinc-950">
+                {analytics.topPages?.reduce(
+                  (sum, page) =>
+                    sum + page.count,
+                  0
+                ) || 0}
+              </p>
+            </div>
+
+            {/* Unique Pages */}
+            <div className="rounded-lg border border-zinc-200 bg-white p-4">
+              <p className="text-xs font-medium text-zinc-500">
+                Unique Pages
+              </p>
+              <p className="mt-2 text-2xl font-bold text-zinc-950">
+                {analytics.topPages?.length || 0}
+              </p>
+            </div>
+
+            {/* Avg Views Per Page */}
+            <div className="rounded-lg border border-zinc-200 bg-white p-4">
+              <p className="text-xs font-medium text-zinc-500">
+                Avg per Page
+              </p>
+              <p className="mt-2 text-2xl font-bold text-zinc-950">
+                {(analytics.topPages?.length || 0) > 0
+                  ? Math.round(
+                      (analytics.topPages?.reduce(
+                        (sum, page) =>
+                          sum +
+                          page.count,
+                        0
+                      ) || 0) /
+                        (analytics.topPages?.length || 1)
+                    )
+                  : 0}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Conversion Metrics */}
         {metrics && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">
+          <div className="rounded-lg border border-zinc-200 bg-white p-6">
+            <h2 className="text-sm font-bold text-zinc-950">
               Conversion Metrics
             </h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-5">
               <div>
-                <p className="text-sm text-gray-600 font-medium">
-                  Total Visitors
+                <p className="text-xs font-medium text-zinc-500">
+                  Visitors
                 </p>
-
-                <p className="text-2xl font-bold text-gray-900 mt-2">
+                <p className="mt-1 text-xl font-bold text-zinc-950">
                   {metrics.totalVisitors}
                 </p>
               </div>
 
               <div>
-                <p className="text-sm text-gray-600 font-medium">
-                  Sign Up Rate
+                <p className="text-xs font-medium text-zinc-500">
+                  Sign Up
                 </p>
-
-                <p className="text-2xl font-bold text-blue-600 mt-2">
+                <p className="mt-1 text-xl font-bold text-zinc-950">
                   {metrics.signUpConversion}%
                 </p>
               </div>
 
               <div>
-                <p className="text-sm text-gray-600 font-medium">
-                  Payment Rate
+                <p className="text-xs font-medium text-zinc-500">
+                  Payment
                 </p>
-
-                <p className="text-2xl font-bold text-green-600 mt-2">
+                <p className="mt-1 text-xl font-bold text-zinc-950">
                   {
                     metrics.paymentConversion
                   }%
@@ -394,11 +333,10 @@ export const AdminAnalytics: React.FC =
               </div>
 
               <div>
-                <p className="text-sm text-gray-600 font-medium">
-                  Avg Order Value
+                <p className="text-xs font-medium text-zinc-500">
+                  Avg Order
                 </p>
-
-                <p className="text-2xl font-bold text-purple-600 mt-2">
+                <p className="mt-1 text-xl font-bold text-zinc-950">
                   $
                   {
                     metrics.averageOrderValue
@@ -407,11 +345,10 @@ export const AdminAnalytics: React.FC =
               </div>
 
               <div>
-                <p className="text-sm text-gray-600 font-medium">
-                  Domain Reg Rate
+                <p className="text-xs font-medium text-zinc-500">
+                  Domain Reg
                 </p>
-
-                <p className="text-2xl font-bold text-orange-600 mt-2">
+                <p className="mt-1 text-xl font-bold text-zinc-950">
                   {
                     metrics.domainRegistrationRate
                   }%
@@ -426,25 +363,24 @@ export const AdminAnalytics: React.FC =
           Object.keys(
             analytics.signInMethods
           ).length > 0 && (
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">
+            <div className="rounded-lg border border-zinc-200 bg-white p-6">
+              <h2 className="text-sm font-bold text-zinc-950">
                 Sign In Methods
               </h2>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
                 {Object.entries(
                   analytics.signInMethods
                 ).map(
                   ([method, count]) => (
                     <div
                       key={method}
-                      className="p-4 bg-gray-50 rounded-lg"
+                      className="flex flex-col"
                     >
-                      <p className="text-sm text-gray-600 capitalize">
+                      <p className="text-xs font-medium capitalize text-zinc-500">
                         {method}
                       </p>
-
-                      <p className="text-2xl font-bold text-gray-900 mt-2">
+                      <p className="mt-1 text-xl font-bold text-zinc-950">
                         {count}
                       </p>
                     </div>
@@ -458,23 +394,23 @@ export const AdminAnalytics: React.FC =
         {analytics?.topDomains &&
           analytics.topDomains.length >
             0 && (
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">
+            <div className="rounded-lg border border-zinc-200 bg-white p-6">
+              <h2 className="text-sm font-bold text-zinc-950">
                 Most Searched Domains
               </h2>
 
-              <div className="space-y-2">
+              <div className="mt-4 divide-y divide-zinc-100">
                 {analytics.topDomains.map(
                   (item, index) => (
                     <div
                       key={index}
-                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                      className="flex items-center justify-between py-3 text-sm"
                     >
-                      <span className="font-medium text-gray-900">
+                      <span className="font-medium text-zinc-900">
                         {item.domain}
                       </span>
 
-                      <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
+                      <span className="text-xs font-medium text-zinc-500">
                         {item.count} searches
                       </span>
                     </div>
@@ -484,108 +420,25 @@ export const AdminAnalytics: React.FC =
             </div>
           )}
 
-        {/* Page Views Overview */}
-        {analytics?.topPages && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Total Page Views */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600 font-medium">
-                    Total Page Views
-                  </p>
-
-                  <p className="text-2xl font-bold text-gray-900 mt-2">
-                    {analytics.topPages.reduce(
-                      (sum, page) =>
-                        sum + page.count,
-                      0
-                    )}
-                  </p>
-                </div>
-
-                <div className="bg-indigo-100 p-3 rounded-full">
-                  <Eye className="w-6 h-6 text-indigo-600" />
-                </div>
-              </div>
-            </div>
-
-            {/* Unique Pages */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600 font-medium">
-                    Unique Pages
-                  </p>
-
-                  <p className="text-2xl font-bold text-gray-900 mt-2">
-                    {
-                      analytics.topPages
-                        .length
-                    }
-                  </p>
-                </div>
-
-                <div className="bg-purple-100 p-3 rounded-full">
-                  <BarChart3 className="w-6 h-6 text-purple-600" />
-                </div>
-              </div>
-            </div>
-
-            {/* Avg Views Per Page */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600 font-medium">
-                    Avg Views per Page
-                  </p>
-
-                  <p className="text-2xl font-bold text-gray-900 mt-2">
-                    {analytics.topPages
-                      .length > 0
-                      ? Math.round(
-                          analytics.topPages.reduce(
-                            (sum, page) =>
-                              sum +
-                              page.count,
-                            0
-                          ) /
-                            analytics
-                              .topPages
-                              .length
-                        )
-                      : 0}
-                  </p>
-                </div>
-
-                <div className="bg-rose-100 p-3 rounded-full">
-                  <TrendingUp className="w-6 h-6 text-rose-600" />
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Top Pages */}
-        {analytics?.topPages &&
-          analytics.topPages.length > 0 && (
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">
+        {analytics && (analytics.topPages?.length || 0) > 0 && (
+            <div className="rounded-lg border border-zinc-200 bg-white p-6">
+              <h2 className="text-sm font-bold text-zinc-950">
                 Most Visited Pages
               </h2>
 
-              <div className="space-y-2">
-                {analytics.topPages.map(
+              <div className="mt-4 divide-y divide-zinc-100">
+                {analytics.topPages?.map(
                   (item, index) => (
                     <div
                       key={index}
-                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                      className="flex items-center justify-between py-3 text-sm"
                     >
-                      <span className="font-medium text-gray-900">
+                      <span className="font-medium text-zinc-900">
                         {item.page}
                       </span>
 
-                      <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
+                      <span className="text-xs font-medium text-zinc-500">
                         {item.count} views
                       </span>
                     </div>
@@ -599,58 +452,55 @@ export const AdminAnalytics: React.FC =
         {analytics?.recentSessions &&
           analytics.recentSessions.length >
             0 && (
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">
+            <div className="rounded-lg border border-zinc-200 bg-white p-6">
+              <h2 className="text-sm font-bold text-zinc-950">
                 Recent Activity
               </h2>
 
-              <div className="overflow-x-auto">
+              <div className="mt-4 overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b">
+                  <thead className="border-b border-zinc-100">
                     <tr>
-                      <th className="px-6 py-3 text-left font-medium text-gray-900">
-                        User ID
+                      <th className="py-2 text-left text-xs font-medium text-zinc-500">
+                        User
                       </th>
 
-                      <th className="px-6 py-3 text-left font-medium text-gray-900">
+                      <th className="py-2 text-left text-xs font-medium text-zinc-500">
                         Event
                       </th>
 
-                      <th className="px-6 py-3 text-left font-medium text-gray-900">
-                        Timestamp
+                      <th className="py-2 text-left text-xs font-medium text-zinc-500">
+                        Time
                       </th>
                     </tr>
                   </thead>
 
-                  <tbody>
+                  <tbody className="divide-y divide-zinc-100">
                     {analytics.recentSessions
-                      .slice(0, 20)
+                      .slice(0, 10)
                       .map(
                         (session, index) => (
                           <tr
                             key={index}
-                            className="border-b hover:bg-gray-50"
+                            className="hover:bg-zinc-50"
                           >
-                            <td className="px-6 py-3 text-gray-600 font-mono text-xs">
+                            <td className="py-2 font-mono text-xs text-zinc-600">
                               {session.userId.slice(
                                 0,
-                                12
+                                8
                               )}
-                              ...
                             </td>
 
-                            <td className="px-6 py-3">
-                              <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">
-                                {
-                                  session.event
-                                }
-                              </span>
+                            <td className="py-2 text-xs font-medium text-zinc-700">
+                              {
+                                session.event
+                              }
                             </td>
 
-                            <td className="px-6 py-3 text-gray-600 text-xs">
+                            <td className="py-2 text-xs text-zinc-500">
                               {new Date(
                                 session.timestamp
-                              ).toLocaleString()}
+                              ).toLocaleTimeString()}
                             </td>
                           </tr>
                         )
@@ -666,25 +516,24 @@ export const AdminAnalytics: React.FC =
           Object.keys(
             analytics.usersByRole
           ).length > 0 && (
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">
+            <div className="rounded-lg border border-zinc-200 bg-white p-6">
+              <h2 className="text-sm font-bold text-zinc-950">
                 Users by Role
               </h2>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
                 {Object.entries(
                   analytics.usersByRole
                 ).map(
                   ([role, count]) => (
                     <div
                       key={role}
-                      className="p-4 bg-gray-50 rounded-lg"
+                      className="flex flex-col"
                     >
-                      <p className="text-sm text-gray-600 capitalize">
+                      <p className="text-xs font-medium capitalize text-zinc-500">
                         {role}
                       </p>
-
-                      <p className="text-2xl font-bold text-gray-900 mt-2">
+                      <p className="mt-1 text-xl font-bold text-zinc-950">
                         {count}
                       </p>
                     </div>
@@ -693,6 +542,7 @@ export const AdminAnalytics: React.FC =
               </div>
             </div>
           )}
+        </div>
       </div>
     );
   };

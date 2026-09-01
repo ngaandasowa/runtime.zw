@@ -50,6 +50,10 @@ import {
 } from '../services/EmailNotificationService';
 
 import {
+  analyticsService,
+} from '../services/AnalyticsService';
+
+import {
   checkoutRepository,
 } from '../services/CheckoutRepository';
 
@@ -390,6 +394,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             null
           );
 
+          analyticsService.setUser(null);
+
           setAuthReady(
             true
           );
@@ -405,6 +411,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setCurrentUser(
           profile
         );
+
+        analyticsService.setUser(
+          profile
+        );
       } catch (
         error
       ) {
@@ -416,6 +426,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setCurrentUser(
           user
         );
+
+        analyticsService.setUser({
+          id: user.uid,
+          email: user.email || '',
+        } as User);
       } finally {
         setAuthReady(
           true

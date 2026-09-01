@@ -152,6 +152,12 @@ router.post(
         data,
       } = req.body;
 
+      console.log('📊 Analytics event received:', {
+        eventName,
+        userId: userId ? userId.slice(0, 8) + '...' : 'anonymous',
+        hasData: !!data,
+      });
+
       if (!eventName) {
         return res.status(400).json(
           {

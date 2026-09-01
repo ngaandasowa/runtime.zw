@@ -111,15 +111,16 @@ class AnalyticsDataService {
         for (const event of events) {
             const eventType = event.eventName ||
                 event.event_type;
+            const eventData = event.data || {};
             if (eventType === 'user_sign_up') {
                 signUps++;
-                const method = event.method || 'email';
+                const method = eventData.method || 'email';
                 signInMethods[method] =
                     (signInMethods[method] || 0) + 1;
             }
             else if (eventType === 'user_sign_in') {
                 signIns++;
-                const method = event.method || 'email';
+                const method = eventData.method || 'email';
                 signInMethods[method] =
                     (signInMethods[method] || 0) + 1;
             }
@@ -132,42 +133,44 @@ class AnalyticsDataService {
             }
             else if (eventType ===
                 'domain_check') {
-                if (event.domain) {
-                    domainCounts[event.domain] =
-                        (domainCounts[event.domain] || 0) + 1;
+                if (eventData.domain) {
+                    domainCounts[eventData.domain] =
+                        (domainCounts[eventData.domain] || 0) + 1;
                 }
             }
             else if (eventType ===
                 'domain_registration_initiated') {
                 domainRegistrations++;
-                if (event.domain) {
-                    domainCounts[event.domain] =
-                        (domainCounts[event.domain] || 0) + 1;
+                if (eventData.domain) {
+                    domainCounts[eventData.domain] =
+                        (domainCounts[eventData.domain] || 0) + 1;
                 }
             }
             else if (eventType ===
                 'domain_transfer_initiated') {
                 domainTransfers++;
-                if (event.domain) {
-                    domainCounts[event.domain] =
-                        (domainCounts[event.domain] || 0) + 1;
+                if (eventData.domain) {
+                    domainCounts[eventData.domain] =
+                        (domainCounts[eventData.domain] || 0) + 1;
                 }
             }
             else if (eventType ===
                 'payment_completed') {
                 paymentCount++;
                 totalPaymentAmount +=
-                    event.amount || 0;
-                const method = event.method || 'card';
+                    eventData.amount || 0;
+                const method = eventData.method || 'card';
                 paymentMethods[method] =
                     (paymentMethods[method] || 0) + 1;
             }
             else if (eventType === 'page_view') {
-                const page = event.page_name ||
-                    event.page;
-                pageCounts[page] =
-                    (pageCounts[page] || 0) +
-                        1;
+                const page = eventData.page_name ||
+                    eventData.page;
+                if (page) {
+                    pageCounts[page] =
+                        (pageCounts[page] || 0) +
+                            1;
+                }
             }
             // Collect recent sessions
             if (recentSessions.length < 50) {

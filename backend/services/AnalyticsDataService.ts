@@ -218,12 +218,14 @@ class AnalyticsDataService {
         event.eventName ||
         event.event_type;
 
+      const eventData = event.data || {};
+
       if (
         eventType === 'user_sign_up'
       ) {
         signUps++;
         const method =
-          event.method || 'email';
+          eventData.method || 'email';
 
         signInMethods[method] =
           (signInMethods[
@@ -234,7 +236,7 @@ class AnalyticsDataService {
       ) {
         signIns++;
         const method =
-          event.method || 'email';
+          eventData.method || 'email';
 
         signInMethods[method] =
           (signInMethods[
@@ -253,12 +255,12 @@ class AnalyticsDataService {
         eventType ===
         'domain_check'
       ) {
-        if (event.domain) {
+        if (eventData.domain) {
           domainCounts[
-            event.domain
+            eventData.domain
           ] =
             (domainCounts[
-              event.domain
+              eventData.domain
             ] || 0) + 1;
         }
       } else if (
@@ -266,12 +268,12 @@ class AnalyticsDataService {
         'domain_registration_initiated'
       ) {
         domainRegistrations++;
-        if (event.domain) {
+        if (eventData.domain) {
           domainCounts[
-            event.domain
+            eventData.domain
           ] =
             (domainCounts[
-              event.domain
+              eventData.domain
             ] || 0) + 1;
         }
       } else if (
@@ -279,12 +281,12 @@ class AnalyticsDataService {
         'domain_transfer_initiated'
       ) {
         domainTransfers++;
-        if (event.domain) {
+        if (eventData.domain) {
           domainCounts[
-            event.domain
+            eventData.domain
           ] =
             (domainCounts[
-              event.domain
+              eventData.domain
             ] || 0) + 1;
         }
       } else if (
@@ -293,10 +295,10 @@ class AnalyticsDataService {
       ) {
         paymentCount++;
         totalPaymentAmount +=
-          event.amount || 0;
+          eventData.amount || 0;
 
         const method =
-          event.method || 'card';
+          eventData.method || 'card';
 
         paymentMethods[method] =
           (paymentMethods[
@@ -306,12 +308,14 @@ class AnalyticsDataService {
         eventType === 'page_view'
       ) {
         const page =
-          event.page_name ||
-          event.page;
+          eventData.page_name ||
+          eventData.page;
 
-        pageCounts[page] =
-          (pageCounts[page] || 0) +
-          1;
+        if (page) {
+          pageCounts[page] =
+            (pageCounts[page] || 0) +
+            1;
+        }
       }
 
       // Collect recent sessions
