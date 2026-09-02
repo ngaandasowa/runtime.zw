@@ -427,6 +427,57 @@ export const firebaseAuthService = {
     }
   },
 
+  async refreshVerificationStatus():
+    Promise<User> {
+    const firebaseUser =
+      auth.currentUser;
+
+    if (!firebaseUser) {
+      throw new Error(
+        'You must be signed in to refresh verification status.'
+      );
+    }
+
+    try {
+      /*
+       * Firebase keeps the authenticated user object in memory.
+       * After the customer clicks the verification link in their
+       * email, reload() asks Firebase for the latest emailVerified
+       * value without requiring sign-out/sign-in.
+       */
+      await firebaseUser.reload();
+
+      const refreshedUser =
+        auth.currentUser;
+
+      if (!refreshedUser) {
+        throw new Error(
+          'Your session could not be refreshed. Please sign in again.'
+        );
+      }
+
+      return toRuntimeUser(
+        refreshedUser
+      );
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        (
+          error.message ===
+            'Your session could not be refreshed. Please sign in again.' ||
+          error.message ===
+            'You must be signed in to refresh verification status.'
+        )
+      ) {
+        throw error;
+      }
+
+      return throwFriendly(
+        error
+      );
+    }
+  },
+
   async changePassword(
     currentPassword: string,
     newPassword: string

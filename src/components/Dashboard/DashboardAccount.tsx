@@ -10,6 +10,7 @@ export const DashboardAccount: React.FC = () => {
     currentUser,
     updateCurrentUserProfile,
     resendVerificationEmail,
+    refreshEmailVerification,
     changePassword,
     showNotification,
   } = useStore();
@@ -20,6 +21,8 @@ export const DashboardAccount: React.FC = () => {
   const [newPassword, setNewPassword] = useState('');
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [verificationLoading, setVerificationLoading] = useState(false);
+  const [verificationRefreshLoading, setVerificationRefreshLoading] = useState(false);
+  const [verificationSent, setVerificationSent] = useState(false);
 
   useEffect(() => {
   if (!currentUser) {
@@ -100,6 +103,7 @@ export const DashboardAccount: React.FC = () => {
         setVerificationLoading(true);
 
         await resendVerificationEmail();
+        setVerificationSent(true);
       } catch (error) {
         showNotification(
           error instanceof Error
@@ -112,6 +116,28 @@ export const DashboardAccount: React.FC = () => {
       }
     };
 
+  const handleRefreshVerification =
+    async () => {
+      try {
+        setVerificationRefreshLoading(
+          true
+        );
+
+        await refreshEmailVerification();
+      } catch (error) {
+        showNotification(
+          error instanceof Error
+            ? error.message
+            : 'Unable to refresh verification status.',
+          'error'
+        );
+      } finally {
+        setVerificationRefreshLoading(
+          false
+        );
+      }
+    };
+
   return (
     <div className="space-y-6 max-w-4xl">
       
@@ -121,7 +147,7 @@ export const DashboardAccount: React.FC = () => {
           <span>Account Settings &amp; Security</span>
         </h1>
         <p className="text-xs text-zinc-500 mt-1">
-          Manage your verified customer profile, organisation details, and security policies.
+          Manage your profile, contact details, email verification and account security.
         </p>
       </div>
 
@@ -167,27 +193,64 @@ export const DashboardAccount: React.FC = () => {
                   </span>
                 ) : (
                   <span className="rounded-xl border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] font-bold text-amber-700">
-                    Unverified
+                    Email not verified
                   </span>
                 )}
               </div>
 
+              {currentUser?.email_verified_at && (
+                <p className="mt-2 text-[11px] font-medium text-emerald-700">
+                  Your email address has been verified.
+                </p>
+              )}
+
               {!currentUser?.email_verified_at && (
-                <div className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
-                  <p className="text-[11px] leading-5 text-amber-800">
-                    You can keep using Runtime, but verify this email to confirm that you own it.
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-[11px] font-semibold text-amber-900">
+                    Verify your email
                   </p>
 
-                  <button
-                    type="button"
-                    disabled={verificationLoading}
-                    onClick={handleResendVerification}
-                    className="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-2 text-[11px] font-bold text-amber-800 disabled:opacity-50"
-                  >
-                    {verificationLoading
-                      ? 'Sending...'
-                      : 'Resend'}
-                  </button>
+                  <p className="mt-1 text-[11px] leading-5 text-amber-800">
+                    We will send a verification link to {currentUser?.email}. Your Runtime account remains usable while verification is pending.
+                  </p>
+
+                  {verificationSent && (
+                    <p className="mt-2 text-[11px] font-medium text-amber-900">
+                      Verification email sent. Open the link in your inbox, then return here and check your status.
+                    </p>
+                  )}
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={
+                        verificationLoading ||
+                        verificationRefreshLoading
+                      }
+                      onClick={handleResendVerification}
+                      className="rounded-lg bg-[#3120ff] px-3 py-2 text-[11px] font-bold text-white transition hover:bg-[#2819d9] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {verificationLoading
+                        ? 'Sending...'
+                        : verificationSent
+                          ? 'Send again'
+                          : 'Send verification email'}
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={
+                        verificationLoading ||
+                        verificationRefreshLoading
+                      }
+                      onClick={handleRefreshVerification}
+                      className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-[11px] font-bold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {verificationRefreshLoading
+                        ? 'Checking...'
+                        : "I've verified my email"}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

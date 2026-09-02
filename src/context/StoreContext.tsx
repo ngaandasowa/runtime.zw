@@ -279,6 +279,9 @@ interface StoreContextType {
   resendVerificationEmail:
     () => Promise<void>;
 
+  refreshEmailVerification:
+    () => Promise<boolean>;
+
   changePassword: (
     currentPassword: string,
     newPassword: string
@@ -861,6 +864,56 @@ useEffect(() => {
         'Verification email sent. Check your inbox.',
         'success'
       );
+    };
+
+  const refreshEmailVerification =
+    async (): Promise<boolean> => {
+      const authUser =
+        await firebaseAuthService
+          .refreshVerificationStatus();
+
+      /*
+       * Reconcile Firebase's latest identity state into Firestore
+       * and then into the live Runtime session.
+       */
+      const profile =
+        await userService.ensureUser(
+          authUser
+        );
+
+      setCurrentUser(
+        profile
+      );
+
+      setUsers(
+        (previous) =>
+          previous.map(
+            (user) =>
+              user.id ===
+              profile.id
+                ? {
+                    ...user,
+                    ...profile,
+                  }
+                : user
+          )
+      );
+
+      const verified =
+        Boolean(
+          profile.email_verified_at
+        );
+
+      showNotification(
+        verified
+          ? 'Your email is verified.'
+          : 'Your email is not verified yet. Open the verification link in your inbox, then check again.',
+        verified
+          ? 'success'
+          : 'info'
+      );
+
+      return verified;
     };
 
   const changePassword =
@@ -4093,6 +4146,7 @@ const getDomainOrderDetails = async (
       loginWithGoogle,
       resetPassword,
       resendVerificationEmail,
+      refreshEmailVerification,
       changePassword,
       adminUpdateCustomer,
       adminDeleteCustomer,
