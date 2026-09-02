@@ -59,6 +59,114 @@ const requireSuperAdmin = (req, res) => {
     }
     return true;
 };
+router.get('/', authenticate, async (req, res) => {
+    if (!requireSuperAdmin(req, res)) {
+        return;
+    }
+    try {
+        const snapshot = await adminDb
+            .collection('users')
+            .get();
+        const firestoreUsers = snapshot.docs.map((item) => ({
+            ...item.data(),
+            id: item.data()
+                ?.id ||
+                item.id,
+        }));
+        /*
+         * Firebase Auth is authoritative for whether an email
+         * identity is actually verified.
+         *
+         * Firestore can contain an old email_verified_at value,
+         * especially for customers that originally signed in
+         * with Google before verification syncing was added.
+         */
+        const authUsers = new Map();
+        const BATCH_SIZE = 100;
+        for (let index = 0; index <
+            firestoreUsers.length; index +=
+            BATCH_SIZE) {
+            const batch = firestoreUsers
+                .slice(index, index +
+                BATCH_SIZE)
+                .map((user) => ({
+                uid: String(user.id),
+            }));
+            if (batch.length ===
+                0) {
+                continue;
+            }
+            const result = await adminAuth
+                .getUsers(batch);
+            for (const firebaseUser of result.users) {
+                authUsers.set(firebaseUser.uid, {
+                    emailVerified: firebaseUser
+                        .emailVerified,
+                    providerIds: firebaseUser
+                        .providerData
+                        .map((provider) => provider.providerId),
+                });
+            }
+        }
+        const now = new Date()
+            .toISOString();
+        const users = await Promise.all(firestoreUsers.map(async (user) => {
+            const authState = authUsers.get(String(user.id));
+            if (!authState) {
+                return user;
+            }
+            /*
+             * Do not infer verification from "@gmail.com".
+             * A Gmail address may have been registered using
+             * email/password.
+             *
+             * Firebase emailVerified is the source of truth.
+             */
+            const verified = authState
+                .emailVerified ===
+                true;
+            const nextVerifiedAt = verified
+                ? user
+                    .email_verified_at ||
+                    now
+                : null;
+            const nextUser = {
+                ...user,
+                email_verified_at: nextVerifiedAt,
+                auth_providers: authState
+                    .providerIds,
+            };
+            if (nextVerifiedAt !==
+                (user
+                    .email_verified_at ||
+                    null)) {
+                await adminDb
+                    .collection('users')
+                    .doc(String(user.id))
+                    .set({
+                    email_verified_at: nextVerifiedAt,
+                    updated_at: now,
+                }, {
+                    merge: true,
+                });
+            }
+            return nextUser;
+        }));
+        return res.json({
+            success: true,
+            users,
+        });
+    }
+    catch (error) {
+        console.error('Unable to load synced admin users:', error);
+        return res
+            .status(500)
+            .json({
+            success: false,
+            message: 'Unable to load customer accounts.',
+        });
+    }
+});
 router.patch('/:userId', authenticate, async (req, res) => {
     if (!requireSuperAdmin(req, res)) {
         return;
