@@ -24,6 +24,10 @@ import type {
   User,
 } from '../types';
 
+import {
+  emailValidationService,
+} from './EmailValidationService';
+
 export const normalizeEmail = (
   email: string
 ) =>
@@ -174,7 +178,7 @@ export const firebaseAuthService = {
   async signIn(
     email: string,
     password: string
-  ) {
+  ): Promise<User> {
     const normalized =
       normalizeEmail(email);
 
@@ -211,7 +215,7 @@ export const firebaseAuthService = {
         result.user
       );
     } catch (error) {
-      throwFriendly(error);
+      return throwFriendly(error);
     }
   },
 
@@ -219,7 +223,7 @@ export const firebaseAuthService = {
     name: string,
     email: string,
     password: string
-  ) {
+  ): Promise<User> {
     const normalizedName =
       name.trim();
 
@@ -252,6 +256,24 @@ export const firebaseAuthService = {
       );
     }
 
+    /*
+     * New email/password registrations are checked by Runtime's
+     * backend before Firebase creates an account.
+     *
+     * Google sign-in is intentionally not sent through this check:
+     * Google is the identity provider and Firebase already receives
+     * that provider's verified email state.
+     */
+    const emailCheck =
+      await emailValidationService
+        .validateForRegistration(
+          normalizedEmail
+        );
+
+    const checkedEmail =
+      emailCheck.normalizedEmail ||
+      normalizedEmail;
+
     try {
       await setPersistence(
         auth,
@@ -261,7 +283,7 @@ export const firebaseAuthService = {
       const result =
         await createUserWithEmailAndPassword(
           auth,
-          normalizedEmail,
+          checkedEmail,
           password
         );
 
@@ -294,11 +316,12 @@ export const firebaseAuthService = {
         result.user
       );
     } catch (error) {
-      throwFriendly(error);
+      return throwFriendly(error);
     }
   },
 
-  async signInWithGoogle() {
+  async signInWithGoogle():
+    Promise<User> {
     try {
       await setPersistence(
         auth,
@@ -323,7 +346,7 @@ export const firebaseAuthService = {
         result.user
       );
     } catch (error) {
-      throwFriendly(error);
+      return throwFriendly(error);
     }
   },
 

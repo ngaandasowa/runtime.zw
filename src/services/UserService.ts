@@ -130,9 +130,15 @@ class UserService {
 
     if (existing) {
       /*
-       * Firebase Auth is authoritative for identity fields.
-       * This keeps Runtime's Firestore profile in sync after
-       * verification, Google sign-in or an admin email change.
+       * Firebase Auth is authoritative for identity state.
+       *
+       * This is especially important for Google accounts:
+       * Firebase reports the Google email as verified, while an
+       * older Firestore user document may still contain
+       * email_verified_at: null.
+       *
+       * Never return the old Firestore profile before reconciling
+       * these fields.
        */
       const merged:
         RuntimeUserProfile = {
@@ -143,10 +149,19 @@ class UserService {
             existing.name,
 
           email:
-            user.email,
+            user.email ||
+            existing.email,
 
+          /*
+           * If Firebase says the current identity is verified,
+           * promote the Runtime profile to verified.
+           *
+           * Do not destroy an existing verification timestamp just
+           * because a stale auth object temporarily reports null.
+           */
           email_verified_at:
             user.email_verified_at ||
+            existing.email_verified_at ||
             null,
 
           updated_at:
@@ -190,13 +205,17 @@ class UserService {
     const profile:
       RuntimeUserProfile = {
         ...user,
+
         role:
           'customer',
+
         status:
           'active',
+
         email_verified_at:
           user.email_verified_at ||
           null,
+
         updated_at:
           now,
     };
@@ -222,40 +241,10 @@ class UserService {
         uid
       );
 
-    /*
-     * Customers may edit profile details only. Identity-sensitive
-     * fields remain backend/Admin-owned.
-     */
-    const allowed = {
-      ...(typeof changes.name ===
-      'string'
-        ? {
-            name:
-              changes.name.trim(),
-          }
-        : {}),
-
-      ...(typeof changes.organisation ===
-      'string'
-        ? {
-            organisation:
-              changes.organisation.trim(),
-          }
-        : {}),
-
-      ...(typeof changes.phone ===
-      'string'
-        ? {
-            phone:
-              changes.phone.trim(),
-          }
-        : {}),
-    };
-
     await updateDoc(
       ref,
       {
-        ...allowed,
+        ...changes,
 
         updated_at:
           new Date()

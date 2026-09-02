@@ -11,6 +11,7 @@ import renewalLifecycleRoutes from './routes/renewalLifecycle.js';
 import nameserverRoutes from './routes/nameservers.js';
 import analyticsRoutes from './routes/analytics.js';
 import adminUserRoutes from './routes/adminUsers.js';
+import authValidationRoutes from './routes/authValidation.js';
 const app = express();
 /*
  * ----------------------------------------------------------
@@ -82,6 +83,7 @@ app.use('/api/renewals', renewalLifecycleRoutes);
 app.use('/api/nameservers', nameserverRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/admin/users', adminUserRoutes);
+app.use('/api/auth', authValidationRoutes);
 /*
  * ----------------------------------------------------------
  * ERROR HANDLER
