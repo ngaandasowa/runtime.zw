@@ -382,6 +382,235 @@ router.get(
   }
 );
 
+
+router.patch(
+  '/:uid/admin-verification',
+  authenticate,
+  async (
+    req:
+      AuthenticatedRequest,
+    res:
+      Response
+  ) => {
+    if (
+      !requireSuperAdmin(
+        req,
+        res
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const uid =
+        String(
+          req.params.uid ||
+          ''
+        ).trim();
+
+      const verified =
+        req.body?.verified ===
+        true;
+
+      const reason =
+        typeof req.body
+          ?.reason ===
+        'string'
+          ? req.body.reason
+              .trim()
+              .slice(
+                0,
+                300
+              )
+          : '';
+
+      if (!uid) {
+        return res
+          .status(400)
+          .json({
+            success:
+              false,
+
+            message:
+              'Customer ID is required.',
+          });
+      }
+
+      const customerRef =
+        adminDb
+          .collection(
+            'users'
+          )
+          .doc(uid);
+
+      const customerDoc =
+        await customerRef
+          .get();
+
+      if (
+        !customerDoc.exists
+      ) {
+        return res
+          .status(404)
+          .json({
+            success:
+              false,
+
+            message:
+              'Customer not found.',
+          });
+      }
+
+      const customer =
+        customerDoc.data()!;
+
+      if (
+        String(
+          customer.role ||
+          'customer'
+        ) !==
+        'customer'
+      ) {
+        return res
+          .status(400)
+          .json({
+            success:
+              false,
+
+            message:
+              'Only customer accounts can be admin verified.',
+          });
+      }
+
+      const now =
+        new Date()
+          .toISOString();
+
+      const admin =
+        req.runtimeUser!;
+
+      const update =
+        verified
+          ? {
+              admin_verified:
+                true,
+
+              admin_verified_at:
+                now,
+
+              admin_verified_by:
+                admin.uid,
+
+              admin_verified_by_email:
+                admin.email,
+
+              admin_verification_reason:
+                reason ||
+                'Manually verified by Runtime administrator',
+
+              updated_at:
+                now,
+            }
+          : {
+              admin_verified:
+                false,
+
+              admin_verified_at:
+                null,
+
+              admin_verified_by:
+                null,
+
+              admin_verified_by_email:
+                null,
+
+              admin_verification_reason:
+                null,
+
+              updated_at:
+                now,
+            };
+
+      await customerRef.set(
+        update,
+        {
+          merge:
+            true,
+        }
+      );
+
+      /*
+       * Keep a small immutable-style audit record in a separate
+       * collection. This does NOT alter Firebase email verification.
+       */
+      await adminDb
+        .collection(
+          'admin_audit_logs'
+        )
+        .add({
+          action:
+            verified
+              ? 'CUSTOMER_ADMIN_VERIFIED'
+              : 'CUSTOMER_ADMIN_VERIFICATION_REMOVED',
+
+          admin_user_id:
+            admin.uid,
+
+          admin_email:
+            admin.email,
+
+          target_user_id:
+            uid,
+
+          target_user_email:
+            String(
+              customer.email ||
+              ''
+            ),
+
+          reason:
+            verified
+              ? update
+                  .admin_verification_reason
+              : 'Admin verification removed',
+
+          created_at:
+            now,
+        });
+
+      const updatedDoc =
+        await customerRef
+          .get();
+
+      return res.json({
+        success:
+          true,
+
+        user: {
+          ...updatedDoc.data(),
+          id:
+            updatedDoc.id,
+        },
+      });
+    } catch (error) {
+      console.error(
+        'Admin customer verification failed:',
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success:
+            false,
+
+          message:
+            'Unable to update customer verification.',
+        });
+    }
+  }
+);
+
 router.patch(
   '/:userId',
   authenticate,

@@ -299,6 +299,12 @@ interface StoreContextType {
     confirmationEmail: string
   ) => Promise<void>;
 
+  adminSetCustomerVerification: (
+    userId: string,
+    verified: boolean,
+    reason?: string
+  ) => Promise<User>;
+
   logout: () => Promise<void>;
 
   register: (
@@ -1097,6 +1103,59 @@ useEffect(() => {
         'Customer account deleted.',
         'success'
       );
+    };
+
+
+  const adminSetCustomerVerification =
+    async (
+      userId: string,
+      verified: boolean,
+      reason: string = ''
+    ): Promise<User> => {
+      const result =
+        await callAdminUserApi(
+          `/${encodeURIComponent(
+            userId
+          )}/admin-verification`,
+          {
+            method:
+              'PATCH',
+
+            body: {
+              verified,
+              reason:
+                reason.trim(),
+            },
+          }
+        );
+
+      const updated =
+        result.user as User;
+
+      setUsers(
+        (previous) =>
+          previous.map(
+            (user) =>
+              user.id ===
+              userId
+                ? {
+                    ...user,
+                    ...updated,
+                  }
+                : user
+          )
+      );
+
+      showNotification(
+        verified
+          ? 'Customer marked as admin verified.'
+          : 'Admin verification removed.',
+        verified
+          ? 'success'
+          : 'info'
+      );
+
+      return updated;
     };
 
 
@@ -4037,6 +4096,7 @@ const getDomainOrderDetails = async (
       changePassword,
       adminUpdateCustomer,
       adminDeleteCustomer,
+      adminSetCustomerVerification,
       logout,
       register,
       updateCurrentUserProfile,
