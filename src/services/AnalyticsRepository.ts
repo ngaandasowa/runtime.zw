@@ -1,8 +1,13 @@
-const API_BASE =
+const RAW_API_BASE =
   import.meta.env.VITE_API_BASE_URL ||
   (import.meta.env.DEV
-    ? 'http://localhost:4000/api'
-    : `${window.location.origin}/api`);
+    ? 'http://localhost:4000'
+    : window.location.origin);
+
+const API_BASE =
+  RAW_API_BASE.replace(/\/+$/, '').endsWith('/api')
+    ? RAW_API_BASE.replace(/\/+$/, '')
+    : `${RAW_API_BASE.replace(/\/+$/, '')}/api`;
 
 export interface AnalyticsData {
   totalUsers: number;

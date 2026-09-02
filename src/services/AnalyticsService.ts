@@ -23,6 +23,51 @@ export interface AnalyticsEvent {
 
 class AnalyticsService {
   private currentUser: User | null = null;
+  private pageTrackingStarted = false;
+  private lastTrackedPage = '';
+
+  startPageViewTracking() {
+    if (
+      typeof window === 'undefined' ||
+      this.pageTrackingStarted
+    ) {
+      return;
+    }
+
+    this.pageTrackingStarted = true;
+
+    const trackCurrentPage = () => {
+      const page =
+        `${window.location.pathname}${window.location.search}` || '/';
+
+      if (page === this.lastTrackedPage) {
+        return;
+      }
+
+      this.lastTrackedPage = page;
+      this.trackPageView(page);
+    };
+
+    const originalPushState =
+      window.history.pushState.bind(window.history);
+    const originalReplaceState =
+      window.history.replaceState.bind(window.history);
+
+    window.history.pushState = ((...args: Parameters<History['pushState']>) => {
+      originalPushState(...args);
+      window.dispatchEvent(new Event('runtime:navigation'));
+    }) as History['pushState'];
+
+    window.history.replaceState = ((...args: Parameters<History['replaceState']>) => {
+      originalReplaceState(...args);
+      window.dispatchEvent(new Event('runtime:navigation'));
+    }) as History['replaceState'];
+
+    window.addEventListener('popstate', trackCurrentPage);
+    window.addEventListener('runtime:navigation', trackCurrentPage);
+
+    trackCurrentPage();
+  }
 
   /**
    * Log event to both Firebase Analytics and backend Firestore

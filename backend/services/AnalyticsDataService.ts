@@ -50,14 +50,17 @@ class AnalyticsDataService {
       const [
         usersData,
         eventsData,
+        businessData,
       ] = await Promise.all([
-        this.getUserStats(),
+        this.getUserStats(startDate),
         this.getEventsStats(startDate),
+        this.getBusinessStats(startDate),
       ]);
 
       return {
-        ...usersData,
         ...eventsData,
+        ...usersData,
+        ...businessData,
       };
     } catch (error) {
       console.error(
@@ -71,52 +74,213 @@ class AnalyticsDataService {
   /**
    * Get user statistics
    */
-  private async getUserStats() {
+  private async getUserStats(startDate: Date) {
     try {
       const listUsersResult =
-        await this.auth.listUsers();
+        await this.auth.listUsers(1000);
 
-      const totalUsers =
-        listUsersResult.users.length;
+      const users = listUsersResult.users;
+      const totalUsers = users.length;
 
-      const usersByRole: Record<
-        string,
-        number
-      > = {
+      const usersByRole: Record<string, number> = {
+        super_admin: 0,
         admin: 0,
         customer: 0,
       };
 
-      for (const user of listUsersResult
-        .users) {
+      let signUps = 0;
+
+      for (const user of users) {
         const role =
-          (user.customClaims
-            ?.role as string) ||
+          (user.customClaims?.role as string) ||
           'customer';
 
         usersByRole[role] =
-          (usersByRole[role] || 0) +
-          1;
+          (usersByRole[role] || 0) + 1;
+
+        const createdAt =
+          user.metadata.creationTime
+            ? new Date(user.metadata.creationTime)
+            : null;
+
+        if (createdAt && createdAt >= startDate) {
+          signUps++;
+        }
       }
+
+      const activeSnapshot =
+        await this.db
+          .collection('analytics_events')
+          .where(
+            'timestamp',
+            '>=',
+            Timestamp.fromDate(startDate)
+          )
+          .get();
+
+      const activeUserIds = new Set<string>();
+
+      activeSnapshot.docs.forEach((doc: any) => {
+        const userId = String(
+          doc.data()?.userId || ''
+        );
+
+        if (userId && userId !== 'anonymous') {
+          activeUserIds.add(userId);
+        }
+      });
 
       return {
         totalUsers,
         usersByRole,
-        activeUsers: Math.floor(
-          totalUsers * 0.7
-        ), // Estimate: 70% active
+        activeUsers: activeUserIds.size,
+        signUps,
       };
     } catch (error) {
       console.error(
         'Failed to get user stats:',
         error
       );
+
       return {
         totalUsers: 0,
         activeUsers: 0,
+        signUps: 0,
         usersByRole: {},
       };
     }
+  }
+
+  /**
+   * Use Runtime's real business collections for money and
+   * registered-domain totals. Analytics events remain the source
+   * for behavioural data such as page views and searches.
+   */
+  private async getBusinessStats(
+    startDate: Date
+  ) {
+    try {
+      const [paymentsSnapshot, domainsSnapshot] =
+        await Promise.all([
+          this.db.collection('payments').get(),
+          this.db.collection('domains').get(),
+        ]);
+
+      let totalPaymentAmount = 0;
+      let paymentCount = 0;
+      const paymentMethods: Record<string, number> = {};
+
+      paymentsSnapshot.docs.forEach((doc: any) => {
+        const payment = doc.data() || {};
+
+        if (
+          payment.status !== 'verified' ||
+          payment.gateway === 'runtime_credit'
+        ) {
+          return;
+        }
+
+        const rawDate =
+          payment.verified_at ||
+          payment.updated_at ||
+          payment.created_at;
+        const paymentDate = this.toDate(rawDate);
+
+        if (!paymentDate || paymentDate < startDate) {
+          return;
+        }
+
+        const amount = Number(payment.amount || 0);
+
+        if (Number.isFinite(amount)) {
+          totalPaymentAmount += amount;
+        }
+
+        paymentCount++;
+
+        const method = String(
+          payment.gateway ||
+          payment.method ||
+          'unknown'
+        );
+
+        paymentMethods[method] =
+          (paymentMethods[method] || 0) + 1;
+      });
+
+      let domainRegistrations = 0;
+      let domainTransfers = 0;
+
+      domainsSnapshot.docs.forEach((doc: any) => {
+        const domain = doc.data() || {};
+        const domainDate = this.toDate(
+          domain.registered_at ||
+          domain.created_at ||
+          domain.updated_at
+        );
+
+        if (!domainDate || domainDate < startDate) {
+          return;
+        }
+
+        const status = String(domain.status || '');
+
+        if (
+          status !== 'cancelled' &&
+          status !== 'registry_rejected' &&
+          status !== 'replaced'
+        ) {
+          domainRegistrations++;
+        }
+
+        if (
+          domain.transfer === true ||
+          domain.registration_type === 'transfer' ||
+          domain.type === 'transfer'
+        ) {
+          domainTransfers++;
+        }
+      });
+
+      return {
+        totalPaymentAmount,
+        paymentCount,
+        paymentMethods,
+        domainRegistrations,
+        domainTransfers,
+      };
+    } catch (error) {
+      console.error(
+        'Failed to get business analytics:',
+        error
+      );
+
+      return {
+        totalPaymentAmount: 0,
+        paymentCount: 0,
+        paymentMethods: {},
+        domainRegistrations: 0,
+        domainTransfers: 0,
+      };
+    }
+  }
+
+  private toDate(value: any): Date | null {
+    if (!value) {
+      return null;
+    }
+
+    if (
+      typeof value?.toDate === 'function'
+    ) {
+      return value.toDate();
+    }
+
+    const parsed = new Date(value);
+
+    return Number.isNaN(parsed.getTime())
+      ? null
+      : parsed;
   }
 
   /**
@@ -329,8 +493,10 @@ class AnalyticsDataService {
           event:
             eventType,
           timestamp:
-            event.timestamp ||
-            new Date().toISOString(),
+            event.timestamp?.toDate?.()?.toISOString?.() ||
+            (typeof event.timestamp === 'string'
+              ? event.timestamp
+              : new Date().toISOString()),
           data:
             event.data,
         });

@@ -323,6 +323,10 @@ const SEED_SETTINGS: PlatformSettings = {
 };
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  useEffect(() => {
+    analyticsService.startPageViewTracking();
+  }, []);
+
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
@@ -388,53 +392,45 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
   return firebaseAuthService.onUserChanged(
     async (user) => {
+      if (!user) {
+        setCurrentUser(null);
+
+        analyticsService.setUser(null);
+
+        setAuthReady(true);
+
+        return;
+      }
+
+      // user is guaranteed non-null from here
+      const authUser = user;
+
       try {
-        if (!user) {
-          setCurrentUser(
-            null
-          );
-
-          analyticsService.setUser(null);
-
-          setAuthReady(
-            true
-          );
-
-          return;
-        }
-
         const profile =
           await userService.ensureUser(
-            user
+            authUser
           );
 
-        setCurrentUser(
-          profile
-        );
+        setCurrentUser(profile);
 
         analyticsService.setUser(
           profile
         );
-      } catch (
-        error
-      ) {
+      } catch (error) {
         console.error(
           'Failed to load user profile:',
           error
         );
 
         setCurrentUser(
-          user
+          authUser
         );
 
-        analyticsService.setUser({
-          id: user.uid,
-          email: user.email || '',
-        } as User);
-      } finally {
-        setAuthReady(
-          true
+        analyticsService.setUser(
+          authUser
         );
+      } finally {
+        setAuthReady(true);
       }
     }
   );
@@ -633,6 +629,9 @@ useEffect(() => {
     profile
   );
 
+  analyticsService.setUser(profile);
+  analyticsService.trackSignIn(email, 'email');
+
   setActiveView(
     'dashboard'
   );
@@ -656,6 +655,9 @@ useEffect(() => {
     profile
   );
 
+  analyticsService.setUser(profile);
+  analyticsService.trackSignIn(profile.email, 'google');
+
   setActiveView(
     'dashboard'
   );
@@ -667,6 +669,7 @@ useEffect(() => {
   };
 
   const logout = async () => {
+    analyticsService.trackSignOut();
     await firebaseAuthService.signOut();
     setCurrentUser(null);
     setActiveView('home');
@@ -679,6 +682,8 @@ useEffect(() => {
     const user = await firebaseAuthService.signUp(name, email, password);
     if (user) {
       setCurrentUser(user);
+      analyticsService.setUser(user);
+      analyticsService.trackSignUp(email, 'email');
       setActiveView('dashboard');
       showNotification(`Account created successfully for ${email}`, 'success');
       return true;

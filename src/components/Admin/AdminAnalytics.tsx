@@ -247,15 +247,14 @@ export const AdminAnalytics: React.FC =
         </div>
 
         {/* Page Views Overview */}
-        {analytics && (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
             {/* Total Page Views */}
             <div className="rounded-lg border border-zinc-200 bg-white p-4">
               <p className="text-xs font-medium text-zinc-500">
                 Total Page Views
               </p>
               <p className="mt-2 text-2xl font-bold text-zinc-950">
-                {analytics.topPages?.reduce(
+                {analytics?.topPages?.reduce(
                   (sum, page) =>
                     sum + page.count,
                   0
@@ -269,7 +268,7 @@ export const AdminAnalytics: React.FC =
                 Unique Pages
               </p>
               <p className="mt-2 text-2xl font-bold text-zinc-950">
-                {analytics.topPages?.length || 0}
+                {analytics?.topPages?.length || 0}
               </p>
             </div>
 
@@ -279,25 +278,23 @@ export const AdminAnalytics: React.FC =
                 Avg per Page
               </p>
               <p className="mt-2 text-2xl font-bold text-zinc-950">
-                {(analytics.topPages?.length || 0) > 0
+                {(analytics?.topPages?.length || 0) > 0
                   ? Math.round(
-                      (analytics.topPages?.reduce(
+                      (analytics?.topPages?.reduce(
                         (sum, page) =>
                           sum +
                           page.count,
                         0
                       ) || 0) /
-                        (analytics.topPages?.length || 1)
+                        (analytics?.topPages?.length || 1)
                     )
                   : 0}
               </p>
             </div>
           </div>
-        )}
 
         {/* Conversion Metrics */}
-        {metrics && (
-          <div className="rounded-lg border border-zinc-200 bg-white p-6">
+        <div className="rounded-lg border border-zinc-200 bg-white p-6">
             <h2 className="text-sm font-bold text-zinc-950">
               Conversion Metrics
             </h2>
@@ -308,7 +305,7 @@ export const AdminAnalytics: React.FC =
                   Visitors
                 </p>
                 <p className="mt-1 text-xl font-bold text-zinc-950">
-                  {metrics.totalVisitors}
+                  {metrics?.totalVisitors || 0}
                 </p>
               </div>
 
@@ -317,7 +314,7 @@ export const AdminAnalytics: React.FC =
                   Sign Up
                 </p>
                 <p className="mt-1 text-xl font-bold text-zinc-950">
-                  {metrics.signUpConversion}%
+                  {metrics?.signUpConversion || '0'}%
                 </p>
               </div>
 
@@ -327,7 +324,7 @@ export const AdminAnalytics: React.FC =
                 </p>
                 <p className="mt-1 text-xl font-bold text-zinc-950">
                   {
-                    metrics.paymentConversion
+                    metrics?.paymentConversion || '0'
                   }%
                 </p>
               </div>
@@ -339,7 +336,7 @@ export const AdminAnalytics: React.FC =
                 <p className="mt-1 text-xl font-bold text-zinc-950">
                   $
                   {
-                    metrics.averageOrderValue
+                    metrics?.averageOrderValue || '0'
                   }
                 </p>
               </div>
@@ -350,198 +347,114 @@ export const AdminAnalytics: React.FC =
                 </p>
                 <p className="mt-1 text-xl font-bold text-zinc-950">
                   {
-                    metrics.domainRegistrationRate
+                    metrics?.domainRegistrationRate || '0'
                   }%
                 </p>
               </div>
             </div>
           </div>
-        )}
 
         {/* Sign In Methods */}
-        {analytics?.signInMethods &&
-          Object.keys(
-            analytics.signInMethods
-          ).length > 0 && (
-            <div className="rounded-lg border border-zinc-200 bg-white p-6">
-              <h2 className="text-sm font-bold text-zinc-950">
-                Sign In Methods
-              </h2>
-
-              <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                {Object.entries(
-                  analytics.signInMethods
-                ).map(
-                  ([method, count]) => (
-                    <div
-                      key={method}
-                      className="flex flex-col"
-                    >
-                      <p className="text-xs font-medium capitalize text-zinc-500">
-                        {method}
-                      </p>
-                      <p className="mt-1 text-xl font-bold text-zinc-950">
-                        {count}
-                      </p>
-                    </div>
-                  )
-                )}
-              </div>
+        <div className="rounded-lg border border-zinc-200 bg-white p-6">
+          <h2 className="text-sm font-bold text-zinc-950">
+            Sign In Methods
+          </h2>
+          {analytics?.signInMethods &&
+          Object.keys(analytics.signInMethods).length > 0 ? (
+            <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+              {Object.entries(analytics.signInMethods).map(([method, count]) => (
+                <div key={method} className="flex flex-col">
+                  <p className="text-xs font-medium capitalize text-zinc-500">{method}</p>
+                  <p className="mt-1 text-xl font-bold text-zinc-950">{count}</p>
+                </div>
+              ))}
             </div>
+          ) : (
+            <p className="mt-4 text-sm text-zinc-500">No sign-in activity recorded for this period yet.</p>
           )}
+        </div>
 
         {/* Top Domains */}
-        {analytics?.topDomains &&
-          analytics.topDomains.length >
-            0 && (
-            <div className="rounded-lg border border-zinc-200 bg-white p-6">
-              <h2 className="text-sm font-bold text-zinc-950">
-                Most Searched Domains
-              </h2>
-
-              <div className="mt-4 divide-y divide-zinc-100">
-                {analytics.topDomains.map(
-                  (item, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center justify-between py-3 text-sm"
-                    >
-                      <span className="font-medium text-zinc-900">
-                        {item.domain}
-                      </span>
-
-                      <span className="text-xs font-medium text-zinc-500">
-                        {item.count} searches
-                      </span>
-                    </div>
-                  )
-                )}
-              </div>
+        <div className="rounded-lg border border-zinc-200 bg-white p-6">
+          <h2 className="text-sm font-bold text-zinc-950">Most Searched Domains</h2>
+          {analytics?.topDomains && analytics.topDomains.length > 0 ? (
+            <div className="mt-4 divide-y divide-zinc-100">
+              {analytics.topDomains.map((item, index) => (
+                <div key={index} className="flex items-center justify-between py-3 text-sm">
+                  <span className="font-medium text-zinc-900">{item.domain}</span>
+                  <span className="text-xs font-medium text-zinc-500">{item.count} searches</span>
+                </div>
+              ))}
             </div>
+          ) : (
+            <p className="mt-4 text-sm text-zinc-500">No domain search activity recorded for this period yet.</p>
           )}
+        </div>
 
         {/* Top Pages */}
-        {analytics && (analytics.topPages?.length || 0) > 0 && (
-            <div className="rounded-lg border border-zinc-200 bg-white p-6">
-              <h2 className="text-sm font-bold text-zinc-950">
-                Most Visited Pages
-              </h2>
-
-              <div className="mt-4 divide-y divide-zinc-100">
-                {analytics.topPages?.map(
-                  (item, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center justify-between py-3 text-sm"
-                    >
-                      <span className="font-medium text-zinc-900">
-                        {item.page}
-                      </span>
-
-                      <span className="text-xs font-medium text-zinc-500">
-                        {item.count} views
-                      </span>
-                    </div>
-                  )
-                )}
-              </div>
+        <div className="rounded-lg border border-zinc-200 bg-white p-6">
+          <h2 className="text-sm font-bold text-zinc-950">Most Visited Pages</h2>
+          {analytics?.topPages && analytics.topPages.length > 0 ? (
+            <div className="mt-4 divide-y divide-zinc-100">
+              {analytics.topPages.map((item, index) => (
+                <div key={index} className="flex items-center justify-between py-3 text-sm">
+                  <span className="font-medium text-zinc-900">{item.page}</span>
+                  <span className="text-xs font-medium text-zinc-500">{item.count} views</span>
+                </div>
+              ))}
             </div>
+          ) : (
+            <p className="mt-4 text-sm text-zinc-500">No page views recorded for this period yet. New views will appear here automatically.</p>
           )}
+        </div>
 
         {/* Recent Sessions */}
-        {analytics?.recentSessions &&
-          analytics.recentSessions.length >
-            0 && (
-            <div className="rounded-lg border border-zinc-200 bg-white p-6">
-              <h2 className="text-sm font-bold text-zinc-950">
-                Recent Activity
-              </h2>
-
-              <div className="mt-4 overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="border-b border-zinc-100">
-                    <tr>
-                      <th className="py-2 text-left text-xs font-medium text-zinc-500">
-                        User
-                      </th>
-
-                      <th className="py-2 text-left text-xs font-medium text-zinc-500">
-                        Event
-                      </th>
-
-                      <th className="py-2 text-left text-xs font-medium text-zinc-500">
-                        Time
-                      </th>
+        <div className="rounded-lg border border-zinc-200 bg-white p-6">
+          <h2 className="text-sm font-bold text-zinc-950">Recent Activity</h2>
+          {analytics?.recentSessions && analytics.recentSessions.length > 0 ? (
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="border-b border-zinc-100">
+                  <tr>
+                    <th className="py-2 text-left text-xs font-medium text-zinc-500">User</th>
+                    <th className="py-2 text-left text-xs font-medium text-zinc-500">Event</th>
+                    <th className="py-2 text-left text-xs font-medium text-zinc-500">Time</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {analytics.recentSessions.slice(0, 20).map((session, index) => (
+                    <tr key={index} className="hover:bg-zinc-50">
+                      <td className="py-2 font-mono text-xs text-zinc-600">
+                        {session.userId === 'anonymous' ? 'anonymous' : session.userId.slice(0, 8)}
+                      </td>
+                      <td className="py-2 text-xs font-medium text-zinc-700">{session.event}</td>
+                      <td className="py-2 text-xs text-zinc-500">{session.timestamp}</td>
                     </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-zinc-100">
-                    {analytics.recentSessions
-                      .slice(0, 10)
-                      .map(
-                        (session, index) => (
-                          <tr
-                            key={index}
-                            className="hover:bg-zinc-50"
-                          >
-                            <td className="py-2 font-mono text-xs text-zinc-600">
-                              {session.userId.slice(
-                                0,
-                                8
-                              )}
-                            </td>
-
-                            <td className="py-2 text-xs font-medium text-zinc-700">
-                              {
-                                session.event
-                              }
-                            </td>
-
-                            <td className="py-2 text-xs text-zinc-500">
-                              {new Date(
-                                session.timestamp
-                              ).toLocaleTimeString()}
-                            </td>
-                          </tr>
-                        )
-                      )}
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                </tbody>
+              </table>
             </div>
+          ) : (
+            <p className="mt-4 text-sm text-zinc-500">No analytics activity recorded for this period yet.</p>
           )}
+        </div>
 
         {/* Users by Role */}
-        {analytics?.usersByRole &&
-          Object.keys(
-            analytics.usersByRole
-          ).length > 0 && (
-            <div className="rounded-lg border border-zinc-200 bg-white p-6">
-              <h2 className="text-sm font-bold text-zinc-950">
-                Users by Role
-              </h2>
-
-              <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                {Object.entries(
-                  analytics.usersByRole
-                ).map(
-                  ([role, count]) => (
-                    <div
-                      key={role}
-                      className="flex flex-col"
-                    >
-                      <p className="text-xs font-medium capitalize text-zinc-500">
-                        {role}
-                      </p>
-                      <p className="mt-1 text-xl font-bold text-zinc-950">
-                        {count}
-                      </p>
-                    </div>
-                  )
-                )}
-              </div>
+        <div className="rounded-lg border border-zinc-200 bg-white p-6">
+          <h2 className="text-sm font-bold text-zinc-950">Users by Role</h2>
+          {analytics?.usersByRole && Object.keys(analytics.usersByRole).length > 0 ? (
+            <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+              {Object.entries(analytics.usersByRole).map(([role, count]) => (
+                <div key={role} className="flex flex-col">
+                  <p className="text-xs font-medium capitalize text-zinc-500">{role.replace('_', ' ')}</p>
+                  <p className="mt-1 text-xl font-bold text-zinc-950">{count}</p>
+                </div>
+              ))}
             </div>
+          ) : (
+            <p className="mt-4 text-sm text-zinc-500">No user-role data available.</p>
           )}
+        </div>
         </div>
       </div>
     );

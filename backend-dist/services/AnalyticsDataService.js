@@ -10,13 +10,15 @@ class AnalyticsDataService {
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - daysBack);
         try {
-            const [usersData, eventsData,] = await Promise.all([
-                this.getUserStats(),
+            const [usersData, eventsData, businessData,] = await Promise.all([
+                this.getUserStats(startDate),
                 this.getEventsStats(startDate),
+                this.getBusinessStats(startDate),
             ]);
             return {
-                ...usersData,
                 ...eventsData,
+                ...usersData,
+                ...businessData,
             };
         }
         catch (error) {
@@ -27,27 +29,45 @@ class AnalyticsDataService {
     /**
      * Get user statistics
      */
-    async getUserStats() {
+    async getUserStats(startDate) {
         try {
-            const listUsersResult = await this.auth.listUsers();
-            const totalUsers = listUsersResult.users.length;
+            const listUsersResult = await this.auth.listUsers(1000);
+            const users = listUsersResult.users;
+            const totalUsers = users.length;
             const usersByRole = {
+                super_admin: 0,
                 admin: 0,
                 customer: 0,
             };
-            for (const user of listUsersResult
-                .users) {
-                const role = user.customClaims
-                    ?.role ||
+            let signUps = 0;
+            for (const user of users) {
+                const role = user.customClaims?.role ||
                     'customer';
                 usersByRole[role] =
-                    (usersByRole[role] || 0) +
-                        1;
+                    (usersByRole[role] || 0) + 1;
+                const createdAt = user.metadata.creationTime
+                    ? new Date(user.metadata.creationTime)
+                    : null;
+                if (createdAt && createdAt >= startDate) {
+                    signUps++;
+                }
             }
+            const activeSnapshot = await this.db
+                .collection('analytics_events')
+                .where('timestamp', '>=', Timestamp.fromDate(startDate))
+                .get();
+            const activeUserIds = new Set();
+            activeSnapshot.docs.forEach((doc) => {
+                const userId = String(doc.data()?.userId || '');
+                if (userId && userId !== 'anonymous') {
+                    activeUserIds.add(userId);
+                }
+            });
             return {
                 totalUsers,
                 usersByRole,
-                activeUsers: Math.floor(totalUsers * 0.7), // Estimate: 70% active
+                activeUsers: activeUserIds.size,
+                signUps,
             };
         }
         catch (error) {
@@ -55,9 +75,101 @@ class AnalyticsDataService {
             return {
                 totalUsers: 0,
                 activeUsers: 0,
+                signUps: 0,
                 usersByRole: {},
             };
         }
+    }
+    /**
+     * Use Runtime's real business collections for money and
+     * registered-domain totals. Analytics events remain the source
+     * for behavioural data such as page views and searches.
+     */
+    async getBusinessStats(startDate) {
+        try {
+            const [paymentsSnapshot, domainsSnapshot] = await Promise.all([
+                this.db.collection('payments').get(),
+                this.db.collection('domains').get(),
+            ]);
+            let totalPaymentAmount = 0;
+            let paymentCount = 0;
+            const paymentMethods = {};
+            paymentsSnapshot.docs.forEach((doc) => {
+                const payment = doc.data() || {};
+                if (payment.status !== 'verified' ||
+                    payment.gateway === 'runtime_credit') {
+                    return;
+                }
+                const rawDate = payment.verified_at ||
+                    payment.updated_at ||
+                    payment.created_at;
+                const paymentDate = this.toDate(rawDate);
+                if (!paymentDate || paymentDate < startDate) {
+                    return;
+                }
+                const amount = Number(payment.amount || 0);
+                if (Number.isFinite(amount)) {
+                    totalPaymentAmount += amount;
+                }
+                paymentCount++;
+                const method = String(payment.gateway ||
+                    payment.method ||
+                    'unknown');
+                paymentMethods[method] =
+                    (paymentMethods[method] || 0) + 1;
+            });
+            let domainRegistrations = 0;
+            let domainTransfers = 0;
+            domainsSnapshot.docs.forEach((doc) => {
+                const domain = doc.data() || {};
+                const domainDate = this.toDate(domain.registered_at ||
+                    domain.created_at ||
+                    domain.updated_at);
+                if (!domainDate || domainDate < startDate) {
+                    return;
+                }
+                const status = String(domain.status || '');
+                if (status !== 'cancelled' &&
+                    status !== 'registry_rejected' &&
+                    status !== 'replaced') {
+                    domainRegistrations++;
+                }
+                if (domain.transfer === true ||
+                    domain.registration_type === 'transfer' ||
+                    domain.type === 'transfer') {
+                    domainTransfers++;
+                }
+            });
+            return {
+                totalPaymentAmount,
+                paymentCount,
+                paymentMethods,
+                domainRegistrations,
+                domainTransfers,
+            };
+        }
+        catch (error) {
+            console.error('Failed to get business analytics:', error);
+            return {
+                totalPaymentAmount: 0,
+                paymentCount: 0,
+                paymentMethods: {},
+                domainRegistrations: 0,
+                domainTransfers: 0,
+            };
+        }
+    }
+    toDate(value) {
+        if (!value) {
+            return null;
+        }
+        if (typeof value?.toDate === 'function') {
+            return value.toDate();
+        }
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime())
+            ? null
+            : parsed;
     }
     /**
      * Get events statistics
@@ -178,8 +290,10 @@ class AnalyticsDataService {
                     userId: event.userId ||
                         'anonymous',
                     event: eventType,
-                    timestamp: event.timestamp ||
-                        new Date().toISOString(),
+                    timestamp: event.timestamp?.toDate?.()?.toISOString?.() ||
+                        (typeof event.timestamp === 'string'
+                            ? event.timestamp
+                            : new Date().toISOString()),
                     data: event.data,
                 });
             }
