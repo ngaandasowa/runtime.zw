@@ -173,9 +173,10 @@ const callAdminUserApi =
     path: string,
     options: {
       method:
+        | 'GET'
         | 'PATCH'
         | 'DELETE';
-      body:
+      body?:
         Record<
           string,
           unknown
@@ -211,10 +212,14 @@ const callAdminUserApi =
               `Bearer ${token}`,
           },
 
-          body:
-            JSON.stringify(
-              options.body
-            ),
+          ...(options.body
+            ? {
+                body:
+                  JSON.stringify(
+                    options.body
+                  ),
+              }
+            : {}),
         }
       );
 
@@ -563,10 +568,54 @@ useEffect(() => {
     }
 
     try {
+      /*
+       * Firestore remains the primary source for the admin customer list.
+       * Load it first so the dashboard never drops to zero simply because
+       * the optional Firebase verification-sync endpoint is unavailable.
+       */
       const allUsers =
         await userService.getAllUsers();
 
       setUsers(allUsers);
+
+      /*
+       * Then ask the backend for Firebase Auth's authoritative
+       * emailVerified state. If this request succeeds, replace the
+       * already-loaded users with the reconciled records.
+       *
+       * If it fails (backend not deployed yet, 403, network issue, etc.),
+       * keep the Firestore users that are already on screen.
+       */
+      try {
+        const result =
+          await callAdminUserApi(
+            '',
+            {
+              method: 'GET',
+            }
+          );
+
+        const syncedUsers =
+          Array.isArray(
+            result?.users
+          )
+            ? result.users as User[]
+            : [];
+
+        if (
+          syncedUsers.length > 0 ||
+          allUsers.length === 0
+        ) {
+          setUsers(
+            syncedUsers
+          );
+        }
+      } catch (syncError) {
+        console.warn(
+          'Admin verification sync unavailable; using Firestore users:',
+          syncError
+        );
+      }
     } catch (error) {
       console.error(
         'Failed to load admin users:',
