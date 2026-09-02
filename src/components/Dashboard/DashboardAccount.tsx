@@ -6,12 +6,20 @@ import { User, Shield, Lock, Key, CheckCircle2, Phone, Mail, Building, Bell } fr
 import { useStore } from '../../context/StoreContext';
 
 export const DashboardAccount: React.FC = () => {
-  const { currentUser, updateCurrentUserProfile, showNotification } = useStore();
+  const {
+    currentUser,
+    updateCurrentUserProfile,
+    resendVerificationEmail,
+    changePassword,
+    showNotification,
+  } = useStore();
   const [name, setName] = useState(currentUser?.name || '');
   const [organisation, setOrganisation] = useState(currentUser?.organisation || '');
   const [phone, setPhone] = useState(currentUser?.phone || '');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [verificationLoading, setVerificationLoading] = useState(false);
 
   useEffect(() => {
   if (!currentUser) {
@@ -55,13 +63,54 @@ export const DashboardAccount: React.FC = () => {
   }
 };
 
-  const handleChangePassword = (e: React.FormEvent) => {
+  const handleChangePassword = async (
+    e: React.FormEvent
+  ) => {
     e.preventDefault();
-    if (!newPassword) return;
-    setCurrentPassword('');
-    setNewPassword('');
-    showNotification('Password updated securely with bcrypt hashing.', 'success');
+
+    if (!newPassword) {
+      return;
+    }
+
+    try {
+      setPasswordLoading(true);
+
+      await changePassword(
+        currentPassword,
+        newPassword
+      );
+
+      setCurrentPassword('');
+      setNewPassword('');
+    } catch (error) {
+      showNotification(
+        error instanceof Error
+          ? error.message
+          : 'Unable to update your password.',
+        'error'
+      );
+    } finally {
+      setPasswordLoading(false);
+    }
   };
+
+  const handleResendVerification =
+    async () => {
+      try {
+        setVerificationLoading(true);
+
+        await resendVerificationEmail();
+      } catch (error) {
+        showNotification(
+          error instanceof Error
+            ? error.message
+            : 'Unable to send a verification email.',
+          'error'
+        );
+      } finally {
+        setVerificationLoading(false);
+      }
+    };
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -97,7 +146,10 @@ export const DashboardAccount: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-zinc-700 font-semibold mb-1">Email Address (Verified)</label>
+              <label className="block text-zinc-700 font-semibold mb-1">
+                Email Address
+              </label>
+
               <div className="flex items-center space-x-2">
                 <input
                   type="email"
@@ -105,10 +157,39 @@ export const DashboardAccount: React.FC = () => {
                   value={currentUser?.email || ''}
                   className="w-full rounded-xl border border-zinc-200 bg-zinc-100 p-2.5 text-zinc-500 cursor-not-allowed font-mono text-xs"
                 />
-                <span className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200">
-                  <CheckCircle2 className="h-4 w-4" />
-                </span>
+
+                {currentUser?.email_verified_at ? (
+                  <span
+                    title="Email verified"
+                    className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                  </span>
+                ) : (
+                  <span className="rounded-xl border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] font-bold text-amber-700">
+                    Unverified
+                  </span>
+                )}
               </div>
+
+              {!currentUser?.email_verified_at && (
+                <div className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-[11px] leading-5 text-amber-800">
+                    You can keep using Runtime, but verify this email to confirm that you own it.
+                  </p>
+
+                  <button
+                    type="button"
+                    disabled={verificationLoading}
+                    onClick={handleResendVerification}
+                    className="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-2 text-[11px] font-bold text-amber-800 disabled:opacity-50"
+                  >
+                    {verificationLoading
+                      ? 'Sending...'
+                      : 'Resend'}
+                  </button>
+                </div>
+              )}
             </div>
 
             <div>
@@ -175,9 +256,12 @@ export const DashboardAccount: React.FC = () => {
 
               <button
                 type="submit"
-                className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-2 text-xs font-bold text-zinc-700 hover:bg-zinc-100 transition"
+                disabled={passwordLoading}
+                className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-2 text-xs font-bold text-zinc-700 hover:bg-zinc-100 transition disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Update Password
+                {passwordLoading
+                  ? 'Updating...'
+                  : 'Update Password'}
               </button>
             </form>
           </div>

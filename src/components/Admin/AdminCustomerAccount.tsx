@@ -15,6 +15,9 @@ import {
   Plus,
   UserRound,
   X,
+  Pencil,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 
 import {
@@ -95,6 +98,8 @@ export const AdminCustomerAccount:
 
       adminCustomerId,
       closeCustomerAccount,
+      adminUpdateCustomer,
+      adminDeleteCustomer,
     } = useStore();
 
     /*
@@ -106,6 +111,52 @@ export const AdminCustomerAccount:
       assignOpen,
       setAssignOpen,
     ] = useState(false);
+
+
+    const [
+      editCustomerOpen,
+      setEditCustomerOpen,
+    ] = useState(false);
+
+    const [
+      deleteCustomerOpen,
+      setDeleteCustomerOpen,
+    ] = useState(false);
+
+    const [
+      customerActionLoading,
+      setCustomerActionLoading,
+    ] = useState(false);
+
+    const [
+      customerActionError,
+      setCustomerActionError,
+    ] = useState('');
+
+    const [
+      editName,
+      setEditName,
+    ] = useState('');
+
+    const [
+      editEmail,
+      setEditEmail,
+    ] = useState('');
+
+    const [
+      editOrganisation,
+      setEditOrganisation,
+    ] = useState('');
+
+    const [
+      editPhone,
+      setEditPhone,
+    ] = useState('');
+
+    const [
+      deleteConfirmation,
+      setDeleteConfirmation,
+    ] = useState('');
 
 
     const [
@@ -237,6 +288,146 @@ export const AdminCustomerAccount:
           adminCustomerId,
         ]
       );
+
+
+
+    useEffect(() => {
+      if (!customer) {
+        return;
+      }
+
+      setEditName(
+        customer.name || ''
+      );
+
+      setEditEmail(
+        customer.email || ''
+      );
+
+      setEditOrganisation(
+        customer.organisation || ''
+      );
+
+      setEditPhone(
+        customer.phone || ''
+      );
+    }, [
+      customer,
+    ]);
+
+    const openCustomerEdit =
+      () => {
+        if (!customer) {
+          return;
+        }
+
+        setCustomerActionError('');
+        setEditName(
+          customer.name || ''
+        );
+        setEditEmail(
+          customer.email || ''
+        );
+        setEditOrganisation(
+          customer.organisation || ''
+        );
+        setEditPhone(
+          customer.phone || ''
+        );
+        setEditCustomerOpen(
+          true
+        );
+      };
+
+    const saveCustomerEdit =
+      async (
+        event:
+          React.FormEvent
+      ) => {
+        event.preventDefault();
+
+        if (!customer) {
+          return;
+        }
+
+        try {
+          setCustomerActionLoading(
+            true
+          );
+
+          setCustomerActionError(
+            ''
+          );
+
+          await adminUpdateCustomer(
+            customer.id,
+            {
+              name:
+                editName,
+              email:
+                editEmail,
+              organisation:
+                editOrganisation,
+              phone:
+                editPhone,
+            }
+          );
+
+          setEditCustomerOpen(
+            false
+          );
+        } catch (error) {
+          setCustomerActionError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to update this customer.'
+          );
+        } finally {
+          setCustomerActionLoading(
+            false
+          );
+        }
+      };
+
+    const deleteCustomerAccount =
+      async () => {
+        if (!customer) {
+          return;
+        }
+
+        try {
+          setCustomerActionLoading(
+            true
+          );
+
+          setCustomerActionError(
+            ''
+          );
+
+          await adminDeleteCustomer(
+            customer.id,
+            deleteConfirmation
+          );
+
+          setDeleteCustomerOpen(
+            false
+          );
+
+          setDeleteConfirmation(
+            ''
+          );
+        } catch (error) {
+          setCustomerActionError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to delete this customer account.'
+          );
+        } finally {
+          setCustomerActionLoading(
+            false
+          );
+        }
+      };
 
 
     const customerDomains =
@@ -454,6 +645,18 @@ export const AdminCustomerAccount:
                     <span className="truncate">
                       {customer.email}
                     </span>
+
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                        customer.email_verified_at
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : 'bg-amber-50 text-amber-700'
+                      }`}
+                    >
+                      {customer.email_verified_at
+                        ? 'Verified'
+                        : 'Unverified'}
+                    </span>
                   </p>
 
                   {customer.phone && (
@@ -479,17 +682,41 @@ export const AdminCustomerAccount:
             </div>
 
 
-            <button
-              type="button"
-              onClick={() =>
-                setAssignOpen(true)
-              }
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#3120ff] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#2819d9]"
-            >
-              <Plus className="h-4 w-4" />
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={openCustomerEdit}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50"
+              >
+                <Pencil className="h-4 w-4" />
+                Edit details
+              </button>
 
-              Assign domain
-            </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomerActionError('');
+                  setDeleteConfirmation('');
+                  setDeleteCustomerOpen(true);
+                }}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:bg-red-100"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete account
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setAssignOpen(true)
+                }
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#3120ff] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#2819d9]"
+              >
+                <Plus className="h-4 w-4" />
+
+                Assign domain
+              </button>
+            </div>
 
           </div>
 
@@ -801,7 +1028,175 @@ export const AdminCustomerAccount:
 
 
         {/* ASSIGN DOMAIN MODAL */}
-        {assignOpen && (
+        
+        {editCustomerOpen && (
+          <div className="fixed inset-0 z-80 flex items-center justify-center bg-black/45 p-4">
+            <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-bold text-zinc-950">
+                    Edit customer details
+                  </h2>
+                  <p className="mt-1 text-sm text-zinc-500">
+                    Changing the email address will mark it unverified until the customer verifies the new address.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setEditCustomerOpen(false)
+                  }
+                  disabled={customerActionLoading}
+                  className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-100"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <form
+                onSubmit={saveCustomerEdit}
+                className="mt-5 space-y-4"
+              >
+                <Field
+                  label="Full name"
+                  value={editName}
+                  onChange={setEditName}
+                  required
+                />
+
+                <Field
+                  label="Email address"
+                  type="email"
+                  value={editEmail}
+                  onChange={setEditEmail}
+                  required
+                />
+
+                <Field
+                  label="Organisation / company"
+                  value={editOrganisation}
+                  onChange={setEditOrganisation}
+                />
+
+                <Field
+                  label="Phone number"
+                  value={editPhone}
+                  onChange={setEditPhone}
+                />
+
+                {customerActionError && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {customerActionError}
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2 border-t border-zinc-100 pt-4">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEditCustomerOpen(false)
+                    }
+                    disabled={customerActionLoading}
+                    className="rounded-xl border border-zinc-200 px-4 py-2.5 text-sm font-semibold text-zinc-700"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={customerActionLoading}
+                    className="rounded-xl bg-[#3120ff] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                  >
+                    {customerActionLoading
+                      ? 'Saving...'
+                      : 'Save changes'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {deleteCustomerOpen && (
+          <div className="fixed inset-0 z-90 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600">
+                  <AlertTriangle className="h-5 w-5" />
+                </div>
+
+                <div>
+                  <h2 className="text-lg font-bold text-zinc-950">
+                    Are you sure?
+                  </h2>
+
+                  <p className="mt-1 text-sm leading-6 text-zinc-600">
+                    This deletes the customer's Runtime login and profile. Domain, order and payment history is retained for operational records.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4">
+                <p className="text-xs leading-5 text-red-800">
+                  Type <span className="font-bold">{customer.email}</span> to confirm.
+                </p>
+
+                <input
+                  type="email"
+                  value={deleteConfirmation}
+                  onChange={(event) =>
+                    setDeleteConfirmation(
+                      event.target.value
+                    )
+                  }
+                  placeholder={customer.email}
+                  className="mt-3 w-full rounded-xl border border-red-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-red-400"
+                />
+              </div>
+
+              {customerActionError && (
+                <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {customerActionError}
+                </div>
+              )}
+
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setDeleteCustomerOpen(false)
+                  }
+                  disabled={customerActionLoading}
+                  className="rounded-xl border border-zinc-200 px-4 py-2.5 text-sm font-semibold text-zinc-700"
+                >
+                  Keep account
+                </button>
+
+                <button
+                  type="button"
+                  onClick={deleteCustomerAccount}
+                  disabled={
+                    customerActionLoading ||
+                    deleteConfirmation
+                      .trim()
+                      .toLowerCase() !==
+                      customer.email
+                        .trim()
+                        .toLowerCase()
+                  }
+                  className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {customerActionLoading
+                    ? 'Deleting...'
+                    : 'Delete account'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+{assignOpen && (
           <AssignDomainModal
             customer={customer}
             onClose={() =>

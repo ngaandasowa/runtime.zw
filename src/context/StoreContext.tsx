@@ -168,6 +168,77 @@ const callDomainManagementApi =
   };
 
 
+const callAdminUserApi =
+  async (
+    path: string,
+    options: {
+      method:
+        | 'PATCH'
+        | 'DELETE';
+      body:
+        Record<
+          string,
+          unknown
+        >;
+    }
+  ) => {
+    const authUser =
+      getAuth()
+        .currentUser;
+
+    if (!authUser) {
+      throw new Error(
+        'Authentication required.'
+      );
+    }
+
+    const token =
+      await authUser
+        .getIdToken();
+
+    const response =
+      await fetch(
+        `${API_BASE_URL}/api/admin/users${path}`,
+        {
+          method:
+            options.method,
+
+          headers: {
+            'Content-Type':
+              'application/json',
+
+            Authorization:
+              `Bearer ${token}`,
+          },
+
+          body:
+            JSON.stringify(
+              options.body
+            ),
+        }
+      );
+
+    let data:
+      any = null;
+
+    try {
+      data =
+        await response.json();
+    } catch {
+      data = null;
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        data?.message ||
+        'Unable to update this customer account.'
+      );
+    }
+
+    return data;
+  };
+
+
 interface StoreContextType {
   currentUser: User | null;
   authReady: boolean;
@@ -198,6 +269,29 @@ interface StoreContextType {
 
   resetPassword: (
     email: string
+  ) => Promise<void>;
+
+  resendVerificationEmail:
+    () => Promise<void>;
+
+  changePassword: (
+    currentPassword: string,
+    newPassword: string
+  ) => Promise<void>;
+
+  adminUpdateCustomer: (
+    userId: string,
+    changes: {
+      name: string;
+      email: string;
+      organisation?: string;
+      phone?: string;
+    }
+  ) => Promise<User>;
+
+  adminDeleteCustomer: (
+    userId: string,
+    confirmationEmail: string
   ) => Promise<void>;
 
   logout: () => Promise<void>;
@@ -323,10 +417,6 @@ const SEED_SETTINGS: PlatformSettings = {
 };
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  useEffect(() => {
-    analyticsService.startPageViewTracking();
-  }, []);
-
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
@@ -393,44 +483,60 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   return firebaseAuthService.onUserChanged(
     async (user) => {
       if (!user) {
-        setCurrentUser(null);
+        setCurrentUser(
+          null
+        );
 
-        analyticsService.setUser(null);
+        analyticsService.setUser(
+          null
+        );
 
-        setAuthReady(true);
+        setAuthReady(
+          true
+        );
 
         return;
       }
 
-      // user is guaranteed non-null from here
-      const authUser = user;
+      /*
+       * Keep a non-null reference for the async work below.
+       * The callback already provides a Runtime User, so use
+       * user.id, never Firebase's user.uid here.
+       */
+      const runtimeUser = user;
 
       try {
         const profile =
           await userService.ensureUser(
-            authUser
+            runtimeUser
           );
 
-        setCurrentUser(profile);
+        setCurrentUser(
+          profile
+        );
 
         analyticsService.setUser(
           profile
         );
-      } catch (error) {
+      } catch (
+        error
+      ) {
         console.error(
           'Failed to load user profile:',
           error
         );
 
         setCurrentUser(
-          authUser
+          runtimeUser
         );
 
         analyticsService.setUser(
-          authUser
+          runtimeUser
         );
       } finally {
-        setAuthReady(true);
+        setAuthReady(
+          true
+        );
       }
     }
   );
@@ -611,117 +717,339 @@ useEffect(() => {
   };
 
   const login = async (
-  email: string,
-  password: string
-) => {
-  const authUser =
-    await firebaseAuthService.signIn(
-      email,
-      password
+    email: string,
+    password: string
+  ) => {
+    const authUser =
+      await firebaseAuthService.signIn(
+        email,
+        password
+      );
+
+    if (!authUser) {
+      throw new Error(
+        'Unable to sign in. Please try again.'
+      );
+    }
+
+    const profile =
+      await userService.ensureUser(
+        authUser
+      );
+
+    setCurrentUser(
+      profile
     );
 
-  const profile =
-    await userService.ensureUser(
-      authUser
+    setActiveView(
+      'dashboard'
     );
 
-  setCurrentUser(
-    profile
-  );
-
-  analyticsService.setUser(profile);
-  analyticsService.trackSignIn(email, 'email');
-
-  setActiveView(
-    'dashboard'
-  );
-
-  showNotification(
-    `Welcome back, ${profile.name}`,
-    'success'
-  );
-};
-
-  const loginWithGoogle = async () => {
-  const authUser =
-    await firebaseAuthService.signInWithGoogle();
-
-  const profile =
-    await userService.ensureUser(
-      authUser
+    showNotification(
+      `Welcome back, ${profile.name}`,
+      'success'
     );
-
-  setCurrentUser(
-    profile
-  );
-
-  analyticsService.setUser(profile);
-  analyticsService.trackSignIn(profile.email, 'google');
-
-  setActiveView(
-    'dashboard'
-  );
-};
-
-  const resetPassword = async (email: string) => {
-    await firebaseAuthService.resetPassword(email);
-    showNotification('Password reset email sent.', 'success');
   };
+
+  const loginWithGoogle =
+    async () => {
+      const authUser =
+        await firebaseAuthService
+          .signInWithGoogle();
+
+      if (!authUser) {
+        throw new Error(
+          'Unable to sign in with Google. Please try again.'
+        );
+      }
+
+      const profile =
+        await userService
+          .ensureUser(
+            authUser
+          );
+
+      setCurrentUser(
+        profile
+      );
+
+      setActiveView(
+        'dashboard'
+      );
+    };
+
+  const resetPassword =
+    async (
+      email: string
+    ) => {
+      await firebaseAuthService
+        .resetPassword(
+          email
+        );
+
+      /*
+       * Keep this generic so the UI does not reveal whether an
+       * email address is registered.
+       */
+      showNotification(
+        'If an account uses that email, a password reset link has been sent.',
+        'success'
+      );
+    };
+
+  const resendVerificationEmail =
+    async () => {
+      await firebaseAuthService
+        .sendVerificationEmail();
+
+      showNotification(
+        'Verification email sent. Check your inbox.',
+        'success'
+      );
+    };
+
+  const changePassword =
+    async (
+      currentPassword: string,
+      newPassword: string
+    ) => {
+      await firebaseAuthService
+        .changePassword(
+          currentPassword,
+          newPassword
+        );
+
+      showNotification(
+        'Password updated successfully.',
+        'success'
+      );
+    };
 
   const logout = async () => {
-    analyticsService.trackSignOut();
-    await firebaseAuthService.signOut();
+    await firebaseAuthService
+      .signOut();
+
     setCurrentUser(null);
     setActiveView('home');
-    showNotification('Logged out of Runtime session.', 'info');
-  };
 
-  
-
-  const register = async (name: string, email: string, password: string) => {
-    const user = await firebaseAuthService.signUp(name, email, password);
-    if (user) {
-      setCurrentUser(user);
-      analyticsService.setUser(user);
-      analyticsService.trackSignUp(email, 'email');
-      setActiveView('dashboard');
-      showNotification(`Account created successfully for ${email}`, 'success');
-      return true;
-    }
-    showNotification('Account created. Check your email to confirm it, then sign in.', 'info');
-    return false;
-  };
-
-  const updateCurrentUserProfile = async (
-  changes: Partial<User>
-) => {
-  if (!currentUser) {
-    throw new Error(
-      'You must be signed in to update your profile.'
+    showNotification(
+      'You have been signed out.',
+      'info'
     );
-  }
+  };
 
-  await userService.updateProfile(
-    currentUser.id,
-    changes
-  );
+  const register = async (
+    name: string,
+    email: string,
+    password: string
+  ) => {
+    const authUser =
+      await firebaseAuthService.signUp(
+        name,
+        email,
+        password
+      );
 
-  setCurrentUser((previous) => {
-    if (!previous) {
-      return previous;
+    if (!authUser) {
+      throw new Error(
+        'Unable to create your account. Please try again.'
+      );
     }
 
-    return {
-      ...previous,
-      ...changes,
-    };
-  });
+    const profile =
+      await userService.ensureUser(
+        authUser
+      );
 
-  showNotification(
-    'Profile updated successfully.',
-    'success'
-  );
-};
+    setCurrentUser(
+      profile
+    );
+
+    setActiveView(
+      'dashboard'
+    );
+
+    showNotification(
+      'Account created. Check your inbox when convenient to verify your email.',
+      'success'
+    );
+
+    return true;
+  };
+
+  const updateCurrentUserProfile =
+    async (
+      changes:
+        Partial<User>
+    ) => {
+      if (!currentUser) {
+        throw new Error(
+          'You must be signed in to update your profile.'
+        );
+      }
+
+      const safeChanges = {
+        ...(typeof changes.name ===
+        'string'
+          ? {
+              name:
+                changes.name.trim(),
+            }
+          : {}),
+
+        ...(typeof changes.organisation ===
+        'string'
+          ? {
+              organisation:
+                changes.organisation.trim(),
+            }
+          : {}),
+
+        ...(typeof changes.phone ===
+        'string'
+          ? {
+              phone:
+                changes.phone.trim(),
+            }
+          : {}),
+      };
+
+      await userService
+        .updateProfile(
+          currentUser.id,
+          safeChanges
+        );
+
+      setCurrentUser(
+        (previous) => {
+          if (!previous) {
+            return previous;
+          }
+
+          return {
+            ...previous,
+            ...safeChanges,
+          };
+        }
+      );
+
+      setUsers(
+        (previous) =>
+          previous.map(
+            (user) =>
+              user.id ===
+              currentUser.id
+                ? {
+                    ...user,
+                    ...safeChanges,
+                  }
+                : user
+          )
+      );
+
+      showNotification(
+        'Profile updated successfully.',
+        'success'
+      );
+    };
+
+  const adminUpdateCustomer =
+    async (
+      userId: string,
+      changes: {
+        name: string;
+        email: string;
+        organisation?: string;
+        phone?: string;
+      }
+    ): Promise<User> => {
+      const result =
+        await callAdminUserApi(
+          `/${encodeURIComponent(
+            userId
+          )}`,
+          {
+            method:
+              'PATCH',
+
+            body: {
+              ...changes,
+            },
+          }
+        );
+
+      const updated =
+        result.user as User;
+
+      setUsers(
+        (previous) =>
+          previous.map(
+            (user) =>
+              user.id ===
+              userId
+                ? {
+                    ...user,
+                    ...updated,
+                  }
+                : user
+          )
+      );
+
+      showNotification(
+        'Customer details updated.',
+        'success'
+      );
+
+      return updated;
+    };
+
+  const adminDeleteCustomer =
+    async (
+      userId: string,
+      confirmationEmail:
+        string
+    ) => {
+      await callAdminUserApi(
+        `/${encodeURIComponent(
+          userId
+        )}`,
+        {
+          method:
+            'DELETE',
+
+          body: {
+            confirmationEmail,
+          },
+        }
+      );
+
+      setUsers(
+        (previous) =>
+          previous.filter(
+            (user) =>
+              user.id !== userId
+          )
+      );
+
+      if (
+        adminCustomerId ===
+        userId
+      ) {
+        setAdminCustomerId(
+          null
+        );
+
+        setAdminSubView(
+          'customers'
+        );
+      }
+
+      showNotification(
+        'Customer account deleted.',
+        'success'
+      );
+    };
+
 
 const getDomainOrderDetails = async (
   domainName: string
@@ -3656,6 +3984,10 @@ const getDomainOrderDetails = async (
       login,
       loginWithGoogle,
       resetPassword,
+      resendVerificationEmail,
+      changePassword,
+      adminUpdateCustomer,
+      adminDeleteCustomer,
       logout,
       register,
       updateCurrentUserProfile,

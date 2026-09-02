@@ -11,6 +11,10 @@ import { useStore } from '../context/StoreContext';
 import { Link, useNavigate } from 'react-router-dom';
 import runtimeLogo from '../assets/runtime-logo.svg';
 import runtimeLogoWhite from '../assets/runtime-logo-white.svg';
+import {
+  isValidEmailAddress,
+  normalizeEmail,
+} from '../services/FirebaseAuthService';
 
 interface AuthPageProps {
   mode: 'login' | 'register';
@@ -35,6 +39,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ mode }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [emailTouched, setEmailTouched] = useState(false);
 
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [resetEmailAddress, setResetEmailAddress] = useState('');
@@ -42,14 +47,47 @@ export const AuthPage: React.FC<AuthPageProps> = ({ mode }) => {
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
 
+    const normalizedEmail =
+      normalizeEmail(email);
+
+    setEmailTouched(true);
     setError('');
+
+    if (
+      !isValidEmailAddress(
+        normalizedEmail
+      )
+    ) {
+      setError(
+        'Enter a valid email address, for example name@example.com.'
+      );
+      return;
+    }
+
+    if (
+      !isLogin &&
+      name.trim().length < 2
+    ) {
+      setError(
+        'Enter your full name.'
+      );
+      return;
+    }
+
     setLoading(true);
 
     try {
       if (isLogin) {
-        await login(email, password);
+        await login(
+          normalizedEmail,
+          password
+        );
       } else {
-        await register(name, email, password);
+        await register(
+          name.trim(),
+          normalizedEmail,
+          password
+        );
       }
 
       if (pendingRegisterDomain) {
@@ -96,9 +134,19 @@ export const AuthPage: React.FC<AuthPageProps> = ({ mode }) => {
   };
 
   const forgotPassword = async () => {
-    if (!email.trim()) {
+    const normalizedEmail =
+      normalizeEmail(email);
+
+    if (
+      !isValidEmailAddress(
+        normalizedEmail
+      )
+    ) {
       setResetEmailSent(false);
-      setError('Enter your email address first.');
+      setEmailTouched(true);
+      setError(
+        'Enter a valid email address first.'
+      );
       return;
     }
 
@@ -107,9 +155,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({ mode }) => {
     setLoading(true);
 
     try {
-      await resetPassword(email.trim());
+      await resetPassword(normalizedEmail);
 
-      setResetEmailAddress(email.trim());
+      setResetEmailAddress(normalizedEmail);
       setResetEmailSent(true);
     } catch (authError) {
       setError(
@@ -136,6 +184,13 @@ export const AuthPage: React.FC<AuthPageProps> = ({ mode }) => {
       setError('');
     }
   };
+
+
+  const emailIsValid =
+    !email.trim() ||
+    isValidEmailAddress(
+      email
+    );
 
   return (
     <main className="min-h-screen bg-white lg:grid lg:grid-cols-2">
@@ -284,10 +339,35 @@ export const AuthPage: React.FC<AuthPageProps> = ({ mode }) => {
                   required
                   value={email}
                   onChange={handleEmailChange}
+                  onBlur={() =>
+                    setEmailTouched(true)
+                  }
                   autoComplete="email"
-                  className="h-11 w-full rounded-xl border border-transparent bg-zinc-100 pl-11 pr-3 outline-none transition focus:border-[#3120FF] focus:bg-white"
+                  className={`h-11 w-full rounded-xl border bg-zinc-100 pl-11 pr-3 outline-none transition focus:bg-white ${
+                    emailTouched &&
+                    !emailIsValid
+                      ? 'border-red-300 focus:border-red-500'
+                      : 'border-transparent focus:border-[#3120FF]'
+                  }`}
                 />
               </span>
+
+              {emailTouched &&
+                email.trim() &&
+                !emailIsValid && (
+                <span className="mt-1.5 block text-xs text-red-600">
+                  Enter a valid email address.
+                </span>
+              )}
+
+              {!isLogin &&
+                emailTouched &&
+                emailIsValid &&
+                email.trim() && (
+                <span className="mt-1.5 block text-xs text-zinc-500">
+                  You can use Runtime immediately. We will send a verification link to confirm that you own this email address.
+                </span>
+              )}
             </label>
 
             <label className="block text-sm font-medium text-zinc-800">

@@ -13,6 +13,7 @@ import emailCampaignRoutes from './routes/emailCampaigns.js';
 import renewalLifecycleRoutes from './routes/renewalLifecycle.js';
 import nameserverRoutes from './routes/nameservers.js';
 import analyticsRoutes from './routes/analytics.js';
+import adminUserRoutes from './routes/adminUsers.js';
 
 const app = express();
 
@@ -151,6 +152,11 @@ app.use(
 app.use(
   '/api/analytics',
   analyticsRoutes
+);
+
+app.use(
+  '/api/admin/users',
+  adminUserRoutes
 );
 
 /*

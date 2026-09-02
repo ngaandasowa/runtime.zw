@@ -7,8 +7,13 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 
-import { db } from '../firebase/firebase';
-import { User } from '../types';
+import {
+  db,
+} from '../firebase/firebase';
+
+import type {
+  User,
+} from '../types';
 
 export type RuntimeUserRole =
   | 'customer'
@@ -16,61 +21,90 @@ export type RuntimeUserRole =
   | 'registry_admin'
   | 'billing_admin';
 
-export type RuntimeUserProfile = User & {
-  status: 'active' | 'suspended';
-  updated_at: string;
-};
+export type RuntimeUserProfile =
+  User & {
+    status:
+      | 'active'
+      | 'suspended';
+
+    updated_at:
+      string;
+  };
 
 class UserService {
-  async getAllUsers(): Promise<RuntimeUserProfile[]> {
-    const snapshot = await getDocs(
-      collection(db, 'users')
+  async getAllUsers():
+    Promise<
+      RuntimeUserProfile[]
+    > {
+    const snapshot =
+      await getDocs(
+        collection(
+          db,
+          'users'
+        )
+      );
+
+    return snapshot.docs.map(
+      (item) => {
+        const data =
+          item.data() as
+            RuntimeUserProfile;
+
+        return {
+          ...data,
+          id:
+            data.id ||
+            item.id,
+        };
+      }
     );
-
-    return snapshot.docs.map((item) => {
-      const data =
-        item.data() as RuntimeUserProfile;
-
-      return {
-        ...data,
-        id: data.id || item.id,
-      };
-    });
   }
 
   async getUser(
     uid: string
-  ): Promise<RuntimeUserProfile | null> {
-    const ref = doc(
-      db,
-      'users',
-      uid
-    );
+  ): Promise<
+    RuntimeUserProfile | null
+  > {
+    const ref =
+      doc(
+        db,
+        'users',
+        uid
+      );
 
     const snapshot =
-      await getDoc(ref);
+      await getDoc(
+        ref
+      );
 
-    if (!snapshot.exists()) {
+    if (
+      !snapshot.exists()
+    ) {
       return null;
     }
 
     const data =
-      snapshot.data() as RuntimeUserProfile;
+      snapshot.data() as
+        RuntimeUserProfile;
 
     return {
       ...data,
-      id: data.id || snapshot.id,
+      id:
+        data.id ||
+        snapshot.id,
     };
   }
 
   async createUser(
-    profile: RuntimeUserProfile
+    profile:
+      RuntimeUserProfile
   ) {
-    const ref = doc(
-      db,
-      'users',
-      profile.id
-    );
+    const ref =
+      doc(
+        db,
+        'users',
+        profile.id
+      );
 
     await setDoc(
       ref,
@@ -82,24 +116,89 @@ class UserService {
 
   async ensureUser(
     user: User
-  ): Promise<RuntimeUserProfile> {
+  ): Promise<
+    RuntimeUserProfile
+  > {
     const existing =
       await this.getUser(
         user.id
       );
 
+    const now =
+      new Date()
+        .toISOString();
+
     if (existing) {
-      return existing;
+      /*
+       * Firebase Auth is authoritative for identity fields.
+       * This keeps Runtime's Firestore profile in sync after
+       * verification, Google sign-in or an admin email change.
+       */
+      const merged:
+        RuntimeUserProfile = {
+          ...existing,
+
+          name:
+            user.name ||
+            existing.name,
+
+          email:
+            user.email,
+
+          email_verified_at:
+            user.email_verified_at ||
+            null,
+
+          updated_at:
+            now,
+        };
+
+      const changed =
+        merged.name !==
+          existing.name ||
+        merged.email !==
+          existing.email ||
+        merged.email_verified_at !==
+          existing.email_verified_at;
+
+      if (changed) {
+        await updateDoc(
+          doc(
+            db,
+            'users',
+            user.id
+          ),
+          {
+            name:
+              merged.name,
+
+            email:
+              merged.email,
+
+            email_verified_at:
+              merged.email_verified_at,
+
+            updated_at:
+              now,
+          }
+        );
+      }
+
+      return merged;
     }
 
-    const now =
-      new Date().toISOString();
-
-    const profile: RuntimeUserProfile = {
-      ...user,
-      role: 'customer',
-      status: 'active',
-      updated_at: now,
+    const profile:
+      RuntimeUserProfile = {
+        ...user,
+        role:
+          'customer',
+        status:
+          'active',
+        email_verified_at:
+          user.email_verified_at ||
+          null,
+        updated_at:
+          now,
     };
 
     await this.createUser(
@@ -111,20 +210,56 @@ class UserService {
 
   async updateProfile(
     uid: string,
-    changes: Partial<RuntimeUserProfile>
+    changes:
+      Partial<
+        RuntimeUserProfile
+      >
   ) {
-    const ref = doc(
-      db,
-      'users',
-      uid
-    );
+    const ref =
+      doc(
+        db,
+        'users',
+        uid
+      );
+
+    /*
+     * Customers may edit profile details only. Identity-sensitive
+     * fields remain backend/Admin-owned.
+     */
+    const allowed = {
+      ...(typeof changes.name ===
+      'string'
+        ? {
+            name:
+              changes.name.trim(),
+          }
+        : {}),
+
+      ...(typeof changes.organisation ===
+      'string'
+        ? {
+            organisation:
+              changes.organisation.trim(),
+          }
+        : {}),
+
+      ...(typeof changes.phone ===
+      'string'
+        ? {
+            phone:
+              changes.phone.trim(),
+          }
+        : {}),
+    };
 
     await updateDoc(
       ref,
       {
-        ...changes,
+        ...allowed,
+
         updated_at:
-          new Date().toISOString(),
+          new Date()
+            .toISOString(),
       }
     );
   }
