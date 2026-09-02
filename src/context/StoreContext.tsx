@@ -173,10 +173,9 @@ const callAdminUserApi =
     path: string,
     options: {
       method:
-        | 'GET'
         | 'PATCH'
         | 'DELETE';
-      body?:
+      body:
         Record<
           string,
           unknown
@@ -212,14 +211,10 @@ const callAdminUserApi =
               `Bearer ${token}`,
           },
 
-          ...(options.body
-            ? {
-                body:
-                  JSON.stringify(
-                    options.body
-                  ),
-              }
-            : {}),
+          body:
+            JSON.stringify(
+              options.body
+            ),
         }
       );
 
@@ -568,30 +563,10 @@ useEffect(() => {
     }
 
     try {
-      /*
-       * Admin customer verification must come from Firebase Auth,
-       * not only the Firestore profile. The backend reconciles
-       * Firebase emailVerified into each Runtime customer record.
-       */
-      const result =
-        await callAdminUserApi(
-          '',
-          {
-            method:
-              'GET',
-          }
-        );
-
       const allUsers =
-        Array.isArray(
-          result?.users
-        )
-          ? result.users as User[]
-          : [];
+        await userService.getAllUsers();
 
-      setUsers(
-        allUsers
-      );
+      setUsers(allUsers);
     } catch (error) {
       console.error(
         'Failed to load admin users:',
