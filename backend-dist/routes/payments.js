@@ -2282,15 +2282,29 @@ router.get('/order/:orderId/payment-summary', authenticate, async (req, res) => 
             : 0));
         return res.json({
             success: true,
-            orderId,
-            orderReference: String(order.reference || orderId),
-            currency: String(order.currency || 'USD'),
-            orderTotal,
-            amountPaid,
-            amountDue,
-            fullyPaid: amountDue <= 0,
-            runtimeCreditApplied,
-            runtimeCreditBalance,
+            /*
+             * Keep this response shape aligned with DashboardBilling.
+             * The frontend intentionally reads result.order.* and
+             * result.wallet.* so every service can use the same
+             * checkout component.
+             */
+            order: {
+                id: orderId,
+                reference: String(order.reference || orderId),
+                total: orderTotal,
+                currency: String(order.currency || 'USD')
+                    .toUpperCase(),
+                status: String(order.status || 'pending'),
+                amountPaid,
+                amountDue,
+                fullyPaid: amountDue <= 0,
+            },
+            wallet: {
+                balance: runtimeCreditBalance,
+                currency: 'USD',
+                applicableAmount: money(Math.min(runtimeCreditBalance, amountDue)),
+                appliedAmount: runtimeCreditApplied,
+            },
             payments,
         });
     }
