@@ -1904,8 +1904,15 @@ class DomainService {
 
   /*
    * ------------------------------------------------------------
-   * TRANSFER URL
+   * RUNTIME TRANSFER ENTRY
    * ------------------------------------------------------------
+   *
+   * Transfers belong to Runtime.
+   *
+   * Do not redirect customers to the upstream Ngaatec/WHMCS cart.
+   * The selected domain is saved in sessionStorage so it survives
+   * an authentication redirect, then Runtime opens the customer's
+   * own Domains -> Transfer flow.
    */
 
   getTransferUrl(
@@ -1916,45 +1923,39 @@ class DomainService {
         domain
       );
 
-    const parts =
-      cleaned.split('.');
-
-    const sld =
-      parts.shift() ?? '';
-
-    const tld =
-      parts.length
-        ? `.${parts.join('.')}`
-        : '';
-
     return (
-      'https://clientzone.ngaatec.com/cart.php' +
-      `?a=add&domain=transfer&sld=${encodeURIComponent(
-        sld
-      )}&tld=${encodeURIComponent(
-        tld
+      `/dashboard?transfer=${encodeURIComponent(
+        cleaned
       )}`
     );
   }
 
-  /*
-   * ------------------------------------------------------------
-   * TRANSFER DOMAIN
-   * ------------------------------------------------------------
-   */
-
   transferDomain(
     domain: string
   ) {
-    // Track domain transfer initiation
-    analyticsService.trackDomainTransfer(
-      domain
-    );
-
-    window.location.href =
-      this.getTransferUrl(
+    const cleaned =
+      this.cleanDomain(
         domain
       );
+
+    if (!cleaned) {
+      return;
+    }
+
+    analyticsService.trackDomainTransfer(
+      cleaned
+    );
+
+    sessionStorage.setItem(
+      'runtime_pending_transfer_domain',
+      cleaned
+    );
+
+    window.location.assign(
+      this.getTransferUrl(
+        cleaned
+      )
+    );
   }
 
   /*

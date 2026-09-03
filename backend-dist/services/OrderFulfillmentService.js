@@ -175,6 +175,79 @@ const fulfillDomainRenewal = async ({ transaction, order, paymentId, now, actor 
         resourceId: domainDoc.id,
     };
 };
+const fulfillDomainTransfer = async ({ transaction, orderRef, paymentId, now, actor = 'Runtime', preloadedDomainDoc = null, }) => {
+    const domainQuery = adminDb
+        .collection('domains')
+        .where('order_id', '==', orderRef.id)
+        .limit(1);
+    const domainSnapshot = preloadedDomainDoc
+        ? null
+        : await transaction.get(domainQuery);
+    if (!preloadedDomainDoc &&
+        domainSnapshot?.empty) {
+        return {
+            handled: false,
+            itemType: 'domain_transfer',
+        };
+    }
+    const domainDoc = preloadedDomainDoc ||
+        domainSnapshot.docs[0];
+    const domain = domainDoc.data();
+    if (!domain) {
+        return {
+            handled: false,
+            itemType: 'domain_transfer',
+        };
+    }
+    const existingHistory = Array.isArray(domain.history)
+        ? domain.history
+        : [];
+    const historyId = `hist-transfer-${paymentId.slice(0, 12)}`;
+    const alreadyRecorded = existingHistory.some((item) => item?.id === historyId ||
+        (item?.payment_id ===
+            paymentId &&
+            item?.status ===
+                'pending_transfer'));
+    transaction.set(domainDoc.ref, {
+        status: 'pending_transfer',
+        payment_id: paymentId,
+        updated_at: now,
+        history: alreadyRecorded
+            ? existingHistory
+            : [
+                ...existingHistory,
+                {
+                    id: historyId,
+                    domain_id: domainDoc.id,
+                    action: 'TRANSFER',
+                    description: 'Payment verified. Domain transfer is now being processed.',
+                    status: 'pending_transfer',
+                    actor,
+                    payment_id: paymentId,
+                    created_at: now,
+                },
+            ],
+    }, { merge: true });
+    /*
+     * The authorization code is stored encrypted in this
+     * server-only collection. Mark it ready only when payment
+     * is actually verified.
+     */
+    transaction.set(adminDb
+        .collection('transfer_requests')
+        .doc(orderRef.id), {
+        status: 'ready_for_processing',
+        payment_id: paymentId,
+        payment_verified_at: now,
+        updated_at: now,
+    }, { merge: true });
+    return {
+        handled: true,
+        itemType: 'domain_transfer',
+        resourceType: 'domain',
+        resourceId: domainDoc.id,
+    };
+};
 export const fulfillPaidOrder = async (input) => {
     const itemType = getPrimaryItemType(input.order);
     switch (itemType) {
@@ -188,6 +261,7 @@ export const fulfillPaidOrder = async (input) => {
         case 'domain_renewal':
             return fulfillDomainRenewal(input);
         case 'domain_transfer':
+            return fulfillDomainTransfer(input);
         case 'cloud_compute':
         case 'database':
         case 'storage':

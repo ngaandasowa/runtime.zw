@@ -168,6 +168,62 @@ const callDomainManagementApi =
   };
 
 
+const saveTransferAuthorization =
+  async (
+    orderId: string,
+    domainName: string,
+    authCode: string
+  ) => {
+    const authUser =
+      getAuth().currentUser;
+
+    if (!authUser) {
+      throw new Error(
+        'Authentication required.'
+      );
+    }
+
+    const token =
+      await authUser.getIdToken();
+
+    const response =
+      await fetch(
+        `${API_BASE_URL}/api/transfers/authorization`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type':
+              'application/json',
+            Authorization:
+              `Bearer ${token}`,
+          },
+          body:
+            JSON.stringify({
+              orderId,
+              domainName,
+              authCode,
+            }),
+        }
+      );
+
+    const data =
+      await response
+        .json()
+        .catch(
+          () => ({})
+        );
+
+    if (!response.ok) {
+      throw new Error(
+        data?.message ||
+        'Runtime could not securely save the transfer authorization code.'
+      );
+    }
+
+    return data;
+  };
+
+
 const callAdminUserApi =
   async (
     path: string,
@@ -341,7 +397,14 @@ interface StoreContextType {
   ) => Promise<void>;
   requestDomainModify: (domainId: string, updatedOwner: RegistrantDetails, nameservers: string[]) => Promise<void>;
   requestDomainDelete: (domainId: string, confirmationText: string) => Promise<void>;
-  requestDomainTransfer: (domainName: string, authCode: string) => Promise<void>;
+  requestDomainTransfer: (
+    domainName: string,
+    authCode?: string
+  ) => Promise<{
+    success: boolean;
+    domain: Domain;
+    order: Order;
+  }>;
   updateDomainStatus: (
     domainId: string,
     status: DomainStatus
@@ -487,11 +550,65 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return 'home';
   });
   const [adminSubView, setAdminSubView] = useState<string>('dashboard'); // 'dashboard' | 'registry' | 'domains' | 'pricing' | 'orders' | 'nameservers' | 'settings' | 'future_services'
-  const [dashboardSubView, setDashboardSubView] = useState<string>('overview'); // 'overview' | 'domains' | 'billing' | 'account' | 'build_projects' | 'build_deployments' | 'build_databases' | 'develop_keys' | 'develop_webhooks' | 'develop_logs'
+  const [dashboardSubView, setDashboardSubView] = useState<string>(() => {
+    /*
+     * Public transfer searches land on /dashboard?transfer=...
+     * or leave a session draft when authentication is required.
+     *
+     * Select My Domains before the dashboard renders so the
+     * DashboardDomains component can immediately open its
+     * Transfer tab instead of briefly landing on Overview.
+     */
+    if (
+      window.location.pathname.startsWith('/dashboard')
+    ) {
+      const params =
+        new URLSearchParams(
+          window.location.search
+        );
+
+      if (
+        params.get('transfer') ||
+        sessionStorage.getItem(
+          'runtime_pending_transfer_domain'
+        )
+      ) {
+        return 'domains';
+      }
+    }
+
+    return 'overview';
+  }); // 'overview' | 'domains' | 'billing' | 'account' | ...
   const [registrationModalOpen, setRegistrationModalOpen] = useState<boolean>(false);
   const [pendingRegisterDomain, setPendingRegisterDomain] = useState<string | null>(null);
   const [adminCustomerId, setAdminCustomerId] = useState<string | null>(null);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
+
+  /*
+   * Also handle transfer navigation that happens while the
+   * application is already mounted.
+   */
+  useEffect(() => {
+    if (activeView !== 'dashboard') {
+      return;
+    }
+
+    const params =
+      new URLSearchParams(
+        window.location.search
+      );
+
+    if (
+      params.get('transfer') ||
+      sessionStorage.getItem(
+        'runtime_pending_transfer_domain'
+      )
+    ) {
+      setDashboardSubView(
+        'domains'
+      );
+    }
+  }, [activeView]);
 
   useEffect(() => {
   return firebaseAuthService.onUserChanged(
@@ -1259,7 +1376,18 @@ const getDomainOrderDetails = async (
       registrationPrice: prices.register,
       renewalPrice: prices.renew,
       transferPrice: prices.transfer,
-      processingType: 'zispa' as const,
+
+      /*
+       * Only Zimbabwe registry namespaces use the ZISPA workflow.
+       * .com is priced locally but must never generate a ZISPA
+       * registry template.
+       */
+      processingType:
+        fixedTld === '.co.zw' ||
+        fixedTld === '.org.zw' ||
+        fixedTld === '.ac.zw'
+          ? ('zispa' as const)
+          : ('manual' as const),
     };
   }
 
@@ -2033,113 +2161,261 @@ const getDomainOrderDetails = async (
 
   const requestDomainTransfer = async (
     domainName: string,
-    authCode: string
+    authCode: string = ''
   ) => {
     if (!currentUser) {
-      throw new Error('You must be signed in to transfer a domain.');
+      throw new Error(
+        'You must be signed in to transfer a domain.'
+      );
     }
 
-    const normalizedDomain = domainService.cleanDomain(domainName);
+    const normalizedDomain =
+      domainService.cleanDomain(
+        domainName
+      );
+
+    if (
+      !normalizedDomain ||
+      !normalizedDomain.includes('.')
+    ) {
+      throw new Error(
+        'Enter a valid domain name.'
+      );
+    }
 
     const {
       tld,
       renewalPrice,
       transferPrice,
       processingType,
-    } = await getDomainOrderDetails(normalizedDomain);
-
-    const now = new Date().toISOString();
-
-    const newDomain = {
-      id: 'dom-' + Math.random().toString(36).substring(2, 10),
-      domain_name: normalizedDomain,
-      tld,
-      user_id: currentUser.id,
-      user_email: currentUser.email,
-      status: 'pending_transfer' as DomainStatus,
-      nameservers: [...settings.default_nameservers],
-      auto_renew: true,
-      renewal_price: renewalPrice,
-      currency: 'USD',
-      registrant_type: 'myself' as const,
-      owner_details: {
-        full_name: currentUser.name || 'Customer',
-        org_name: currentUser.organisation || '',
-        physical_address: '',
-        postal_address: '',
-        city: '',
-        country: 'Zimbabwe',
-        phone: currentUser.phone || '',
-        email: currentUser.email,
-        org_description: '',
-        proposed_usage: '',
-      },
-
-      processing_type: processingType,
-      registration_price: transferPrice,
-
-      history: [
-        {
-          id: 'hist-' + Math.random().toString(36).substring(2, 9),
-          domain_id: normalizedDomain,
-          action: 'TRANSFER' as const,
-          description: 'Domain transfer request received and is being processed.',
-          status: 'pending_transfer',
-          actor: currentUser.email,
-          created_at: now,
-        },
-      ],
-
-      created_at: now,
-      updated_at: now,
-    } as Domain & {
-      processing_type: 'zispa' | 'manual';
-      registration_price: number;
-    };
-
-    // authCode is intentionally not written into the customer-readable
-    // domain record. A dedicated secure transfer-request store can be
-    // added later for transfer secrets.
-    void authCode;
-
-    await domainRepository.createDomain(newDomain);
-
-    if (processingType === 'zispa') {
-      const request = registryService.createRequest(
-        newDomain,
-        'T',
-        currentUser.email
+    } =
+      await getDomainOrderDetails(
+        normalizedDomain
       );
 
-      setRegistryRequests((prev) => [
-        request,
-        ...prev,
-      ]);
+    const requiresAuthCode =
+      processingType !== 'zispa';
+
+    if (
+      requiresAuthCode &&
+      !authCode.trim()
+    ) {
+      throw new Error(
+        'Enter the authorization code supplied by your current provider.'
+      );
     }
 
-    setDomains((prev) => [
-      newDomain,
-      ...prev,
-    ]);
+    /*
+     * TRANSFER CREATES AN ORDER, NOT A PAYMENT.
+     *
+     * Billing is Runtime's single checkout surface. It already
+     * owns Runtime Credit, split payments, PesePay, EcoCash USD
+     * and retries. Transfers should only create a normal unpaid
+     * Runtime order and then hand that order to Billing.
+     */
+    const order =
+      orderService
+        .createDomainTransferOrder(
+          currentUser.id,
+          currentUser.email,
+          normalizedDomain,
+          transferPrice,
+          'USD'
+        );
 
-    emailNotificationService.notifyQuietly(
-      'domain_transfer_requested',
-      {
+    const now =
+      new Date().toISOString();
+
+    const pendingDomain = {
+      id:
+        'dom-' +
+        Math.random()
+          .toString(36)
+          .substring(2, 10),
+
+      domain_name:
+        normalizedDomain,
+
+      tld,
+
+      user_id:
+        currentUser.id,
+
+      user_email:
+        currentUser.email,
+
+      status:
+        'pending_payment' as DomainStatus,
+
+      nameservers: [
+        ...settings.default_nameservers,
+      ],
+
+      auto_renew:
+        true,
+
+      renewal_price:
+        renewalPrice,
+
+      currency:
+        'USD',
+
+      registrant_type:
+        'myself' as const,
+
+      owner_details: {
+        full_name:
+          currentUser.name ||
+          'Customer',
+
+        org_name:
+          currentUser.organisation ||
+          '',
+
+        physical_address:
+          '',
+
+        postal_address:
+          '',
+
+        city:
+          '',
+
+        country:
+          'Zimbabwe',
+
+        phone:
+          currentUser.phone ||
+          '',
+
         email:
           currentUser.email,
 
-        name:
-          currentUser.name,
+        org_description:
+          '',
 
-        domainName:
+        proposed_usage:
+          '',
+      },
+
+      processing_type:
+        processingType,
+
+      registration_price:
+        transferPrice,
+
+      order_id:
+        order.id,
+
+      transfer_order:
+        true,
+
+      history: [
+        {
+          id:
+            'hist-' +
+            Math.random()
+              .toString(36)
+              .substring(2, 9),
+
+          domain_id:
+            normalizedDomain,
+
+          action:
+            'TRANSFER' as const,
+
+          description:
+            `Transfer order ${order.reference} created. Awaiting payment.`,
+
+          status:
+            'pending_payment',
+
+          actor:
+            currentUser.email,
+
+          created_at:
+            now,
+        },
+      ],
+
+      created_at:
+        now,
+
+      updated_at:
+        now,
+    } as Domain & {
+      processing_type:
+        'zispa' | 'manual';
+
+      registration_price:
+        number;
+
+      order_id:
+        string;
+
+      transfer_order:
+        boolean;
+    };
+
+    await checkoutRepository
+      .createDomainRegistrationWithoutPayment(
+        order,
+        pendingDomain
+      );
+
+    /*
+     * Only non-ZISPA domains have an authorization/EPP code.
+     * The secret stays on the Render backend.
+     */
+    if (requiresAuthCode) {
+      try {
+        await saveTransferAuthorization(
+          order.id,
           normalizedDomain,
+          authCode.trim()
+        );
+      } catch (error) {
+        await Promise.allSettled([
+          domainRepository
+            .deleteDomain(
+              pendingDomain.id
+            ),
+
+          orderRepository
+            .deleteOrder(
+              order.id
+            ),
+        ]);
+
+        throw error;
       }
+    }
+
+    setOrders(
+      (prev) => [
+        order,
+        ...prev,
+      ]
+    );
+
+    setDomains(
+      (prev) => [
+        pendingDomain,
+        ...prev,
+      ]
     );
 
     showNotification(
-      `Transfer request for ${normalizedDomain} has been received.`,
+      `Transfer order ${order.reference} created. Complete checkout to start the transfer.`,
       'success'
     );
+
+    return {
+      success: true,
+      domain:
+        pendingDomain,
+      order,
+    };
   };
 
   const updateDomainStatus =
@@ -2719,8 +2995,106 @@ const getDomainOrderDetails = async (
         return;
       }
 
+      const paidItemType =
+        String(
+          (paidOrder as any)
+            .items?.[0]
+            ?.item_type ||
+          (paidOrder as any)
+            .purpose ||
+          (paidOrder as any)
+            .metadata
+            ?.purpose ||
+          ''
+        )
+          .trim()
+          .toLowerCase();
+
       /*
-       * Preserve the existing registry-queue UI behaviour.
+       * A paid transfer can now enter processing.
+       * Before this point the domain remains pending_payment.
+       */
+      if (
+        paidItemType ===
+        'domain_transfer'
+      ) {
+        if (
+          (fulfilledDomain as any)
+            .processing_type ===
+          'zispa'
+        ) {
+          const existingTransfer =
+            registryRequests.some(
+              (request) =>
+                request.domain_id ===
+                  fulfilledDomain.id &&
+                request.action ===
+                  'T'
+            );
+
+          if (!existingTransfer) {
+            const registryRequest =
+              registryService
+                .createRequest(
+                  fulfilledDomain,
+                  'T',
+                  currentUser.email
+                );
+
+            registryRequest
+              .payment_reference =
+              approvedPayment.reference;
+
+            setRegistryRequests(
+              (prev) => [
+                registryRequest,
+                ...prev,
+              ]
+            );
+          }
+        }
+
+        emailNotificationService
+          .notifyQuietly(
+            'domain_transfer_requested',
+            {
+              email:
+                fulfilledDomain
+                  .user_email,
+
+              name:
+                fulfilledDomain
+                  .owner_details
+                  ?.full_name,
+
+              orderReference:
+                paidOrder.reference,
+
+              paymentReference:
+                approvedPayment
+                  .reference,
+
+              domainName:
+                fulfilledDomain
+                  .domain_name,
+
+              amount:
+                approvedPayment
+                  .amount,
+            }
+          );
+
+        showNotification(
+          `Payment approved for ${fulfilledDomain.domain_name}. Transfer can now be processed.`,
+          'success'
+        );
+
+        return;
+      }
+
+      /*
+       * Preserve the existing registry-queue UI behaviour
+       * for domain registrations.
        */
       if (
         (fulfilledDomain as any)

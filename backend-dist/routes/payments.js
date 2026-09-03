@@ -4,6 +4,7 @@ import nodeFetch from 'node-fetch';
 import { adminAuth, adminDb, } from '../firebaseAdmin.js';
 import { settleOrderPayment, } from '../services/PaymentSettlementService.js';
 import { settleWalletTopup, } from '../services/WalletTopupSettlementService.js';
+import { applyRuntimeCreditToOrder, } from '../services/CreditOrderPaymentService.js';
 const router = Router();
 const PESEPAY_MAKE_PAYMENT_URL = 'https://api.pesepay.com/api/payments-engine/v2/payments/make-payment';
 const PESEPAY_INITIATE_URL = 'https://api.pesepay.com/api/payments-engine/v1/payments/initiate';
@@ -1724,9 +1725,9 @@ router.post('/order/ecocash', authenticate, async (req, res) => {
                 message: 'This order can no longer be paid.',
             });
         }
-        const amount = Number(order.total);
-        if (!Number.isFinite(amount) ||
-            amount <= 0) {
+        const orderTotal = Number(order.total);
+        if (!Number.isFinite(orderTotal) ||
+            orderTotal <= 0) {
             return res.status(400).json({
                 success: false,
                 message: 'This order has an invalid amount.',
@@ -1736,6 +1737,22 @@ router.post('/order/ecocash', authenticate, async (req, res) => {
             .collection('payments')
             .where('order_id', '==', orderId)
             .get();
+        const verifiedTotal = existingPayments.docs
+            .filter((doc) => doc.data().status ===
+            'verified')
+            .reduce((total, doc) => total +
+            Number(doc.data().amount ||
+                0), 0);
+        const amount = Math.round((Math.max(0, orderTotal -
+            verifiedTotal) +
+            Number.EPSILON) *
+            100) / 100;
+        if (amount <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'This order is already fully funded.',
+            });
+        }
         const activeManual = existingPayments.docs.find((doc) => {
             const data = doc.data();
             return (data.gateway ===
@@ -1912,13 +1929,38 @@ router.post('/pesepay/initiate', authenticate, async (req, res) => {
                 await staleBatch.commit();
             }
         }
-        const amount = Number(order.total);
+        const orderTotal = Number(order.total);
         const currency = String(order.currency || 'USD').toUpperCase();
-        if (!Number.isFinite(amount) ||
-            amount <= 0) {
+        if (!Number.isFinite(orderTotal) ||
+            orderTotal <= 0) {
             return res.status(400).json({
                 success: false,
                 message: 'This order has an invalid payment amount.',
+            });
+        }
+        /*
+         * Collect only the remaining balance after Runtime Credit
+         * or any other verified payment already applied to this
+         * order.
+         */
+        const verifiedPayments = await adminDb
+            .collection('payments')
+            .where('order_id', '==', orderId)
+            .get();
+        const verifiedTotal = verifiedPayments.docs
+            .filter((doc) => doc.data().status ===
+            'verified')
+            .reduce((total, doc) => total +
+            Number(doc.data().amount ||
+                0), 0);
+        const amount = Math.round((Math.max(0, orderTotal -
+            verifiedTotal) +
+            Number.EPSILON) *
+            100) / 100;
+        if (amount <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'This order is already fully funded.',
             });
         }
         if (currency !== 'USD') {
@@ -2172,6 +2214,157 @@ router.post('/pesepay/initiate', authenticate, async (req, res) => {
         return res.status(500).json({
             success: false,
             message: 'Unable to initiate PesePay payment.',
+        });
+    }
+});
+/*
+ * ----------------------------------------------------------
+ * ORDER PAYMENT SUMMARY
+ * ----------------------------------------------------------
+ *
+ * Returns the authoritative amount paid/due for an order.
+ * Verified Runtime Credit counts toward the order balance but
+ * remains an internal payment method rather than new revenue.
+ */
+router.get('/order/:orderId/payment-summary', authenticate, async (req, res) => {
+    try {
+        const runtimeUser = req.runtimeUser;
+        const orderId = String(req.params.orderId || '').trim();
+        if (!orderId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Order ID is required.',
+            });
+        }
+        const orderRef = adminDb
+            .collection('orders')
+            .doc(orderId);
+        const [orderDoc, paymentSnapshot] = await Promise.all([
+            orderRef.get(),
+            adminDb
+                .collection('payments')
+                .where('order_id', '==', orderId)
+                .get(),
+        ]);
+        if (!orderDoc.exists) {
+            return res.status(404).json({
+                success: false,
+                message: 'Order not found.',
+            });
+        }
+        const order = orderDoc.data();
+        const ownsOrder = order.user_id === runtimeUser.uid;
+        const isAdmin = runtimeUser.role === 'super_admin';
+        if (!ownsOrder && !isAdmin) {
+            return res.status(403).json({
+                success: false,
+                message: 'You may only view payments for your own order.',
+            });
+        }
+        const money = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+        const orderTotal = money(Number(order.total || 0));
+        const payments = paymentSnapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+        }));
+        const verifiedPayments = payments.filter((payment) => payment.status === 'verified');
+        const amountPaid = money(Math.min(orderTotal, verifiedPayments.reduce((total, payment) => total + Number(payment.amount || 0), 0)));
+        const amountDue = money(Math.max(0, orderTotal - amountPaid));
+        const runtimeCreditApplied = money(verifiedPayments
+            .filter((payment) => payment.gateway === 'runtime_credit')
+            .reduce((total, payment) => total + Number(payment.amount || 0), 0));
+        const walletDoc = await adminDb
+            .collection('wallets')
+            .doc(runtimeUser.uid)
+            .get();
+        const runtimeCreditBalance = money(Number(walletDoc.exists
+            ? walletDoc.data()?.balance || 0
+            : 0));
+        return res.json({
+            success: true,
+            orderId,
+            orderReference: String(order.reference || orderId),
+            currency: String(order.currency || 'USD'),
+            orderTotal,
+            amountPaid,
+            amountDue,
+            fullyPaid: amountDue <= 0,
+            runtimeCreditApplied,
+            runtimeCreditBalance,
+            payments,
+        });
+    }
+    catch (error) {
+        console.error('Order payment summary error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Unable to load the order payment summary.',
+        });
+    }
+});
+/*
+ * ----------------------------------------------------------
+ * APPLY RUNTIME CREDIT TO ORDER
+ * ----------------------------------------------------------
+ */
+router.post('/order/runtime-credit', authenticate, async (req, res) => {
+    try {
+        const runtimeUser = req.runtimeUser;
+        const orderId = String(req.body?.orderId || '').trim();
+        if (!orderId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Order ID is required.',
+            });
+        }
+        const rawRequestedAmount = req.body?.amount ??
+            req.body?.requestedAmount;
+        const requestedAmount = rawRequestedAmount === undefined ||
+            rawRequestedAmount === null ||
+            rawRequestedAmount === ''
+            ? undefined
+            : Number(rawRequestedAmount);
+        if (requestedAmount !== undefined &&
+            (!Number.isFinite(requestedAmount) ||
+                requestedAmount <= 0)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Runtime Credit amount must be greater than zero.',
+            });
+        }
+        const result = await applyRuntimeCreditToOrder({
+            orderId,
+            userId: runtimeUser.uid,
+            actor: runtimeUser.email || runtimeUser.uid,
+            requestedAmount,
+        });
+        return res.json({
+            success: true,
+            ...result,
+        });
+    }
+    catch (error) {
+        console.error('Runtime Credit order payment error:', error);
+        const message = error instanceof Error
+            ? error.message
+            : 'Unable to apply Runtime Credit.';
+        const statusCode = message === 'Order not found.'
+            ? 404
+            : message.includes('own order')
+                ? 403
+                : message.includes('already fully paid') ||
+                    message.includes('can no longer be paid')
+                    ? 409
+                    : message.includes('required') ||
+                        message.includes('greater than zero') ||
+                        message.includes('invalid') ||
+                        message.includes('available') ||
+                        message.includes('USD only')
+                        ? 400
+                        : 500;
+        return res.status(statusCode).json({
+            success: false,
+            message,
         });
     }
 });

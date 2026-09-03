@@ -26,6 +26,7 @@ import {
   RegistrantDetails,
 } from '../../types';
 import { nameserverService } from '../../services/NameserverService';
+import { domainService } from '../../services/DomainService';
 import { getAuth } from 'firebase/auth';
 
 import {
@@ -259,6 +260,97 @@ export const DashboardDomains: React.FC =
       transferAuthCode,
       setTransferAuthCode,
     ] = useState('');
+
+    const [
+      transferSubmitting,
+      setTransferSubmitting,
+    ] = useState(false);
+
+    const transferIsZispa =
+      useMemo(
+        () => {
+          const cleaned =
+            domainService.cleanDomain(
+              transferDomain
+            );
+
+          return (
+            cleaned.endsWith(
+              '.co.zw'
+            ) ||
+            cleaned.endsWith(
+              '.org.zw'
+            ) ||
+            cleaned.endsWith(
+              '.ac.zw'
+            )
+          );
+        },
+        [transferDomain]
+      );
+
+    const transferRequiresAuthCode =
+      Boolean(
+        transferDomain.trim()
+      ) &&
+      !transferIsZispa;
+
+    /*
+     * A transfer can be started from the public Runtime domain search.
+     * DomainService stores the selected domain before opening /dashboard,
+     * which also survives a login redirect.
+     */
+    useEffect(() => {
+      const params =
+        new URLSearchParams(
+          window.location.search
+        );
+
+      const queryDomain =
+        params.get('transfer');
+
+      const storedDomain =
+        sessionStorage.getItem(
+          'runtime_pending_transfer_domain'
+        );
+
+      const pendingDomain =
+        domainService.cleanDomain(
+          queryDomain ||
+          storedDomain ||
+          ''
+        );
+
+      if (!pendingDomain) {
+        return;
+      }
+
+      setActiveTab('transfer');
+      setTransferDomain(
+        pendingDomain
+      );
+
+      sessionStorage.removeItem(
+        'runtime_pending_transfer_domain'
+      );
+
+      if (queryDomain) {
+        params.delete('transfer');
+
+        const nextQuery =
+          params.toString();
+
+        window.history.replaceState(
+          {},
+          '',
+          `${window.location.pathname}${
+            nextQuery
+              ? `?${nextQuery}`
+              : ''
+          }${window.location.hash}`
+        );
+      }
+    }, []);
 
     const [
       renewalYears,
@@ -943,27 +1035,67 @@ export const DashboardDomains: React.FC =
         if (
           !transferDomain.trim()
         ) {
+          showNotification(
+            'Enter the domain you want to transfer.',
+            'error'
+          );
+          return;
+        }
+
+        if (
+          transferRequiresAuthCode &&
+          !transferAuthCode.trim()
+        ) {
+          showNotification(
+            'Enter the authorization code supplied by your current provider.',
+            'error'
+          );
+          return;
+        }
+
+        if (transferSubmitting) {
           return;
         }
 
         try {
-          await requestDomainTransfer(
-            transferDomain.trim(),
-            transferAuthCode.trim()
+          setTransferSubmitting(
+            true
           );
 
-          setTransferDomain(
-            ''
+          const result =
+            await requestDomainTransfer(
+              transferDomain.trim(),
+              transferRequiresAuthCode
+                ? transferAuthCode.trim()
+                : ''
+            );
+
+          /*
+           * DashboardBilling already watches this key and opens
+           * the matching unpaid order automatically.
+           */
+          sessionStorage.setItem(
+            'runtime_checkout_order_id',
+            result.order.id
           );
+
           setTransferAuthCode(
             ''
+          );
+
+          setDashboardSubView(
+            'billing'
           );
         } catch (error) {
           showNotification(
             error instanceof Error
               ? error.message
-              : 'Unable to submit the transfer request.',
+              : 'Unable to create the transfer order.',
             'error'
+          );
+        } finally {
+          setTransferSubmitting(
+            false
           );
         }
       };
@@ -1251,7 +1383,7 @@ export const DashboardDomains: React.FC =
                 </h2>
 
                 <p className="mt-1 text-xs leading-5 text-zinc-500">
-                  Enter the domain and transfer code supplied by your current provider.
+                  Enter the transfer details. Runtime will create an order and open the normal checkout where you can use Runtime Credit, PesePay or EcoCash USD.
                 </p>
               </div>
             </div>
@@ -1273,204 +1405,61 @@ export const DashboardDomains: React.FC =
                 }
               />
 
-              <Field
-                label="Transfer code"
-                value={
-                  transferAuthCode
-                }
-                placeholder="Authorization code"
-                onChange={
-                  setTransferAuthCode
-                }
-              />
+              {transferDomain.trim() && (
+                <div
+                  className={`rounded-xl border p-3 text-[11px] leading-5 ${
+                    transferIsZispa
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                      : 'border-zinc-200 bg-zinc-50 text-zinc-600'
+                  }`}
+                >
+                  {transferIsZispa
+                    ? 'This is a ZISPA-managed transfer. No authorization code is required.'
+                    : 'This transfer requires the authorization / EPP code from the current registrar.'}
+                </div>
+              )}
+
+              {transferRequiresAuthCode && (
+                <Field
+                  label="Authorization code"
+                  value={
+                    transferAuthCode
+                  }
+                  placeholder="Authorization / EPP code"
+                  onChange={
+                    setTransferAuthCode
+                  }
+                />
+              )}
+
+              <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                <p className="text-xs font-bold text-zinc-950">
+                  Checkout
+                </p>
+
+                <p className="mt-1 text-[11px] leading-5 text-zinc-500">
+                  Apply available Runtime Credit first, then pay any remaining balance with PesePay or EcoCash USD. Transfer processing starts only when the order is fully paid.
+                </p>
+              </div>
 
               <button
                 type="submit"
-                className="rounded-xl bg-[#3120ff] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#2819d9]"
+                disabled={
+                  transferSubmitting
+                }
+                className="inline-flex items-center gap-2 rounded-xl bg-[#3120ff] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#2819d9] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Start Transfer
+                {transferSubmitting && (
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                )}
+
+                {transferSubmitting
+                  ? 'Creating transfer order...'
+                  : 'Continue to Checkout'}
               </button>
             </form>
           </div>
         )}
-
-        {modalMode ===
-          'details' &&
-          selectedDomain && (
-            <Modal
-              title={
-                selectedDomain.domain_name
-              }
-              onClose={() =>
-                setModalMode(
-                  null
-                )
-              }
-            >
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Info
-                  label="Status"
-                  value={statusLabel(
-                    selectedDomain.status
-                  )}
-                />
-
-                <Info
-                  label="Registered"
-                  value={formatDate(
-                    selectedDomain.registered_at
-                  )}
-                />
-
-                <Info
-                  label="Renews"
-                  value={
-                    selectedDomain.expires_at
-                      ? formatDate(
-                          selectedDomain.expires_at
-                        )
-                      : 'Starts when registration is completed'
-                  }
-                />
-
-                <Info
-                  label="Renewal price"
-                  value={`$${selectedDomain.renewal_price.toFixed(
-                    2
-                  )} / year`}
-                />
-              </div>
-
-              <div className="mt-5 rounded-xl border border-zinc-200 p-4">
-                <div className="flex items-center gap-2">
-                  <Server className="h-4 w-4 text-[#3120ff]" />
-                  <p className="text-xs font-bold text-zinc-950">
-                    Nameservers
-                  </p>
-                </div>
-
-                <div className="mt-3 space-y-1">
-                  {selectedDomain.nameservers.map(
-                    (
-                      item
-                    ) => (
-                      <p
-                        key={
-                          item
-                        }
-                        className="break-all font-mono text-xs text-zinc-600"
-                      >
-                        {
-                          item
-                        }
-                      </p>
-                    )
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-5 grid gap-2 sm:grid-cols-2">
-                {(selectedDomain.status ===
-                  'active' ||
-                  selectedDomain.status ===
-                    'expired') && (
-                  <ActionButton
-                    icon={
-                      RefreshCw
-                    }
-                    label="Renew Domain"
-                    onClick={() =>
-                      openRenewal(
-                        selectedDomain
-                      )
-                    }
-                  />
-                )}
-
-                {canModifyRegisteredDomain(
-                  selectedDomain
-                ) ? (
-                  <ActionButton
-                    icon={
-                      Server
-                    }
-                    label="Change Nameservers"
-                    onClick={() =>
-                      openNameservers(
-                        selectedDomain
-                      )
-                    }
-                  />
-                ) : (
-                  <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-left text-xs text-zinc-500">
-                    <Server className="h-4 w-4 shrink-0" />
-                    <div>
-                      <p className="font-semibold text-zinc-700">
-                        Change Nameservers
-                      </p>
-                      <p className="mt-0.5 text-[10px] leading-4 text-zinc-500">
-                        {registrationPendingMessage}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                <ActionButton
-                  icon={
-                    UserRound
-                  }
-                  label="Update Owner Details"
-                  onClick={() =>
-                    openOwner(
-                      selectedDomain
-                    )
-                  }
-                />
-
-                <ActionButton
-                  icon={
-                    Clock3
-                  }
-                  label="Activity"
-                  onClick={() =>
-                    setModalMode(
-                      'activity'
-                    )
-                  }
-                />
-
-                {canModifyRegisteredDomain(
-                  selectedDomain
-                ) ? (
-                  <ActionButton
-                    icon={
-                      Trash2
-                    }
-                    label="Request Cancellation"
-                    danger
-                    onClick={() =>
-                      openCancel(
-                        selectedDomain
-                      )
-                    }
-                  />
-                ) : (
-                  <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-left text-xs text-zinc-500">
-                    <Trash2 className="h-4 w-4 shrink-0" />
-                    <div>
-                      <p className="font-semibold text-zinc-700">
-                        Request Cancellation
-                      </p>
-                      <p className="mt-0.5 text-[10px] leading-4 text-zinc-500">
-                        Available after domain registration. Cancel the order instead while registration is pending.
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </Modal>
-          )}
-
         {modalMode ===
           'renew' &&
           selectedDomain && (
