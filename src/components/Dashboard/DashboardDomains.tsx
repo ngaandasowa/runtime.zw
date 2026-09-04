@@ -1461,6 +1461,189 @@ export const DashboardDomains: React.FC =
           </div>
         )}
         {modalMode ===
+          'details' &&
+          selectedDomain && (
+            <Modal
+              title={
+                selectedDomain.domain_name
+              }
+              onClose={() =>
+                setModalMode(
+                  null
+                )
+              }
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Info
+                  label="Status"
+                  value={statusLabel(
+                    selectedDomain.status
+                  )}
+                />
+
+                <Info
+                  label="Registered"
+                  value={formatDate(
+                    selectedDomain.registered_at
+                  )}
+                />
+
+                <Info
+                  label="Renews"
+                  value={
+                    selectedDomain.expires_at
+                      ? formatDate(
+                          selectedDomain.expires_at
+                        )
+                      : 'Starts when registration is completed'
+                  }
+                />
+
+                <Info
+                  label="Renewal price"
+                  value={`$${selectedDomain.renewal_price.toFixed(
+                    2
+                  )} / year`}
+                />
+              </div>
+
+              <div className="mt-5 rounded-xl border border-zinc-200 p-4">
+                <div className="flex items-center gap-2">
+                  <Server className="h-4 w-4 text-[#3120ff]" />
+                  <p className="text-xs font-bold text-zinc-950">
+                    Nameservers
+                  </p>
+                </div>
+
+                <div className="mt-3 space-y-1">
+                  {selectedDomain.nameservers.length > 0 ? (
+                    selectedDomain.nameservers.map(
+                      (item) => (
+                        <p
+                          key={item}
+                          className="break-all font-mono text-xs text-zinc-600"
+                        >
+                          {item}
+                        </p>
+                      )
+                    )
+                  ) : (
+                    <p className="text-xs text-zinc-500">
+                      Nameservers are not available yet.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                {(selectedDomain.status ===
+                  'active' ||
+                  selectedDomain.status ===
+                    'expired') && (
+                  <ActionButton
+                    icon={RefreshCw}
+                    label="Renew Domain"
+                    onClick={() =>
+                      openRenewal(
+                        selectedDomain
+                      )
+                    }
+                  />
+                )}
+
+                {canModifyRegisteredDomain(
+                  selectedDomain
+                ) ? (
+                  <ActionButton
+                    icon={Server}
+                    label="Change Nameservers"
+                    onClick={() =>
+                      openNameservers(
+                        selectedDomain
+                      )
+                    }
+                  />
+                ) : (
+                  <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-left text-xs text-zinc-500">
+                    <Server className="h-4 w-4 shrink-0" />
+                    <div>
+                      <p className="font-semibold text-zinc-700">
+                        Change Nameservers
+                      </p>
+                      <p className="mt-0.5 text-[10px] leading-4 text-zinc-500">
+                        {registrationPendingMessage}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {canModifyRegisteredDomain(
+                  selectedDomain
+                ) ? (
+                  <ActionButton
+                    icon={UserRound}
+                    label="Update Owner Details"
+                    onClick={() =>
+                      openOwner(
+                        selectedDomain
+                      )
+                    }
+                  />
+                ) : (
+                  <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-left text-xs text-zinc-500">
+                    <UserRound className="h-4 w-4 shrink-0" />
+                    <div>
+                      <p className="font-semibold text-zinc-700">
+                        Update Owner Details
+                      </p>
+                      <p className="mt-0.5 text-[10px] leading-4 text-zinc-500">
+                        {registrationPendingMessage}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <ActionButton
+                  icon={Clock3}
+                  label="Activity"
+                  onClick={() =>
+                    setModalMode(
+                      'activity'
+                    )
+                  }
+                />
+
+                {canModifyRegisteredDomain(
+                  selectedDomain
+                ) ? (
+                  <ActionButton
+                    icon={Trash2}
+                    label="Request Cancellation"
+                    danger
+                    onClick={() =>
+                      openCancel(
+                        selectedDomain
+                      )
+                    }
+                  />
+                ) : (
+                  <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-left text-xs text-zinc-500">
+                    <Trash2 className="h-4 w-4 shrink-0" />
+                    <div>
+                      <p className="font-semibold text-zinc-700">
+                        Request Cancellation
+                      </p>
+                      <p className="mt-0.5 text-[10px] leading-4 text-zinc-500">
+                        Available after domain registration. Cancel the order instead while registration is pending.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Modal>
+          )}
+
+        {modalMode ===
           'renew' &&
           selectedDomain && (
             <Modal
