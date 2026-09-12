@@ -249,6 +249,27 @@ export const AdminOrdersPayments:
         domains,
       ]);
 
+    const livePendingOrderIds =
+      new Set(
+        orders
+          .filter(
+            (order) =>
+              [
+                'pending',
+                'unpaid',
+                'payment_pending',
+              ].includes(
+                String(
+                  order.status
+                )
+              )
+          )
+          .map(
+            (order) =>
+              order.id
+          )
+      );
+
     const filtered =
       rows.filter(
         ({
@@ -303,8 +324,9 @@ export const AdminOrdersPayments:
             'pending'
           ) {
             return (
-              order.status !==
-                'cancelled' &&
+              livePendingOrderIds.has(
+                order.id
+              ) &&
               (
                 !payment ||
                 payment.status ===
@@ -325,10 +347,20 @@ export const AdminOrdersPayments:
     const pendingCount =
       payments.filter(
         (payment) =>
-          payment.status ===
-            'pending' ||
-          payment.status ===
-            'pending_verification'
+          (
+            payment.status ===
+              'pending' ||
+            payment.status ===
+              'pending_verification'
+          ) &&
+          Boolean(
+            payment.order_id
+          ) &&
+          livePendingOrderIds.has(
+            String(
+              payment.order_id
+            )
+          )
       ).length;
 
     const verifiedCount =

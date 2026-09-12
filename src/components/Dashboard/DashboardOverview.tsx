@@ -264,7 +264,7 @@ export const DashboardOverview:
               | undefined;
 
           if (!orderId) {
-            return true;
+            return false;
           }
 
           const linkedOrder =
@@ -276,8 +276,15 @@ export const DashboardOverview:
 
           return Boolean(
             linkedOrder &&
-            linkedOrder.status !==
-              'cancelled'
+            [
+              'pending',
+              'unpaid',
+              'payment_pending',
+            ].includes(
+              String(
+                linkedOrder.status
+              )
+            )
           );
         }
       );
@@ -325,13 +332,13 @@ export const DashboardOverview:
         );
 
       if (!linkedOrder) {
-        return true;
+        return false;
       }
 
-      return ![
-        'paid',
-        'completed',
-        'cancelled',
+      return [
+        'pending',
+        'unpaid',
+        'payment_pending',
       ].includes(
         String(
           linkedOrder.status

@@ -91,6 +91,7 @@ export const AdminShell:
       setAdminSubView,
       registryRequests,
       payments,
+      orders,
       logout,
     } = useStore();
 
@@ -108,13 +109,44 @@ export const AdminShell:
             'draft'
       ).length;
 
+    const livePendingOrderIds =
+      new Set(
+        orders
+          .filter(
+            (order) =>
+              [
+                'pending',
+                'unpaid',
+                'payment_pending',
+              ].includes(
+                String(
+                  order.status
+                )
+              )
+          )
+          .map(
+            (order) =>
+              order.id
+          )
+      );
+
     const paymentCount =
       payments.filter(
         (payment) =>
-          payment.status ===
-            'pending' ||
-          payment.status ===
-            'pending_verification'
+          (
+            payment.status ===
+              'pending' ||
+            payment.status ===
+              'pending_verification'
+          ) &&
+          Boolean(
+            payment.order_id
+          ) &&
+          livePendingOrderIds.has(
+            String(
+              payment.order_id
+            )
+          )
       ).length;
 
     const navItems: NavItem[] = [

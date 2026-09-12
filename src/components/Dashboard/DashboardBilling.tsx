@@ -1172,13 +1172,26 @@ export const DashboardBilling:
 
           return payments
             .filter(
-              (payment) =>
-                payment.gateway !==
-                  'runtime_credit' &&
-                (
-                  payment.user_id ===
-                    currentUser?.id ||
-                  (
+              (payment) => {
+                if (
+                  payment.gateway ===
+                  'runtime_credit'
+                ) {
+                  return false;
+                }
+
+                /*
+                 * Order payments must still point to a real
+                 * order owned by this customer.
+                 *
+                 * Standalone Runtime Credit top-ups intentionally
+                 * have no order_id and are handled separately.
+                 */
+                if (
+                  payment.purpose !==
+                    'wallet_topup'
+                ) {
+                  return (
                     Boolean(
                       payment.order_id
                     ) &&
@@ -1187,8 +1200,14 @@ export const DashboardBilling:
                         payment.order_id
                       )
                     )
-                  )
-                )
+                  );
+                }
+
+                return (
+                  payment.user_id ===
+                  currentUser?.id
+                );
+              }
             )
             .sort(
               (a, b) =>
