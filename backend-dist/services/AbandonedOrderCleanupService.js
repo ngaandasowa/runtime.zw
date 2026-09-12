@@ -289,6 +289,75 @@ export const cleanupWalletTopup = async (paymentId) => {
         cleaned: true,
     };
 };
+const cleanupOrphanRecords = async () => {
+    const [domainSnapshot, paymentSnapshot, orderSnapshot,] = await Promise.all([
+        adminDb
+            .collection('domains')
+            .where('status', '==', 'pending_payment')
+            .get(),
+        adminDb
+            .collection('payments')
+            .get(),
+        adminDb
+            .collection('orders')
+            .get(),
+    ]);
+    const existingOrderIds = new Set(orderSnapshot.docs.map((doc) => doc.id));
+    let orphanDomainsDeleted = 0;
+    for (const domainDoc of domainSnapshot.docs) {
+        const domain = domainDoc.data();
+        const orderId = String(domain.order_id ||
+            '').trim();
+        /*
+         * Only pending_payment stubs are eligible here.
+         * Active/expired/processing domains are never touched.
+         */
+        if (!orderId ||
+            !existingOrderIds.has(orderId)) {
+            await domainDoc.ref
+                .delete();
+            orphanDomainsDeleted +=
+                1;
+        }
+    }
+    let orphanPaymentsDeleted = 0;
+    for (const paymentDoc of paymentSnapshot.docs) {
+        const payment = paymentDoc.data();
+        if (payment.status !==
+            'pending' &&
+            payment.status !==
+                'pending_verification' &&
+            payment.status !==
+                'failed' &&
+            payment.status !==
+                'rejected' &&
+            payment.status !==
+                'cancelled') {
+            continue;
+        }
+        /*
+         * Standalone wallet top-ups intentionally have no order.
+         * They are handled by their own seven-day cleanup below.
+         */
+        if (payment.purpose ===
+            'wallet_topup') {
+            continue;
+        }
+        const orderId = String(payment.order_id ||
+            '').trim();
+        if (!orderId ||
+            !existingOrderIds.has(orderId)) {
+            await paymentDoc.ref
+                .delete();
+            orphanPaymentsDeleted +=
+                1;
+        }
+    }
+    return {
+        orphanDomainsDeleted,
+        orphanPaymentsDeleted,
+    };
+};
 export const runAbandonedCleanup = async () => {
     const now = Date.now();
     const cutoff = now -
@@ -351,11 +420,13 @@ export const runAbandonedCleanup = async () => {
                 1;
         }
     }
+    const orphanCleanup = await cleanupOrphanRecords();
     return {
         cutoffDays: AUTO_DELETE_AFTER_DAYS,
         cleanedOrders,
         skippedOrders,
         cleanedTopups,
+        ...orphanCleanup,
     };
 };
 let cleanupTimer = null;

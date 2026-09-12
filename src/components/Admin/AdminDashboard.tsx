@@ -55,8 +55,13 @@ export const AdminDashboard:
               | string
               | undefined;
 
+          /*
+           * An orphaned pending domain is not a payable order.
+           * It may remain after an old checkout/order was
+           * removed, so do not inflate the dashboard metric.
+           */
           if (!orderId) {
-            return true;
+            return false;
           }
 
           const linkedOrder =
@@ -66,15 +71,17 @@ export const AdminDashboard:
                 orderId
             );
 
-          /*
-           * Cancelled orders and pending-domain records
-           * whose order was permanently deleted are not
-           * awaiting payment anymore.
-           */
           return Boolean(
             linkedOrder &&
-            linkedOrder.status !==
-              'cancelled'
+            [
+              'pending',
+              'unpaid',
+              'payment_pending',
+            ].includes(
+              String(
+                linkedOrder.status
+              )
+            )
           );
         }
       ).length;
@@ -106,8 +113,12 @@ export const AdminDashboard:
           const orderId =
             payment.order_id;
 
+          /*
+           * Pending payment attempts without a live order are
+           * abandoned/orphaned records, not actionable money.
+           */
           if (!orderId) {
-            return true;
+            return false;
           }
 
           const linkedOrder =
@@ -117,14 +128,17 @@ export const AdminDashboard:
                 orderId
             );
 
-          /*
-           * Do not count a pending payment against a
-           * cancelled or permanently deleted order.
-           */
           return Boolean(
             linkedOrder &&
-            linkedOrder.status !==
-              'cancelled'
+            [
+              'pending',
+              'unpaid',
+              'payment_pending',
+            ].includes(
+              String(
+                linkedOrder.status
+              )
+            )
           );
         }
       ).length;
