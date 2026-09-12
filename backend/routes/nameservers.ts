@@ -1,5 +1,4 @@
 import {
-  NextFunction,
   Request,
   Response,
   Router,
@@ -9,9 +8,10 @@ import {
   promises as dns,
 } from 'node:dns';
 
+
 import {
-  adminAuth,
-} from '../firebaseAdmin.js';
+  authenticateIdentity as authenticate,
+} from '../middleware/authenticate.js';
 
 type AuthenticatedRequest =
   Request & {
@@ -24,60 +24,7 @@ type AuthenticatedRequest =
 const router =
   Router();
 
-const authenticate =
-  async (
-    req: AuthenticatedRequest,
-    res: Response,
-    next: NextFunction
-  ) => {
-    try {
-      const header =
-        req.headers.authorization;
 
-      if (
-        !header?.startsWith(
-          'Bearer '
-        )
-      ) {
-        return res
-          .status(401)
-          .json({
-            success: false,
-            message:
-              'Authentication required.',
-          });
-      }
-
-      const decoded =
-        await adminAuth
-          .verifyIdToken(
-            header.slice(7)
-          );
-
-      req.runtimeUser = {
-        uid:
-          decoded.uid,
-        email:
-          decoded.email ||
-          '',
-      };
-
-      next();
-    } catch (error) {
-      console.error(
-        'Nameserver resolver authentication failed:',
-        error
-      );
-
-      return res
-        .status(401)
-        .json({
-          success: false,
-          message:
-            'Invalid authentication token.',
-        });
-    }
-  };
 
 const normalizeHostname =
   (

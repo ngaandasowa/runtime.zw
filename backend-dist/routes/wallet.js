@@ -1,40 +1,8 @@
 import { Router, } from 'express';
-import { adminAuth, adminDb, } from '../firebaseAdmin.js';
+import { adminDb, } from '../firebaseAdmin.js';
+import { authenticateWithProfile as authenticate, } from '../middleware/authenticate.js';
 import { walletService, } from '../services/WalletService.js';
 const router = Router();
-const authenticate = async (req, res, next) => {
-    try {
-        const header = req.headers.authorization;
-        if (!header?.startsWith('Bearer ')) {
-            return res.status(401).json({
-                success: false,
-                message: 'Authentication required.',
-            });
-        }
-        const decoded = await adminAuth
-            .verifyIdToken(header.slice(7));
-        const profile = await adminDb
-            .collection('users')
-            .doc(decoded.uid)
-            .get();
-        req.runtimeUser = {
-            uid: decoded.uid,
-            email: decoded.email ||
-                '',
-            role: String(profile.data()
-                ?.role ||
-                'customer'),
-        };
-        next();
-    }
-    catch (error) {
-        console.error('Wallet authentication failed:', error);
-        return res.status(401).json({
-            success: false,
-            message: 'Invalid authentication token.',
-        });
-    }
-};
 router.get('/admin/:userId', authenticate, async (req, res) => {
     try {
         if (req.runtimeUser?.role !==

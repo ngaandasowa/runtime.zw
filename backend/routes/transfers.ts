@@ -1,5 +1,4 @@
 import {
-  NextFunction,
   Request,
   Response,
   Router,
@@ -8,9 +7,12 @@ import {
 import crypto from 'crypto';
 
 import {
-  adminAuth,
   adminDb,
 } from '../firebaseAdmin.js';
+
+import {
+  authenticateWithProfile as authenticate,
+} from '../middleware/authenticate.js';
 
 const router =
   Router();
@@ -27,80 +29,7 @@ type AuthenticatedRequest =
       RuntimeUser;
   };
 
-const authenticate =
-  async (
-    req:
-      AuthenticatedRequest,
-    res:
-      Response,
-    next:
-      NextFunction
-  ) => {
-    try {
-      const header =
-        req.headers
-          .authorization;
 
-      if (
-        !header?.startsWith(
-          'Bearer '
-        )
-      ) {
-        return res
-          .status(401)
-          .json({
-            success:
-              false,
-            message:
-              'Authentication required.',
-          });
-      }
-
-      const decoded =
-        await adminAuth
-          .verifyIdToken(
-            header.slice(7)
-          );
-
-      const profile =
-        await adminDb
-          .collection('users')
-          .doc(decoded.uid)
-          .get();
-
-      req.runtimeUser = {
-        uid:
-          decoded.uid,
-
-        email:
-          decoded.email ||
-          '',
-
-        role:
-          String(
-            profile.data()
-              ?.role ||
-            'customer'
-          ),
-      };
-
-      next();
-    } catch (error) {
-      console.error(
-        'Transfer authentication failed:',
-        error
-      );
-
-      return res
-        .status(401)
-        .json({
-          success:
-            false,
-          message:
-            'Invalid authentication token.',
-        });
-    }
-  };
 
 const getEncryptionKey =
   () => {

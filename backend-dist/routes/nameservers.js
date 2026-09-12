@@ -1,37 +1,7 @@
 import { Router, } from 'express';
 import { promises as dns, } from 'node:dns';
-import { adminAuth, } from '../firebaseAdmin.js';
+import { authenticateIdentity as authenticate, } from '../middleware/authenticate.js';
 const router = Router();
-const authenticate = async (req, res, next) => {
-    try {
-        const header = req.headers.authorization;
-        if (!header?.startsWith('Bearer ')) {
-            return res
-                .status(401)
-                .json({
-                success: false,
-                message: 'Authentication required.',
-            });
-        }
-        const decoded = await adminAuth
-            .verifyIdToken(header.slice(7));
-        req.runtimeUser = {
-            uid: decoded.uid,
-            email: decoded.email ||
-                '',
-        };
-        next();
-    }
-    catch (error) {
-        console.error('Nameserver resolver authentication failed:', error);
-        return res
-            .status(401)
-            .json({
-            success: false,
-            message: 'Invalid authentication token.',
-        });
-    }
-};
 const normalizeHostname = (value) => String(value || '')
     .trim()
     .replace(/\.$/, '')

@@ -1,5 +1,4 @@
 import {
-  NextFunction,
   Request,
   Response,
   Router,
@@ -9,6 +8,10 @@ import {
   adminAuth,
   adminDb,
 } from '../firebaseAdmin.js';
+
+import {
+  authenticateWithProfile as authenticate,
+} from '../middleware/authenticate.js';
 
 type RuntimeUser = {
   uid: string;
@@ -41,89 +44,7 @@ const isValidEmail = (
     )
   );
 
-const authenticate =
-  async (
-    req:
-      AuthenticatedRequest,
-    res:
-      Response,
-    next:
-      NextFunction
-  ) => {
-    try {
-      const header =
-        req.headers
-          .authorization;
 
-      if (
-        !header?.startsWith(
-          'Bearer '
-        )
-      ) {
-        return res
-          .status(401)
-          .json({
-            success:
-              false,
-            message:
-              'Authentication required.',
-          });
-      }
-
-      const decoded =
-        await adminAuth
-          .verifyIdToken(
-            header.slice(7)
-          );
-
-      const profile =
-        await adminDb
-          .collection(
-            'users'
-          )
-          .doc(
-            decoded.uid
-          )
-          .get();
-
-      const role =
-        profile.exists
-          ? String(
-              profile.data()
-                ?.role ||
-                'customer'
-            )
-          : 'customer';
-
-      req.runtimeUser = {
-        uid:
-          decoded.uid,
-
-        email:
-          decoded.email ||
-          '',
-
-        role,
-      };
-
-      return next();
-    } catch (error) {
-      console.error(
-        'Admin user authentication failed:',
-        error
-      );
-
-      return res
-        .status(401)
-        .json({
-          success:
-            false,
-
-          message:
-            'Your session has expired. Sign in again.',
-        });
-    }
-  };
 
 const requireSuperAdmin =
   (

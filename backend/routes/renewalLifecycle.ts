@@ -5,10 +5,10 @@ import {
   Router,
 } from 'express';
 
+
 import {
-  adminAuth,
-  adminDb,
-} from '../firebaseAdmin.js';
+  authenticateWithProfile as authenticate,
+} from '../middleware/authenticate.js';
 
 import {
   renewalLifecycleService,
@@ -27,71 +27,7 @@ type AuthenticatedRequest =
 
 const router = Router();
 
-const authenticate =
-  async (
-    req: AuthenticatedRequest,
-    res: Response,
-    next: NextFunction
-  ) => {
-    try {
-      const header =
-        req.headers.authorization;
 
-      if (
-        !header?.startsWith(
-          'Bearer '
-        )
-      ) {
-        return res
-          .status(401)
-          .json({
-            success: false,
-            message:
-              'Authentication required.',
-          });
-      }
-
-      const decoded =
-        await adminAuth
-          .verifyIdToken(
-            header.slice(7)
-          );
-
-      const profile =
-        await adminDb
-          .collection('users')
-          .doc(decoded.uid)
-          .get();
-
-      req.runtimeUser = {
-        uid: decoded.uid,
-        email:
-          decoded.email || '',
-        role:
-          profile.exists
-            ? String(
-                profile.data()?.role ||
-                'customer'
-              )
-            : 'customer',
-      };
-
-      next();
-    } catch (error) {
-      console.error(
-        'Renewal lifecycle authentication failed:',
-        error
-      );
-
-      return res
-        .status(401)
-        .json({
-          success: false,
-          message:
-            'Invalid authentication token.',
-        });
-    }
-  };
 
 const requireSuperAdmin =
   (

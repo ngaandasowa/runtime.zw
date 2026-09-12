@@ -1,5 +1,4 @@
 import {
-  NextFunction,
   Request,
   Response,
   Router,
@@ -8,9 +7,12 @@ import {
 import { createHash } from 'node:crypto';
 
 import {
-  adminAuth,
   adminDb,
 } from '../firebaseAdmin.js';
+
+import {
+  authenticateWithProfile as authenticate,
+} from '../middleware/authenticate.js';
 
 import {
   emailService,
@@ -224,85 +226,7 @@ const domainRequiredEvents =
  * ----------------------------------------------------------
  */
 
-const authenticate =
-  async (
-    req: AuthenticatedRequest,
-    res: Response,
-    next: NextFunction
-  ) => {
-    try {
-      const header =
-        req.headers.authorization;
 
-      if (
-        !header?.startsWith(
-          'Bearer '
-        )
-      ) {
-        return res
-          .status(401)
-          .json({
-            success: false,
-            message:
-              'Authentication required.',
-          });
-      }
-
-      const token =
-        header.slice(7);
-
-      const decoded =
-        await adminAuth
-          .verifyIdToken(
-            token
-          );
-
-      const profile =
-        await adminDb
-          .collection(
-            'users'
-          )
-          .doc(
-            decoded.uid
-          )
-          .get();
-
-      const role =
-        profile.exists
-          ? String(
-              profile.data()
-                ?.role ||
-                'customer'
-            )
-          : 'customer';
-
-      req.runtimeUser = {
-        uid:
-          decoded.uid,
-
-        email:
-          decoded.email ||
-          '',
-
-        role,
-      };
-
-      next();
-    } catch (error) {
-      console.error(
-        'Email authentication failed:',
-        error
-      );
-
-      return res
-        .status(401)
-        .json({
-          success: false,
-          message:
-            'Invalid authentication token.',
-        });
-    }
-  };
 
 /*
  * ----------------------------------------------------------

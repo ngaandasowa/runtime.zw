@@ -1,7 +1,8 @@
 import { Router, } from 'express';
 import crypto from 'crypto';
 import nodeFetch from 'node-fetch';
-import { adminAuth, adminDb, } from '../firebaseAdmin.js';
+import { adminDb, } from '../firebaseAdmin.js';
+import { authenticateWithProfile as authenticate, } from '../middleware/authenticate.js';
 import { settleOrderPayment, } from '../services/PaymentSettlementService.js';
 import { settleWalletTopup, } from '../services/WalletTopupSettlementService.js';
 import { applyRuntimeCreditToOrder, } from '../services/CreditOrderPaymentService.js';
@@ -15,44 +16,6 @@ const PESEPAY_STATUS_URL = 'https://api.pesepay.com/api/payments-engine/v1/payme
  * AUTHENTICATION
  * ----------------------------------------------------------
  */
-const authenticate = async (req, res, next) => {
-    try {
-        const header = req.headers.authorization;
-        if (!header?.startsWith('Bearer ')) {
-            return res.status(401).json({
-                success: false,
-                message: 'Authentication required.',
-            });
-        }
-        const token = header.slice(7);
-        const decoded = await adminAuth.verifyIdToken(token);
-        const profile = await adminDb
-            .collection('users')
-            .doc(decoded.uid)
-            .get();
-        const profileData = profile.exists
-            ? profile.data()
-            : undefined;
-        req.runtimeUser = {
-            uid: decoded.uid,
-            email: decoded.email || '',
-            name: String(profileData?.name ||
-                decoded.name ||
-                decoded.email ||
-                'Runtime customer'),
-            role: String(profileData?.role ||
-                'customer'),
-        };
-        next();
-    }
-    catch (error) {
-        console.error('Payment authentication failed:', error);
-        return res.status(401).json({
-            success: false,
-            message: 'Invalid authentication token.',
-        });
-    }
-};
 /*
  * ----------------------------------------------------------
  * PESEPAY CREDENTIALS

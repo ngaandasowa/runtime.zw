@@ -1,46 +1,8 @@
 import { Router, } from 'express';
-import { adminAuth, adminDb, } from '../firebaseAdmin.js';
+import { adminDb, } from '../firebaseAdmin.js';
+import { authenticateWithProfile as authenticate, } from '../middleware/authenticate.js';
 import { sendMail, } from '../email/mailer.js';
 const router = Router();
-const authenticate = async (req, res, next) => {
-    try {
-        const header = req.headers.authorization;
-        if (!header?.startsWith('Bearer ')) {
-            return res
-                .status(401)
-                .json({
-                success: false,
-                message: 'Authentication required.',
-            });
-        }
-        const decoded = await adminAuth
-            .verifyIdToken(header.slice(7));
-        const profile = await adminDb
-            .collection('users')
-            .doc(decoded.uid)
-            .get();
-        const role = profile.exists
-            ? String(profile.data()
-                ?.role ||
-                'customer')
-            : 'customer';
-        req.runtimeUser = {
-            uid: decoded.uid,
-            email: decoded.email || '',
-            role,
-        };
-        next();
-    }
-    catch (error) {
-        console.error('Campaign authentication failed:', error);
-        return res
-            .status(401)
-            .json({
-            success: false,
-            message: 'Invalid authentication token.',
-        });
-    }
-};
 const requireSuperAdmin = (req, res, next) => {
     if (req.runtimeUser?.role !==
         'super_admin') {
