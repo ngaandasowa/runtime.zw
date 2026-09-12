@@ -7,6 +7,7 @@ export type EmailNotificationEvent =
   | 'renewal_order_created'
   | 'order_cancelled'
   | 'payment_approved'
+  | 'payment_received'
   | 'payment_rejected'
   | 'renewal_completed'
   | 'domain_activated'
@@ -40,6 +41,23 @@ export type EmailNotificationPayload = {
   registeredAt?: string;
   reason?: string;
   nameservers?: string[];
+  paymentMethod?: string;
+  transactionId?: string;
+  serviceName?: string;
+  paymentBreakdown?: string;
+  ownerDetails?: {
+    full_name?: string;
+    org_name?: string;
+    physical_address?: string;
+    postal_address?: string;
+    city?: string;
+    country?: string;
+    phone?: string;
+    email?: string;
+    org_description?: string;
+    proposed_usage?: string;
+  };
+  updatedByAdmin?: boolean;
 };
 
 const API_BASE_URL =

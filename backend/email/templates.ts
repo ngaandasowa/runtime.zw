@@ -3,6 +3,7 @@ export type EmailEvent =
   | 'renewal_order_created'
   | 'order_cancelled'
   | 'payment_approved'
+  | 'payment_received'
   | 'payment_rejected'
   | 'renewal_completed'
   | 'domain_activated'
@@ -41,6 +42,23 @@ export type EmailEventData = {
   registeredAt?: string;
   reason?: string;
   nameservers?: string[];
+  paymentMethod?: string;
+  transactionId?: string;
+  serviceName?: string;
+  paymentBreakdown?: string;
+  ownerDetails?: {
+    full_name?: string;
+    org_name?: string;
+    physical_address?: string;
+    postal_address?: string;
+    city?: string;
+    country?: string;
+    phone?: string;
+    email?: string;
+    org_description?: string;
+    proposed_usage?: string;
+  };
+  updatedByAdmin?: boolean;
   daysRemaining?: number;
   graceEndsAt?: string;
 };
@@ -267,6 +285,26 @@ const layout = ({
                       )}
 
                       ${row(
+                        'Payment method',
+                        data.paymentMethod
+                      )}
+
+                      ${row(
+                        'Transaction ID',
+                        data.transactionId
+                      )}
+
+                      ${row(
+                        'Service',
+                        data.serviceName
+                      )}
+
+                      ${row(
+                        'Payment breakdown',
+                        data.paymentBreakdown
+                      )}
+
+                      ${row(
                         'Runtime Credit applied',
                         money(data.creditApplied)
                       )}
@@ -441,6 +479,32 @@ const customerContent = (
           'we verified your payment. Domain processing can now continue.',
       };
 
+    case 'payment_received':
+      return {
+        subject: (data) =>
+          `Payment received${data.orderReference ? ` for ${data.orderReference}` : ''}`,
+        title:
+          'Payment received',
+        intro:
+          'we received and verified your payment.',
+        note:
+          (data) => {
+            if (
+              typeof data.amountRemaining === 'number' &&
+              data.amountRemaining > 0
+            ) {
+              return `$${data.amountRemaining.toFixed(2)} USD remains on this order. Any verified Runtime Credit or other payment already applied is shown in the breakdown above.`;
+            }
+            if (
+              data.paymentBreakdown &&
+              data.paymentBreakdown.includes('+')
+            ) {
+              return 'This order was paid using more than one payment source. The complete verified payment split is shown above.';
+            }
+            return 'This payment has been recorded successfully in your Runtime account.';
+          },
+      };
+
     case 'payment_rejected':
       return {
         subject: () =>
@@ -450,7 +514,7 @@ const customerContent = (
         intro:
           'we could not verify the submitted payment.',
         note:
-          'Please check the reason above and contact Runtime if you need assistance.',
+          'The payment was not added to your order or Runtime Credit balance. Check the reason above and use another payment attempt if you still want to continue.',
       };
 
     case 'renewal_completed':

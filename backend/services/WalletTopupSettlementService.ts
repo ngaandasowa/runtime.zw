@@ -422,6 +422,27 @@ export const settleWalletTopup =
                     payment.reference ||
                       paymentId
                   ),
+                serviceName:
+                  'Runtime Credit top-up',
+                paymentMethod:
+                  payment.gateway ===
+                    'pesepay'
+                    ? 'PesePay'
+                    : payment.gateway ===
+                        'ecocash_usd'
+                      ? 'EcoCash USD'
+                      : String(
+                          payment.gateway ||
+                          'Payment'
+                        ),
+                transactionId:
+                  String(
+                    payment.transaction_id ||
+                    payment.provider_reference ||
+                    input.transactionId ||
+                    ''
+                  ).trim() ||
+                  undefined,
                 amount:
                   Number(
                     payment.amount ||

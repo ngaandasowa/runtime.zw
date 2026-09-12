@@ -1,7 +1,35 @@
 import { adminDb, } from '../firebaseAdmin.js';
 import { fulfillPaidOrder, } from './OrderFulfillmentService.js';
+import { emailService, } from '../email/emailService.js';
 const money = (value) => Math.round((Number(value) + Number.EPSILON) *
     100) / 100;
+const paymentMethodLabel = (gateway) => {
+    const value = String(gateway || '').trim().toLowerCase();
+    if (value === 'runtime_credit')
+        return 'Runtime Credit';
+    if (value === 'pesepay')
+        return 'PesePay';
+    if (value === 'ecocash_usd')
+        return 'EcoCash USD';
+    return value
+        ? value.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
+        : 'Payment';
+};
+const orderServiceName = (order) => {
+    const item = Array.isArray(order.items) ? order.items[0] : undefined;
+    const itemType = String(order.purpose || order.metadata?.purpose || item?.item_type || '').trim().toLowerCase();
+    if (itemType === 'domain_registration')
+        return 'Domain registration';
+    if (itemType === 'domain_renewal')
+        return 'Domain renewal';
+    if (itemType === 'domain_transfer')
+        return 'Domain transfer';
+    return String(item?.name || item?.description || order.service_name || 'Runtime service').trim();
+};
+const orderDomainName = (order) => {
+    const item = Array.isArray(order.items) ? order.items[0] : undefined;
+    return String(order.domain_name || order.metadata?.domain_name || item?.domain_name || item?.reference_id || '').trim();
+};
 /*
  * ----------------------------------------------------------
  * PAYMENT SETTLEMENT
@@ -25,7 +53,7 @@ export const settleOrderPayment = async ({ paymentId, actor, providerStatus, pro
         .collection('payments')
         .doc(paymentId);
     const now = new Date().toISOString();
-    return adminDb.runTransaction(async (transaction) => {
+    const result = await adminDb.runTransaction(async (transaction) => {
         const paymentDoc = await transaction.get(paymentRef);
         if (!paymentDoc.exists) {
             throw new Error('Payment not found.');
@@ -191,4 +219,51 @@ export const settleOrderPayment = async ({ paymentId, actor, providerStatus, pro
             fulfillment,
         };
     });
+    if (!result.alreadySettled) {
+        try {
+            const [settledPaymentDoc, settledOrderDoc, allPaymentDocs] = await Promise.all([
+                paymentRef.get(),
+                adminDb.collection('orders').doc(result.orderId).get(),
+                adminDb.collection('payments').where('order_id', '==', result.orderId).get(),
+            ]);
+            const settledPayment = settledPaymentDoc.exists ? settledPaymentDoc.data() : {};
+            const settledOrder = settledOrderDoc.exists ? settledOrderDoc.data() : {};
+            const userId = String(settledOrder.user_id || settledPayment.user_id || '').trim();
+            const userDoc = userId ? await adminDb.collection('users').doc(userId).get() : null;
+            const user = userDoc?.exists ? userDoc.data() : {};
+            const email = String(settledOrder.user_email || settledPayment.user_email || user.email || '').trim();
+            if (email) {
+                const verifiedPayments = allPaymentDocs.docs
+                    .filter((doc) => doc.data().status === 'verified')
+                    .map((doc) => ({ id: doc.id, ...doc.data() }));
+                const runtimeCreditApplied = money(verifiedPayments
+                    .filter((item) => item.gateway === 'runtime_credit')
+                    .reduce((total, item) => total + Number(item.amount || 0), 0));
+                const paymentBreakdown = verifiedPayments
+                    .map((item) => `${paymentMethodLabel(item.gateway)}: $${Number(item.amount || 0).toFixed(2)} USD`)
+                    .join(' + ');
+                const domainName = orderDomainName(settledOrder);
+                await emailService.sendEvent('payment_received', {
+                    email,
+                    name: String(user.name || settledOrder.customer_name || '').trim() || undefined,
+                    orderReference: String(settledOrder.reference || result.orderId),
+                    paymentReference: String(settledPayment.reference || paymentId),
+                    domainName: domainName || undefined,
+                    serviceName: orderServiceName(settledOrder),
+                    amount: Number(settledPayment.amount || 0),
+                    paymentMethod: paymentMethodLabel(settledPayment.gateway),
+                    transactionId: String(settledPayment.transaction_id || settledPayment.provider_reference || transactionId || '').trim() || undefined,
+                    creditApplied: runtimeCreditApplied > 0 ? runtimeCreditApplied : undefined,
+                    orderTotal: Number(settledOrder.total || 0),
+                    amountPaid: result.amountPaid,
+                    amountRemaining: result.amountDue,
+                    paymentBreakdown: paymentBreakdown || undefined,
+                });
+            }
+        }
+        catch (error) {
+            console.error('Payment receipt email failed:', error);
+        }
+    }
+    return result;
 };

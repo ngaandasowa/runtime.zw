@@ -72,6 +72,7 @@ const supportedEvents = [
     'renewal_order_created',
     'order_cancelled',
     'payment_approved',
+    'payment_received',
     'payment_rejected',
     'renewal_completed',
     'domain_activated',
@@ -91,6 +92,7 @@ const supportedEvents = [
 ];
 const adminOnlyEvents = new Set([
     'payment_approved',
+    'payment_received',
     'payment_rejected',
     'renewal_completed',
     'domain_activated',

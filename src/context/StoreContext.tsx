@@ -2012,6 +2012,12 @@ const getDomainOrderDetails = async (
 
             nameservers:
               updated.nameservers,
+
+            ownerDetails:
+              updatedOwner,
+
+            updatedByAdmin:
+              false,
           }
         );
 
@@ -3130,30 +3136,6 @@ const getDomainOrderDetails = async (
         }
       }
 
-      emailNotificationService
-        .notifyQuietly(
-          'payment_approved',
-          {
-            email:
-              fulfilledDomain
-                .user_email,
-            name:
-              fulfilledDomain
-                .owner_details
-                ?.full_name,
-            orderReference:
-              paidOrder.reference,
-            paymentReference:
-              approvedPayment
-                .reference,
-            domainName:
-              fulfilledDomain
-                .domain_name,
-            amount:
-              approvedPayment.amount,
-          }
-        );
-
       showNotification(
         `Payment approved for ${fulfilledDomain.domain_name}. Registration can now be processed.`,
         'success'
@@ -3587,6 +3569,56 @@ const getDomainOrderDetails = async (
         purpose ===
         'wallet_topup'
       ) {
+        const customer =
+          users.find(
+            (item) =>
+              item.id ===
+              rejected.user_id
+          );
+
+        emailNotificationService
+  .notifyQuietly(
+    'payment_rejected',
+    {
+      email:
+        customer?.email ||
+        currentUser.email,
+
+      name:
+        customer?.name,
+
+      paymentReference:
+        rejected.reference,
+
+      serviceName:
+        'Runtime Credit top-up',
+
+      amount:
+        rejected.amount,
+
+      paymentMethod:
+        rejected.gateway ===
+        'ecocash_usd'
+          ? 'EcoCash USD'
+          : rejected.gateway ===
+              'pesepay'
+            ? 'PesePay'
+            : String(
+                rejected.gateway ||
+                'Payment'
+              ),
+
+      transactionId:
+        rejected.transaction_id ||
+        (rejected as any)
+          .provider_reference,
+
+      reason:
+        reason ||
+        'Payment could not be verified.',
+    }
+  );
+
         showNotification(
           'Runtime Credit top-up rejected.',
           'info'
@@ -3636,6 +3668,47 @@ const getDomainOrderDetails = async (
                 'Runtime order',
               amount:
                 rejected.amount,
+              serviceName:
+                String(
+                  (rejectedOrder as any)
+                    .purpose ||
+                  (rejectedOrder as any)
+                    .metadata
+                    ?.purpose ||
+                  rejectedOrder
+                    .items?.[0]
+                    ?.item_type ||
+                  'Runtime order'
+                )
+                  .replace(/_/g, ' ')
+                  .replace(
+                    /\b\w/g,
+                    (char) =>
+                      char.toUpperCase()
+                  ),
+              paymentMethod:
+                rejected.gateway ===
+                  'ecocash_usd'
+                  ? 'EcoCash USD'
+                  : rejected.gateway ===
+                      'pesepay'
+                    ? 'PesePay'
+                    : String(
+                        rejected.gateway ||
+                        'Payment'
+                      ),
+              transactionId:
+                rejected.transaction_id ||
+                (rejected as any)
+                  .provider_reference,
+              orderTotal:
+                rejectedOrder.total,
+              amountPaid:
+                (rejectedOrder as any)
+                  .amount_paid,
+              amountRemaining:
+                (rejectedOrder as any)
+                  .amount_due,
               reason:
                 reason ||
                 'Payment could not be verified.',

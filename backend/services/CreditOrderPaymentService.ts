@@ -732,6 +732,25 @@ export const applyRuntimeCreditToOrder =
                 domainName:
                   domainName ||
                   undefined,
+                serviceName:
+                  String(
+                    order.purpose ||
+                    order.metadata?.purpose ||
+                    item?.item_type ||
+                    'Runtime order'
+                  )
+                    .replace(/_/g, ' ')
+                    .replace(
+                      /\b\w/g,
+                      (char: string) =>
+                        char.toUpperCase()
+                    ),
+                paymentMethod:
+                  'Runtime Credit',
+                transactionId:
+                  result.walletTransactionId,
+                paymentBreakdown:
+                  `Runtime Credit: $${result.appliedAmount.toFixed(2)} USD`,
                 amount:
                   result.appliedAmount,
                 creditApplied:
