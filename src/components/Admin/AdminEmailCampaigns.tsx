@@ -70,7 +70,7 @@ const API_BASE_URL =
     .VITE_API_BASE_URL ||
   (import.meta.env.DEV
     ? 'http://localhost:4000'
-    : '');
+    : 'https://api.runtime.co.zw');
 
 const campaignApi =
   async (
@@ -87,25 +87,47 @@ const campaignApi =
       );
     }
 
-    const token =
-      await user
-        .getIdToken();
+    const sendRequest =
+      async (
+        forceRefresh:
+          boolean
+      ) => {
+        const token =
+          await user.getIdToken(
+            forceRefresh
+          );
 
-    const response =
-      await fetch(
-        `${API_BASE_URL}/api/email-campaigns${path}`,
-        {
-          ...options,
-          headers: {
-            'Content-Type':
-              'application/json',
-            Authorization:
-              `Bearer ${token}`,
-            ...(options.headers ||
-              {}),
-          },
-        }
-      );
+        return fetch(
+          `${API_BASE_URL}/api/email-campaigns${path}`,
+          {
+            ...options,
+            headers: {
+              'Content-Type':
+                'application/json',
+              Authorization:
+                `Bearer ${token}`,
+              ...(options.headers ||
+                {}),
+            },
+          }
+        );
+      };
+
+    let response =
+      await sendRequest(false);
+
+    /*
+     * Firebase normally refreshes ID tokens automatically,
+     * but a browser can temporarily hold a stale token after
+     * a deployment/session change. Retry once with a forced
+     * refresh before treating the session as invalid.
+     */
+    if (
+      response.status === 401
+    ) {
+      response =
+        await sendRequest(true);
+    }
 
     const body =
       await response
