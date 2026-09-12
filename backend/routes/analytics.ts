@@ -1,199 +1,147 @@
-import {
-  Router,
+import type {
+  NextFunction,
+  Response,
 } from 'express';
+import { Router } from 'express';
 
 import {
   analyticsDataService,
 } from '../services/AnalyticsDataService.js';
 
+import {
+  authenticateWithProfile,
+  type RuntimeAuthenticatedRequest,
+} from '../middleware/authenticate.js';
+
 const router = Router();
 
-/**
- * GET /analytics
- * Get aggregated analytics for the dashboard
- */
+const requireSuperAdmin = (
+  req: RuntimeAuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  if (req.runtimeUser?.role !== 'super_admin') {
+    return res.status(403).json({
+      success: false,
+      message: 'Super administrator permission required.',
+    });
+  }
+
+  next();
+};
+
+const eventWindows = new Map<string, { count: number; resetAt: number }>();
+const EVENT_WINDOW_MS = 60_000;
+const MAX_EVENTS_PER_WINDOW = 120;
+
+const allowEvent = (ip: string) => {
+  const now = Date.now();
+  const current = eventWindows.get(ip);
+
+  if (!current || current.resetAt <= now) {
+    eventWindows.set(ip, { count: 1, resetAt: now + EVENT_WINDOW_MS });
+    return true;
+  }
+
+  if (current.count >= MAX_EVENTS_PER_WINDOW) {
+    return false;
+  }
+
+  current.count += 1;
+  return true;
+};
+
 router.get(
   '/',
-  async (
-    req,
-    res
-  ) => {
+  authenticateWithProfile,
+  requireSuperAdmin,
+  async (req: RuntimeAuthenticatedRequest, res: Response) => {
     try {
-      const daysBack =
-        req.query.days
-          ? parseInt(
-              req.query.days as string
-            )
-          : 30;
+      const requested = Number(req.query.days || 30);
+      const daysBack = Number.isFinite(requested) ? requested : 30;
+      const analytics = await analyticsDataService.getAnalytics(daysBack);
 
-      const analytics =
-        await analyticsDataService.getAnalytics(
-          daysBack
-        );
-
-      res.json({
+      return res.json({
         success: true,
         data: analytics,
       });
     } catch (error) {
-      console.error(
-        'Analytics endpoint error:',
-        error
-      );
-
-      res.status(500).json({
+      console.error('Analytics endpoint error:', error);
+      return res.status(500).json({
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Failed to fetch analytics',
+        message: 'Unable to load analytics.',
       });
     }
   }
 );
 
-/**
- * GET /analytics/conversion
- * Get conversion metrics
- */
-router.get(
-  '/conversion',
-  async (
-    req,
-    res
-  ) => {
-    try {
-      const metrics =
-        await analyticsDataService.getConversionMetrics();
-
-      res.json({
-        success: true,
-        data: metrics,
-      });
-    } catch (error) {
-      console.error(
-        'Conversion metrics endpoint error:',
-        error
-      );
-
-      res.status(500).json({
-        success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Failed to fetch conversion metrics',
-      });
-    }
-  }
-);
-
-/**
- * GET /analytics/user/:userId
- * Get activity for a specific user
- */
 router.get(
   '/user/:userId',
-  async (
-    req,
-    res
-  ) => {
+  authenticateWithProfile,
+  requireSuperAdmin,
+  async (req: RuntimeAuthenticatedRequest, res: Response) => {
     try {
-      const { userId } =
-        req.params;
-
-      const days =
-        req.query.days
-          ? parseInt(
-              req.query.days as string
-            )
-          : 30;
-
-      const activity =
-        await analyticsDataService.getUserActivity(
-          userId,
-          days
-        );
-
-      res.json({
-        success: true,
-        data: activity,
-      });
-    } catch (error) {
-      console.error(
-        'User activity endpoint error:',
-        error
+      const requested = Number(req.query.days || 30);
+      const days = Number.isFinite(requested) ? requested : 30;
+      const activity = await analyticsDataService.getUserActivity(
+        String(req.params.userId || ''),
+        days
       );
 
-      res.status(500).json({
+      return res.json({ success: true, data: activity });
+    } catch (error) {
+      console.error('User activity endpoint error:', error);
+      return res.status(500).json({
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Failed to fetch user activity',
+        message: 'Unable to load user activity.',
       });
     }
   }
 );
 
-/**
- * POST /analytics/event
- * Log a custom analytics event
- */
-router.post(
-  '/event',
-  async (
-    req,
-    res
-  ) => {
-    try {
-      const {
-        eventName,
-        userId,
-        data,
-      } = req.body;
+router.post('/event', async (req, res) => {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
 
-      console.log('📊 Analytics event received:', {
-        eventName,
-        userId: userId ? userId.slice(0, 8) + '...' : 'anonymous',
-        hasData: !!data,
-      });
+  if (!allowEvent(ip)) {
+    return res.status(429).json({
+      success: false,
+      message: 'Too many analytics events.',
+    });
+  }
 
-      if (!eventName) {
-        return res.status(400).json(
-          {
-            success: false,
-            error:
-              'eventName is required',
-          }
-        );
-      }
+  try {
+    const eventName =
+      typeof req.body?.eventName === 'string'
+        ? req.body.eventName.trim()
+        : '';
 
-      await analyticsDataService.logEvent(
-        eventName,
-        userId || null,
-        data || {}
-      );
-
-      res.json({
-        success: true,
-        message:
-          'Event logged successfully',
-      });
-    } catch (error) {
-      console.error(
-        'Log event endpoint error:',
-        error
-      );
-
-      res.status(500).json({
+    if (!eventName || eventName.length > 80) {
+      return res.status(400).json({
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Failed to log event',
+        message: 'A valid eventName is required.',
       });
     }
+
+    const userId =
+      typeof req.body?.userId === 'string'
+        ? req.body.userId
+        : null;
+
+    const data =
+      req.body?.data && typeof req.body.data === 'object'
+        ? req.body.data
+        : {};
+
+    await analyticsDataService.logEvent(eventName, userId, data);
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Log event endpoint error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Unable to record analytics event.',
+    });
   }
-);
+});
 
 export default router;

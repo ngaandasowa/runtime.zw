@@ -1,13 +1,10 @@
 import {
+  FieldValue,
   getFirestore,
   Timestamp,
 } from 'firebase-admin/firestore';
 
-import {
-  getAuth,
-} from 'firebase-admin/auth';
-
-interface AnalyticsStats {
+export interface AnalyticsStats {
   totalUsers: number;
   activeUsers: number;
   signUps: number;
@@ -31,678 +28,66 @@ interface AnalyticsStats {
   }>;
 }
 
+type CacheEntry = {
+  expiresAt: number;
+  value: AnalyticsStats;
+};
+
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const MAX_DAYS = 90;
+const RECENT_ACTIVITY_LIMIT = 20;
+
+const encodeKey = (value: string) =>
+  Buffer.from(value, 'utf8').toString('base64url');
+
+const decodeKey = (value: string) => {
+  try {
+    return Buffer.from(value, 'base64url').toString('utf8');
+  } catch {
+    return value;
+  }
+};
+
+const safeCount = (value: unknown) => {
+  const number = Number(value || 0);
+  return Number.isFinite(number) ? number : 0;
+};
+
+const toIso = (value: any) => {
+  if (value?.toDate) {
+    return value.toDate().toISOString();
+  }
+
+  if (typeof value === 'string') {
+    const date = new Date(value);
+    if (!Number.isNaN(date.getTime())) {
+      return date.toISOString();
+    }
+  }
+
+  return new Date().toISOString();
+};
+
+const utcDayKey = (date = new Date()) =>
+  date.toISOString().slice(0, 10);
+
 class AnalyticsDataService {
   private db = getFirestore();
-  private auth = getAuth();
+  private cache = new Map<number, CacheEntry>();
 
-  /**
-   * Get all analytics stats
-   */
-  async getAnalytics(
-    daysBack: number = 30
-  ): Promise<AnalyticsStats> {
-    const startDate = new Date();
-    startDate.setDate(
-      startDate.getDate() - daysBack
-    );
-
-    try {
-      const [
-        usersData,
-        eventsData,
-        businessData,
-      ] = await Promise.all([
-        this.getUserStats(startDate),
-        this.getEventsStats(startDate),
-        this.getBusinessStats(startDate),
-      ]);
-
-      return {
-        ...eventsData,
-        ...usersData,
-        ...businessData,
-      };
-    } catch (error) {
-      console.error(
-        'Failed to get analytics:',
-        error
-      );
-      return this.getEmptyAnalytics();
-    }
+  private normalizeDays(daysBack: number) {
+    if (!Number.isFinite(daysBack)) return 30;
+    return Math.min(MAX_DAYS, Math.max(1, Math.floor(daysBack)));
   }
 
-  /**
-   * Get user statistics
-   */
-  private async getUserStats(startDate: Date) {
-    try {
-      const listUsersResult =
-        await this.auth.listUsers(1000);
-
-      const users = listUsersResult.users;
-      const totalUsers = users.length;
-
-      const usersByRole: Record<string, number> = {
-        super_admin: 0,
-        admin: 0,
-        customer: 0,
-      };
-
-      let signUps = 0;
-
-      for (const user of users) {
-        const role =
-          (user.customClaims?.role as string) ||
-          'customer';
-
-        usersByRole[role] =
-          (usersByRole[role] || 0) + 1;
-
-        const createdAt =
-          user.metadata.creationTime
-            ? new Date(user.metadata.creationTime)
-            : null;
-
-        if (createdAt && createdAt >= startDate) {
-          signUps++;
-        }
-      }
-
-      const activeSnapshot =
-        await this.db
-          .collection('analytics_events')
-          .where(
-            'timestamp',
-            '>=',
-            Timestamp.fromDate(startDate)
-          )
-          .get();
-
-      const activeUserIds = new Set<string>();
-
-      activeSnapshot.docs.forEach((doc: any) => {
-        const userId = String(
-          doc.data()?.userId || ''
-        );
-
-        if (userId && userId !== 'anonymous') {
-          activeUserIds.add(userId);
-        }
-      });
-
-      return {
-        totalUsers,
-        usersByRole,
-        activeUsers: activeUserIds.size,
-        signUps,
-      };
-    } catch (error) {
-      console.error(
-        'Failed to get user stats:',
-        error
-      );
-
-      return {
-        totalUsers: 0,
-        activeUsers: 0,
-        signUps: 0,
-        usersByRole: {},
-      };
-    }
+  private startDayKey(daysBack: number) {
+    const start = new Date();
+    start.setUTCHours(0, 0, 0, 0);
+    start.setUTCDate(start.getUTCDate() - (daysBack - 1));
+    return utcDayKey(start);
   }
 
-  /**
-   * Use Runtime's real business collections for money and
-   * registered-domain totals. Analytics events remain the source
-   * for behavioural data such as page views and searches.
-   */
-  private async getBusinessStats(
-    startDate: Date
-  ) {
-    try {
-      const [paymentsSnapshot, domainsSnapshot] =
-        await Promise.all([
-          this.db.collection('payments').get(),
-          this.db.collection('domains').get(),
-        ]);
-
-      let totalPaymentAmount = 0;
-      let paymentCount = 0;
-      const paymentMethods: Record<string, number> = {};
-
-      paymentsSnapshot.docs.forEach((doc: any) => {
-        const payment = doc.data() || {};
-
-        if (
-          payment.status !== 'verified' ||
-          payment.gateway === 'runtime_credit'
-        ) {
-          return;
-        }
-
-        const rawDate =
-          payment.verified_at ||
-          payment.updated_at ||
-          payment.created_at;
-        const paymentDate = this.toDate(rawDate);
-
-        if (!paymentDate || paymentDate < startDate) {
-          return;
-        }
-
-        const amount = Number(payment.amount || 0);
-
-        if (Number.isFinite(amount)) {
-          totalPaymentAmount += amount;
-        }
-
-        paymentCount++;
-
-        const method = String(
-          payment.gateway ||
-          payment.method ||
-          'unknown'
-        );
-
-        paymentMethods[method] =
-          (paymentMethods[method] || 0) + 1;
-      });
-
-      let domainRegistrations = 0;
-      let domainTransfers = 0;
-
-      domainsSnapshot.docs.forEach((doc: any) => {
-        const domain = doc.data() || {};
-        const domainDate = this.toDate(
-          domain.registered_at ||
-          domain.created_at ||
-          domain.updated_at
-        );
-
-        if (!domainDate || domainDate < startDate) {
-          return;
-        }
-
-        const status = String(domain.status || '');
-
-        if (
-          status !== 'cancelled' &&
-          status !== 'registry_rejected' &&
-          status !== 'replaced'
-        ) {
-          domainRegistrations++;
-        }
-
-        if (
-          domain.transfer === true ||
-          domain.registration_type === 'transfer' ||
-          domain.type === 'transfer'
-        ) {
-          domainTransfers++;
-        }
-      });
-
-      return {
-        totalPaymentAmount,
-        paymentCount,
-        paymentMethods,
-        domainRegistrations,
-        domainTransfers,
-      };
-    } catch (error) {
-      console.error(
-        'Failed to get business analytics:',
-        error
-      );
-
-      return {
-        totalPaymentAmount: 0,
-        paymentCount: 0,
-        paymentMethods: {},
-        domainRegistrations: 0,
-        domainTransfers: 0,
-      };
-    }
-  }
-
-  private toDate(value: any): Date | null {
-    if (!value) {
-      return null;
-    }
-
-    if (
-      typeof value?.toDate === 'function'
-    ) {
-      return value.toDate();
-    }
-
-    const parsed = new Date(value);
-
-    return Number.isNaN(parsed.getTime())
-      ? null
-      : parsed;
-  }
-
-  /**
-   * Get events statistics
-   */
-  private async getEventsStats(
-    startDate: Date
-  ) {
-    try {
-      const eventsSnapshot =
-        await this.db
-          .collection(
-            'analytics_events'
-          )
-          .where(
-            'timestamp',
-            '>=',
-            Timestamp.fromDate(
-              startDate
-            )
-          )
-          .orderBy(
-            'timestamp',
-            'desc'
-          )
-          .get();
-
-      const events =
-        eventsSnapshot.docs.map(
-          (doc: any) => doc.data()
-        );
-
-      return this.processEventsStats(
-        events
-      );
-    } catch (error) {
-      console.error(
-        'Failed to get events stats:',
-        error
-      );
-      return {
-        signUps: 0,
-        signIns: 0,
-        signOuts: 0,
-        domainSearches: 0,
-        domainRegistrations: 0,
-        domainTransfers: 0,
-        totalPaymentAmount: 0,
-        paymentCount: 0,
-        topDomains: [],
-        topPages: [],
-        signInMethods: {},
-        paymentMethods: {},
-        recentSessions: [],
-      };
-    }
-  }
-
-  /**
-   * Process raw events into statistics
-   */
-  private processEventsStats(
-    events: any[]
-  ) {
-    let signUps = 0;
-    let signIns = 0;
-    let signOuts = 0;
-    let domainSearches = 0;
-    let domainRegistrations = 0;
-    let domainTransfers = 0;
-    let totalPaymentAmount = 0;
-    let paymentCount = 0;
-
-    const domainCounts: Record<
-      string,
-      number
-    > = {};
-
-    const pageCounts: Record<
-      string,
-      number
-    > = {};
-
-    const signInMethods: Record<
-      string,
-      number
-    > = {};
-
-    const paymentMethods: Record<
-      string,
-      number
-    > = {};
-
-    const recentSessions: any[] =
-      [];
-
-    for (const event of events) {
-      const eventType =
-        event.eventName ||
-        event.event_type;
-
-      const eventData = event.data || {};
-
-      if (
-        eventType === 'user_sign_up'
-      ) {
-        signUps++;
-        const method =
-          eventData.method || 'email';
-
-        signInMethods[method] =
-          (signInMethods[
-            method
-          ] || 0) + 1;
-      } else if (
-        eventType === 'user_sign_in'
-      ) {
-        signIns++;
-        const method =
-          eventData.method || 'email';
-
-        signInMethods[method] =
-          (signInMethods[
-            method
-          ] || 0) + 1;
-      } else if (
-        eventType === 'user_sign_out'
-      ) {
-        signOuts++;
-      } else if (
-        eventType ===
-        'domain_search'
-      ) {
-        domainSearches++;
-      } else if (
-        eventType ===
-        'domain_check'
-      ) {
-        if (eventData.domain) {
-          domainCounts[
-            eventData.domain
-          ] =
-            (domainCounts[
-              eventData.domain
-            ] || 0) + 1;
-        }
-      } else if (
-        eventType ===
-        'domain_registration_initiated'
-      ) {
-        domainRegistrations++;
-        if (eventData.domain) {
-          domainCounts[
-            eventData.domain
-          ] =
-            (domainCounts[
-              eventData.domain
-            ] || 0) + 1;
-        }
-      } else if (
-        eventType ===
-        'domain_transfer_initiated'
-      ) {
-        domainTransfers++;
-        if (eventData.domain) {
-          domainCounts[
-            eventData.domain
-          ] =
-            (domainCounts[
-              eventData.domain
-            ] || 0) + 1;
-        }
-      } else if (
-        eventType ===
-        'payment_completed'
-      ) {
-        paymentCount++;
-        totalPaymentAmount +=
-          eventData.amount || 0;
-
-        const method =
-          eventData.method || 'card';
-
-        paymentMethods[method] =
-          (paymentMethods[
-            method
-          ] || 0) + 1;
-      } else if (
-        eventType === 'page_view'
-      ) {
-        const page =
-          eventData.page_name ||
-          eventData.page;
-
-        if (page) {
-          pageCounts[page] =
-            (pageCounts[page] || 0) +
-            1;
-        }
-      }
-
-      // Collect recent sessions
-      if (
-        recentSessions.length < 50
-      ) {
-        recentSessions.push({
-          userId:
-            event.userId ||
-            'anonymous',
-          event:
-            eventType,
-          timestamp:
-            event.timestamp?.toDate?.()?.toISOString?.() ||
-            (typeof event.timestamp === 'string'
-              ? event.timestamp
-              : new Date().toISOString()),
-          data:
-            event.data,
-        });
-      }
-    }
-
-    // Sort and limit top domains and pages
-    const topDomains =
-      Object.entries(
-        domainCounts
-      )
-        .sort(
-          ([, a], [, b]) =>
-            b - a
-        )
-        .slice(0, 10)
-        .map(
-          ([
-            domain,
-            count,
-          ]) => ({
-            domain,
-            count,
-          })
-        );
-
-    const topPages =
-      Object.entries(
-        pageCounts
-      )
-        .sort(
-          ([, a], [, b]) =>
-            b - a
-        )
-        .slice(0, 10)
-        .map(
-          ([page, count]) => ({
-            page,
-            count,
-          })
-        );
-
-    return {
-      signUps,
-      signIns,
-      signOuts,
-      domainSearches,
-      domainRegistrations,
-      domainTransfers,
-      totalPaymentAmount,
-      paymentCount,
-      topDomains,
-      topPages,
-      signInMethods,
-      paymentMethods,
-      recentSessions,
-    };
-  }
-
-  /**
-   * Log an analytics event
-   */
-  async logEvent(
-    eventName: string,
-    userId: string | null,
-    eventData: Record<string, any>
-  ) {
-    try {
-      await this.db
-        .collection(
-          'analytics_events'
-        )
-        .add({
-          eventName,
-          userId: userId || 'anonymous',
-          data: eventData,
-          timestamp:
-            Timestamp.now(),
-        });
-    } catch (error) {
-      console.error(
-        'Failed to log analytics event:',
-        error
-      );
-    }
-  }
-
-  /**
-   * Get user activity timeline
-   */
-  async getUserActivity(
-    userId: string,
-    days: number = 30
-  ) {
-    try {
-      const startDate = new Date();
-      startDate.setDate(
-        startDate.getDate() - days
-      );
-
-      const snapshot =
-        await this.db
-          .collection(
-            'analytics_events'
-          )
-          .where(
-            'userId',
-            '==',
-            userId
-          )
-          .where(
-            'timestamp',
-            '>=',
-            Timestamp.fromDate(
-              startDate
-            )
-          )
-          .orderBy(
-            'timestamp',
-            'desc'
-          )
-          .get();
-
-      return snapshot.docs.map(
-        (doc: any) => ({
-          id: doc.id,
-          ...doc.data(),
-          timestamp:
-            doc.data()
-              .timestamp
-              ?.toDate()
-              ?.toISOString() ||
-            new Date().toISOString(),
-        })
-      );
-    } catch (error) {
-      console.error(
-        'Failed to get user activity:',
-        error
-      );
-      return [];
-    }
-  }
-
-  /**
-   * Get conversion metrics
-   */
-  async getConversionMetrics() {
-    try {
-      const analytics =
-        await this.getAnalytics(90);
-
-      return {
-        totalVisitors: analytics.activeUsers,
-        signUpConversion:
-          analytics.totalUsers > 0
-            ? (
-                (analytics.signUps /
-                  analytics.activeUsers) *
-                100
-              ).toFixed(2)
-            : '0',
-        paymentConversion:
-          analytics.totalUsers > 0
-            ? (
-                (analytics.paymentCount /
-                  analytics.totalUsers) *
-                100
-              ).toFixed(2)
-            : '0',
-        averageOrderValue:
-          analytics.paymentCount > 0
-            ? (
-                analytics.totalPaymentAmount /
-                analytics.paymentCount
-              ).toFixed(2)
-            : '0',
-        domainRegistrationRate:
-          analytics.totalUsers > 0
-            ? (
-                (analytics.domainRegistrations /
-                  analytics.totalUsers) *
-                100
-              ).toFixed(2)
-            : '0',
-      };
-    } catch (error) {
-      console.error(
-        'Failed to get conversion metrics:',
-        error
-      );
-      return this.getEmptyConversionMetrics();
-    }
-  }
-
-  private getEmptyConversionMetrics() {
-    return {
-      totalVisitors: 0,
-      signUpConversion: '0',
-      paymentConversion: '0',
-      averageOrderValue: '0',
-      domainRegistrationRate: '0',
-    };
-  }
-
-  private getEmptyAnalytics(): AnalyticsStats {
+  private empty(): AnalyticsStats {
     return {
       totalUsers: 0,
       activeUsers: 0,
@@ -722,7 +107,226 @@ class AnalyticsDataService {
       recentSessions: [],
     };
   }
+
+  /**
+   * Dashboard analytics reads only small daily aggregate documents.
+   * It never scans analytics_events, payments, domains or users.
+   * Business metrics are calculated in the React admin screen from
+   * StoreContext, exactly like AdminDashboard.
+   */
+  async getAnalytics(daysBack = 30): Promise<AnalyticsStats> {
+    const days = this.normalizeDays(daysBack);
+    const cached = this.cache.get(days);
+
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.value;
+    }
+
+    const startKey = this.startDayKey(days);
+    const startDate = new Date(`${startKey}T00:00:00.000Z`);
+
+    try {
+      const [dailySnapshot, recentSnapshot] = await Promise.all([
+        this.db
+          .collection('analytics_daily')
+          .where('date', '>=', startKey)
+          .orderBy('date', 'asc')
+          .limit(days)
+          .get(),
+        this.db
+          .collection('analytics_events')
+          .where('timestamp', '>=', Timestamp.fromDate(startDate))
+          .orderBy('timestamp', 'desc')
+          .limit(RECENT_ACTIVITY_LIMIT)
+          .get(),
+      ]);
+
+      const eventCounts: Record<string, number> = {};
+      const domainCounts: Record<string, number> = {};
+      const pageCounts: Record<string, number> = {};
+      const signInMethods: Record<string, number> = {};
+      const activeUsers = new Set<string>();
+
+      for (const doc of dailySnapshot.docs) {
+        const data = doc.data() || {};
+
+        for (const [key, value] of Object.entries(data.eventCounts || {})) {
+          const name = decodeKey(key);
+          eventCounts[name] = (eventCounts[name] || 0) + safeCount(value);
+        }
+
+        for (const [key, value] of Object.entries(data.domainCounts || {})) {
+          const name = decodeKey(key);
+          domainCounts[name] = (domainCounts[name] || 0) + safeCount(value);
+        }
+
+        for (const [key, value] of Object.entries(data.pageCounts || {})) {
+          const name = decodeKey(key);
+          pageCounts[name] = (pageCounts[name] || 0) + safeCount(value);
+        }
+
+        for (const [key, value] of Object.entries(data.signInMethods || {})) {
+          const name = decodeKey(key);
+          signInMethods[name] = (signInMethods[name] || 0) + safeCount(value);
+        }
+
+        for (const userId of Array.isArray(data.activeUserIds) ? data.activeUserIds : []) {
+          if (userId && userId !== 'anonymous') {
+            activeUsers.add(String(userId));
+          }
+        }
+      }
+
+      const topDomains = Object.entries(domainCounts)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 10)
+        .map(([domain, count]) => ({ domain, count }));
+
+      const topPages = Object.entries(pageCounts)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 10)
+        .map(([page, count]) => ({ page, count }));
+
+      const recentSessions = recentSnapshot.docs.map((doc) => {
+        const data = doc.data() || {};
+        return {
+          userId: String(data.userId || 'anonymous'),
+          event: String(data.eventName || data.event_type || 'event'),
+          timestamp: toIso(data.timestamp),
+          data: data.data || {},
+        };
+      });
+
+      const value: AnalyticsStats = {
+        ...this.empty(),
+        activeUsers: activeUsers.size,
+        signUps: safeCount(eventCounts.user_sign_up),
+        signIns: safeCount(eventCounts.user_sign_in),
+        signOuts: safeCount(eventCounts.user_sign_out),
+        domainSearches: safeCount(eventCounts.domain_search),
+        domainRegistrations: safeCount(eventCounts.domain_registration_initiated),
+        domainTransfers: safeCount(eventCounts.domain_transfer_initiated),
+        topDomains,
+        topPages,
+        signInMethods,
+        recentSessions,
+      };
+
+      this.cache.set(days, {
+        expiresAt: Date.now() + CACHE_TTL_MS,
+        value,
+      });
+
+      return value;
+    } catch (error) {
+      console.error('Failed to get bounded analytics summary:', error);
+      return this.empty();
+    }
+  }
+
+  /**
+   * Every event updates one small daily aggregate document. This is a
+   * write, not a collection scan. No Firestore read is required here.
+   * A raw event is retained for the recent-activity/user timeline, but
+   * dashboard reporting never scans the raw collection.
+   */
+  async logEvent(
+    eventName: string,
+    userId: string | null,
+    eventData: Record<string, any>
+  ) {
+    try {
+      const normalizedEvent = String(eventName || '').trim();
+      if (!normalizedEvent) return;
+
+      const normalizedUser = String(userId || 'anonymous');
+      const day = utcDayKey();
+      const eventKey = encodeKey(normalizedEvent);
+      const dailyRef = this.db.collection('analytics_daily').doc(day);
+
+      const payload: Record<string, any> = {
+        date: day,
+        updatedAt: FieldValue.serverTimestamp(),
+        eventCounts: {
+          [eventKey]: FieldValue.increment(1),
+        },
+      };
+
+      if (normalizedUser !== 'anonymous') {
+        payload.activeUserIds = FieldValue.arrayUnion(normalizedUser);
+      }
+
+      const page = String(eventData?.page_name || eventData?.page || '').trim();
+      if (normalizedEvent === 'page_view' && page) {
+        payload.pageCounts = {
+          [encodeKey(page)]: FieldValue.increment(1),
+        };
+      }
+
+      const domain = String(eventData?.domain || '').trim().toLowerCase();
+      if (
+        domain &&
+        (normalizedEvent === 'domain_search' ||
+          normalizedEvent === 'domain_check' ||
+          normalizedEvent === 'domain_registration_initiated' ||
+          normalizedEvent === 'domain_transfer_initiated')
+      ) {
+        payload.domainCounts = {
+          [encodeKey(domain)]: FieldValue.increment(1),
+        };
+      }
+
+      const signInMethod = String(eventData?.method || '').trim();
+      if (
+        signInMethod &&
+        (normalizedEvent === 'user_sign_in' || normalizedEvent === 'user_sign_up')
+      ) {
+        payload.signInMethods = {
+          [encodeKey(signInMethod)]: FieldValue.increment(1),
+        };
+      }
+
+      await Promise.all([
+        dailyRef.set(payload, { merge: true }),
+        this.db.collection('analytics_events').add({
+          eventName: normalizedEvent,
+          userId: normalizedUser,
+          data: eventData || {},
+          timestamp: Timestamp.now(),
+        }),
+      ]);
+
+      // New activity makes cached summaries stale.
+      this.cache.clear();
+    } catch (error) {
+      console.error('Failed to log analytics event:', error);
+    }
+  }
+
+  async getUserActivity(userId: string, days = 30) {
+    try {
+      const safeDays = this.normalizeDays(days);
+      const start = new Date();
+      start.setDate(start.getDate() - safeDays);
+
+      const snapshot = await this.db
+        .collection('analytics_events')
+        .where('userId', '==', userId)
+        .where('timestamp', '>=', Timestamp.fromDate(start))
+        .orderBy('timestamp', 'desc')
+        .limit(100)
+        .get();
+
+      return snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        timestamp: toIso(doc.data()?.timestamp),
+      }));
+    } catch (error) {
+      console.error('Failed to get user activity:', error);
+      return [];
+    }
+  }
 }
 
-export const analyticsDataService =
-  new AnalyticsDataService();
+export const analyticsDataService = new AnalyticsDataService();

@@ -1,27 +1,30 @@
 import React, {
   useEffect,
+  useMemo,
   useState,
 } from 'react';
 
 import {
   analyticsRepository,
   type AnalyticsData,
-  type ConversionMetrics,
 } from '../../services/AnalyticsRepository';
+
+import {
+  useStore,
+} from '../../context/StoreContext';
 
 export const AdminAnalytics: React.FC =
   () => {
-    const [
-      analytics,
-      setAnalytics,
-    ] = useState<AnalyticsData | null>(
-      null
-    );
+    const {
+      users,
+      domains,
+      payments,
+    } = useStore();
 
     const [
-      metrics,
-      setMetrics,
-    ] = useState<ConversionMetrics | null>(
+      behavioral,
+      setBehavioral,
+    ] = useState<AnalyticsData | null>(
       null
     );
 
@@ -36,39 +39,175 @@ export const AdminAnalytics: React.FC =
     ] = useState(30);
 
     useEffect(() => {
-      loadAnalytics();
+      const loadAnalytics = async () => {
+        setLoading(true);
+
+        try {
+          setBehavioral(
+            await analyticsRepository.getAnalytics(
+              daysBack
+            )
+          );
+        } catch (error) {
+          console.error(
+            'Failed to load analytics:',
+            error
+          );
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      void loadAnalytics();
     }, [daysBack]);
 
-    const loadAnalytics = async () => {
-      setLoading(true);
+    const analytics = useMemo<AnalyticsData>(() => {
+      const start = new Date();
+      start.setDate(
+        start.getDate() - daysBack
+      );
 
-      try {
-        const [
-          analyticsData,
-          metricsData,
-        ] = await Promise.all([
-          analyticsRepository.getAnalytics(
-            daysBack
-          ),
-          analyticsRepository.getConversionMetrics(),
-        ]);
+      const dateOf = (value: unknown) => {
+        if (!value) return null;
+        const date = new Date(String(value));
+        return Number.isNaN(date.getTime())
+          ? null
+          : date;
+      };
 
-        setAnalytics(
-          analyticsData
-        );
+      const inPeriod = (value: unknown) => {
+        const date = dateOf(value);
+        return Boolean(date && date >= start);
+      };
 
-        setMetrics(
-          metricsData
-        );
-      } catch (error) {
-        console.error(
-          'Failed to load analytics:',
-          error
-        );
-      } finally {
-        setLoading(false);
+      const usersByRole: Record<string, number> = {};
+      let signUps = 0;
+
+      for (const user of users) {
+        const role = String((user as any).role || 'customer');
+        usersByRole[role] = (usersByRole[role] || 0) + 1;
+
+        if (
+          inPeriod(
+            (user as any).created_at ||
+            (user as any).createdAt
+          )
+        ) {
+          signUps += 1;
+        }
       }
-    };
+
+      const periodPayments = payments.filter((payment) =>
+        payment.status === 'verified' &&
+        payment.gateway !== 'runtime_credit' &&
+        inPeriod(
+          (payment as any).verified_at ||
+          (payment as any).updated_at ||
+          (payment as any).created_at
+        )
+      );
+
+      const paymentMethods: Record<string, number> = {};
+      const totalPaymentAmount = periodPayments.reduce(
+        (total, payment) => {
+          const method = String(
+            payment.gateway ||
+            (payment as any).method ||
+            'unknown'
+          );
+          paymentMethods[method] =
+            (paymentMethods[method] || 0) + 1;
+
+          return total + Number(payment.amount || 0);
+        },
+        0
+      );
+
+      let domainRegistrations = 0;
+      let domainTransfers = 0;
+
+      for (const domain of domains) {
+        const status = String(domain.status || '');
+        if (
+          ['cancelled', 'registry_rejected', 'replaced'].includes(status)
+        ) {
+          continue;
+        }
+
+        if (
+          !inPeriod(
+            (domain as any).registered_at ||
+            (domain as any).created_at ||
+            (domain as any).updated_at
+          )
+        ) {
+          continue;
+        }
+
+        domainRegistrations += 1;
+
+        if (
+          (domain as any).transfer === true ||
+          (domain as any).registration_type === 'transfer' ||
+          (domain as any).type === 'transfer'
+        ) {
+          domainTransfers += 1;
+        }
+      }
+
+      return {
+        totalUsers: users.length,
+        activeUsers: behavioral?.activeUsers || 0,
+        signUps,
+        signIns: behavioral?.signIns || 0,
+        signOuts: behavioral?.signOuts || 0,
+        domainSearches: behavioral?.domainSearches || 0,
+        domainRegistrations,
+        domainTransfers,
+        totalPaymentAmount,
+        paymentCount: periodPayments.length,
+        topDomains: behavioral?.topDomains || [],
+        topPages: behavioral?.topPages || [],
+        usersByRole,
+        signInMethods: behavioral?.signInMethods || {},
+        paymentMethods,
+        recentSessions: behavioral?.recentSessions || [],
+      };
+    }, [
+      behavioral,
+      daysBack,
+      domains,
+      payments,
+      users,
+    ]);
+
+    const metrics = useMemo(() => ({
+      totalVisitors: analytics.activeUsers,
+      signUpConversion:
+        analytics.activeUsers > 0
+          ? (
+              (analytics.signUps / analytics.activeUsers) * 100
+            ).toFixed(2)
+          : '0',
+      paymentConversion:
+        analytics.totalUsers > 0
+          ? (
+              (analytics.paymentCount / analytics.totalUsers) * 100
+            ).toFixed(2)
+          : '0',
+      averageOrderValue:
+        analytics.paymentCount > 0
+          ? (
+              analytics.totalPaymentAmount / analytics.paymentCount
+            ).toFixed(2)
+          : '0',
+      domainRegistrationRate:
+        analytics.totalUsers > 0
+          ? (
+              (analytics.domainRegistrations / analytics.totalUsers) * 100
+            ).toFixed(2)
+          : '0',
+    }), [analytics]);
 
     return (
       <div className="space-y-6">

@@ -17,7 +17,6 @@ import { runtimePricingService } from '../services/RuntimePricingService';
 import { registryService } from '../services/RegistryService';
 import { orderService } from '../services/OrderService';
 import { paymentService } from '../services/PaymentService';
-import { registryTemplateService } from '../services/RegistryTemplateService';
 import { firebaseAuthService } from '../services/FirebaseAuthService';
 import { userService } from '../services/UserService';
 import {
@@ -681,78 +680,66 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
 useEffect(() => {
   const loadUsers = async () => {
-    // No logged-in user
     if (!currentUser) {
       setUsers([]);
       return;
     }
 
-    // Only super admin should load all platform users
     if (currentUser.role !== 'super_admin') {
       setUsers([]);
       return;
     }
 
+    /*
+     * Use the authenticated backend as the normal source because it
+     * already reconciles Firebase Auth verification state with Runtime.
+     * Do not first read the entire Firestore users collection and then
+     * make the backend read it again.
+     *
+     * Direct Firestore loading remains a resilience fallback only.
+     */
     try {
-      /*
-       * Firestore remains the primary source for the admin customer list.
-       * Load it first so the dashboard never drops to zero simply because
-       * the optional Firebase verification-sync endpoint is unavailable.
-       */
-      const allUsers =
-        await userService.getAllUsers();
-
-      setUsers(allUsers);
-
-      /*
-       * Then ask the backend for Firebase Auth's authoritative
-       * emailVerified state. If this request succeeds, replace the
-       * already-loaded users with the reconciled records.
-       *
-       * If it fails (backend not deployed yet, 403, network issue, etc.),
-       * keep the Firestore users that are already on screen.
-       */
-      try {
-        const result =
-          await callAdminUserApi(
-            '',
-            {
-              method: 'GET',
-            }
-          );
-
-        const syncedUsers =
-          Array.isArray(
-            result?.users
-          )
-            ? result.users as User[]
-            : [];
-
-        if (
-          syncedUsers.length > 0 ||
-          allUsers.length === 0
-        ) {
-          setUsers(
-            syncedUsers
-          );
-        }
-      } catch (syncError) {
-        console.warn(
-          'Admin verification sync unavailable; using Firestore users:',
-          syncError
+      const result =
+        await callAdminUserApi(
+          '',
+          {
+            method: 'GET',
+          }
         );
-      }
+
+      const syncedUsers =
+        Array.isArray(
+          result?.users
+        )
+          ? result.users as User[]
+          : [];
+
+      setUsers(
+        syncedUsers
+      );
+      return;
+    } catch (syncError) {
+      console.warn(
+        'Admin user API unavailable; falling back to direct Firestore users:',
+        syncError
+      );
+    }
+
+    try {
+      setUsers(
+        await userService
+          .getAllUsers()
+      );
     } catch (error) {
       console.error(
         'Failed to load admin users:',
         error
       );
-
       setUsers([]);
     }
   };
 
-  loadUsers();
+  void loadUsers();
 }, [currentUser]);
 
   const setActiveView = (view: string) => {

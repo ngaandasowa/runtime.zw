@@ -23,50 +23,39 @@ export interface AnalyticsEvent {
 
 class AnalyticsService {
   private currentUser: User | null = null;
-  private pageTrackingStarted = false;
-  private lastTrackedPage = '';
+  private backendEventCache = new Map<string, number>();
 
-  startPageViewTracking() {
-    if (
-      typeof window === 'undefined' ||
-      this.pageTrackingStarted
-    ) {
-      return;
+  private shouldSendBackendEvent(
+    eventName: string,
+    eventData?: Record<string, any>
+  ) {
+    const noisy = new Set([
+      'page_view',
+      'domain_check',
+      'domain_search',
+      'session_started',
+      'session_ended',
+    ]);
+
+    if (!noisy.has(eventName)) {
+      return true;
     }
 
-    this.pageTrackingStarted = true;
+    const ttl = eventName === 'page_view' ? 60_000 : 30_000;
+    const key = JSON.stringify([
+      eventName,
+      this.currentUser?.id || 'anonymous',
+      eventData?.page_name || eventData?.page || '',
+      eventData?.domain || '',
+    ]);
+    const previous = this.backendEventCache.get(key) || 0;
 
-    const trackCurrentPage = () => {
-      const page =
-        `${window.location.pathname}${window.location.search}` || '/';
+    if (Date.now() - previous < ttl) {
+      return false;
+    }
 
-      if (page === this.lastTrackedPage) {
-        return;
-      }
-
-      this.lastTrackedPage = page;
-      this.trackPageView(page);
-    };
-
-    const originalPushState =
-      window.history.pushState.bind(window.history);
-    const originalReplaceState =
-      window.history.replaceState.bind(window.history);
-
-    window.history.pushState = ((...args: Parameters<History['pushState']>) => {
-      originalPushState(...args);
-      window.dispatchEvent(new Event('runtime:navigation'));
-    }) as History['pushState'];
-
-    window.history.replaceState = ((...args: Parameters<History['replaceState']>) => {
-      originalReplaceState(...args);
-      window.dispatchEvent(new Event('runtime:navigation'));
-    }) as History['replaceState'];
-
-    window.addEventListener('popstate', trackCurrentPage);
-    window.addEventListener('runtime:navigation', trackCurrentPage);
-
-    trackCurrentPage();
+    this.backendEventCache.set(key, Date.now());
+    return true;
   }
 
   /**

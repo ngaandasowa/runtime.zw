@@ -1,13 +1,10 @@
-const RAW_API_BASE =
+import { getAuth } from 'firebase/auth';
+
+const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ||
   (import.meta.env.DEV
     ? 'http://localhost:4000'
-    : window.location.origin);
-
-const API_BASE =
-  RAW_API_BASE.replace(/\/+$/, '').endsWith('/api')
-    ? RAW_API_BASE.replace(/\/+$/, '')
-    : `${RAW_API_BASE.replace(/\/+$/, '')}/api`;
+    : 'https://api.runtime.co.zw');
 
 export interface AnalyticsData {
   totalUsers: number;
@@ -33,14 +30,6 @@ export interface AnalyticsData {
   }>;
 }
 
-export interface ConversionMetrics {
-  totalVisitors: number;
-  signUpConversion: string;
-  paymentConversion: string;
-  averageOrderValue: string;
-  domainRegistrationRate: string;
-}
-
 export interface UserActivity {
   id: string;
   userId: string;
@@ -50,101 +39,57 @@ export interface UserActivity {
 }
 
 class AnalyticsRepository {
-  /**
-   * Get analytics dashboard data
-   */
-  async getAnalytics(
-    daysBack: number = 30
-  ): Promise<AnalyticsData | null> {
+  private async adminHeaders() {
+    const user = getAuth().currentUser;
+    if (!user) {
+      throw new Error('Authentication required.');
+    }
+
+    const token = await user.getIdToken();
+    return {
+      Authorization: `Bearer ${token}`,
+    };
+  }
+
+  async getAnalytics(daysBack = 30): Promise<AnalyticsData | null> {
     try {
       const response = await fetch(
-        `${API_BASE}/analytics?days=${daysBack}`
+        `${API_BASE_URL}/api/analytics?days=${daysBack}`,
+        { headers: await this.adminHeaders() }
       );
 
       if (!response.ok) {
-        throw new Error(
-          'Failed to fetch analytics'
-        );
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.message || 'Failed to fetch analytics');
       }
 
-      const result =
-        await response.json();
-
+      const result = await response.json();
       return result.data || null;
     } catch (error) {
-      console.error(
-        'Error fetching analytics:',
-        error
-      );
-
+      console.error('Error fetching analytics:', error);
       return null;
     }
   }
 
-  /**
-   * Get conversion metrics
-   */
-  async getConversionMetrics(): Promise<ConversionMetrics | null> {
+  async getUserActivity(userId: string, days = 30): Promise<UserActivity[]> {
     try {
       const response = await fetch(
-        `${API_BASE}/analytics/conversion`
+        `${API_BASE_URL}/api/analytics/user/${encodeURIComponent(userId)}?days=${days}`,
+        { headers: await this.adminHeaders() }
       );
 
       if (!response.ok) {
-        throw new Error(
-          'Failed to fetch conversion metrics'
-        );
+        throw new Error('Failed to fetch user activity');
       }
 
-      const result =
-        await response.json();
-
-      return result.data || null;
-    } catch (error) {
-      console.error(
-        'Error fetching conversion metrics:',
-        error
-      );
-
-      return null;
-    }
-  }
-
-  /**
-   * Get user activity
-   */
-  async getUserActivity(
-    userId: string,
-    days: number = 30
-  ): Promise<UserActivity[]> {
-    try {
-      const response = await fetch(
-        `${API_BASE}/analytics/user/${userId}?days=${days}`
-      );
-
-      if (!response.ok) {
-        throw new Error(
-          'Failed to fetch user activity'
-        );
-      }
-
-      const result =
-        await response.json();
-
+      const result = await response.json();
       return result.data || [];
     } catch (error) {
-      console.error(
-        'Error fetching user activity:',
-        error
-      );
-
+      console.error('Error fetching user activity:', error);
       return [];
     }
   }
 
-  /**
-   * Log a custom analytics event
-   */
   async logEvent(
     eventName: string,
     userId: string | null,
@@ -152,32 +97,22 @@ class AnalyticsRepository {
   ): Promise<boolean> {
     try {
       const response = await fetch(
-        `${API_BASE}/analytics/event`,
+        `${API_BASE_URL}/api/analytics/event`,
         {
           method: 'POST',
           headers: {
-            'Content-Type':
-              'application/json',
+            'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            eventName,
-            userId,
-            data,
-          }),
+          body: JSON.stringify({ eventName, userId, data }),
         }
       );
 
       return response.ok;
     } catch (error) {
-      console.error(
-        'Error logging event:',
-        error
-      );
-
+      console.error('Error logging event:', error);
       return false;
     }
   }
 }
 
-export const analyticsRepository =
-  new AnalyticsRepository();
+export const analyticsRepository = new AnalyticsRepository();
