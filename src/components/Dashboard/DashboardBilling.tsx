@@ -1643,6 +1643,16 @@ export const DashboardBilling:
           </p>
         </div>
 
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="text-xs font-bold text-amber-950">
+            Unpaid orders are kept for 7 days
+          </p>
+
+          <p className="mt-1 text-[11px] leading-5 text-amber-800">
+            If an order is still unpaid after 7 days, Runtime automatically removes the abandoned order and you will need to place a new order if you still want the service. Cancelled orders cannot receive new Runtime Credit or payment settlement. If you already opened a third-party payment request, do not complete it after cancelling the order.
+          </p>
+        </div>
+
         {/* RUNTIME CREDIT */}
         <section className="flex items-center justify-between gap-4 border-y border-zinc-200 bg-white px-4 py-4 sm:rounded-xl sm:border sm:px-5">
           <div className="flex min-w-0 items-center gap-3">

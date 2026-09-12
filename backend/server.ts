@@ -16,6 +16,11 @@ import analyticsRoutes from './routes/analytics.js';
 import adminUserRoutes from './routes/adminUsers.js';
 import authValidationRoutes from './routes/authValidation.js';
 import transferRoutes from './routes/transfers.js';
+import cleanupRoutes from './routes/cleanup.js';
+
+import {
+  startAbandonedCleanupScheduler,
+} from './services/AbandonedOrderCleanupService.js';
 
 const app = express();
 
@@ -171,6 +176,11 @@ app.use(
   transferRoutes
 );
 
+app.use(
+  '/api/cleanup',
+  cleanupRoutes
+);
+
 /*
  * ----------------------------------------------------------
  * ERROR HANDLER
@@ -215,5 +225,7 @@ app.listen(
     console.log(
       `Runtime backend running on port ${PORT}`
     );
+
+    startAbandonedCleanupScheduler();
   }
 );

@@ -159,6 +159,7 @@ export const DashboardDomains: React.FC =
       currentUser,
       domains,
       orders,
+      settings,
       setDashboardSubView,
       setRegistrationModalOpen,
       updateDomainNameservers,
@@ -266,6 +267,260 @@ export const DashboardDomains: React.FC =
       setTransferSubmitting,
     ] = useState(false);
 
+    const [
+      transferRegistrantType,
+      setTransferRegistrantType,
+    ] = useState<'myself' | 'client'>(
+      'myself'
+    );
+
+    const [
+      transferOwner,
+      setTransferOwner,
+    ] = useState<RegistrantDetails>({
+      full_name:
+        currentUser?.name || '',
+      org_name:
+        currentUser?.organisation || '',
+      physical_address: '',
+      postal_address: '',
+      city: '',
+      country: 'Zimbabwe',
+      phone:
+        currentUser?.phone || '',
+      email:
+        currentUser?.email || '',
+      org_description: '',
+      proposed_usage: '',
+    });
+
+    const [
+      transferNameservers,
+      setTransferNameservers,
+    ] = useState<string[]>(() => {
+      const initial = [
+        ...(settings.default_nameservers || []),
+      ];
+
+      while (initial.length < 4) {
+        initial.push('');
+      }
+
+      return initial.slice(0, 4);
+    });
+
+    const [
+      transferNoticeDomain,
+      setTransferNoticeDomain,
+    ] = useState('');
+
+    const updateTransferOwner = (
+      field: keyof RegistrantDetails,
+      value: string
+    ) => {
+      setTransferOwner(
+        (current) => ({
+          ...current,
+          [field]:
+            value,
+        })
+      );
+    };
+
+    const validateTransferOwner =
+      () => {
+        const fields: Array<{
+          value:
+            string | undefined;
+          message:
+            string;
+        }> = [
+          {
+            value:
+              transferOwner.full_name,
+            message:
+              'Full applicant name is required.',
+          },
+          {
+            value:
+              transferOwner.org_name,
+            message:
+              'Organisation name is required. Use "Individual" for a personal domain.',
+          },
+          {
+            value:
+              transferOwner.physical_address,
+            message:
+              'A complete physical address is required.',
+          },
+          {
+            value:
+              transferOwner.postal_address,
+            message:
+              'Postal address is required.',
+          },
+          {
+            value:
+              transferOwner.city,
+            message:
+              'Town or city is required.',
+          },
+          {
+            value:
+              transferOwner.country,
+            message:
+              'Country is required.',
+          },
+          {
+            value:
+              transferOwner.phone,
+            message:
+              'Phone number is required.',
+          },
+          {
+            value:
+              transferOwner.email,
+            message:
+              'Email address is required.',
+          },
+          {
+            value:
+              transferOwner.org_description,
+            message:
+              'Organisation or activity description is required.',
+          },
+          {
+            value:
+              transferOwner.proposed_usage,
+            message:
+              'Proposed domain use is required.',
+          },
+        ];
+
+        for (
+          const field of fields
+        ) {
+          if (
+            !field.value?.trim()
+          ) {
+            return field.message;
+          }
+        }
+
+        if (
+          !transferOwner.email
+            ?.includes('@')
+        ) {
+          return 'Enter a valid owner email address.';
+        }
+
+        if (
+          transferOwner.physical_address
+            ?.trim().length < 8
+        ) {
+          return 'Enter the complete physical address, including street/stand/house information where applicable.';
+        }
+
+        const activeNameservers =
+          transferNameservers
+            .map(
+              (item) =>
+                item
+                  .trim()
+                  .toLowerCase()
+            )
+            .filter(Boolean);
+
+        const nsValidation =
+          nameserverService
+            .validateNameservers(
+              activeNameservers
+            );
+
+        if (
+          !nsValidation.valid
+        ) {
+          return (
+            nsValidation.error ||
+            'Check the nameservers.'
+          );
+        }
+
+        return null;
+      };
+
+    const saveZispaTransferDetails =
+      async (
+        domainId: string
+      ) => {
+        const authUser =
+          getAuth().currentUser;
+
+        if (!authUser) {
+          throw new Error(
+            'Authentication required.'
+          );
+        }
+
+        const token =
+          await authUser
+            .getIdToken();
+
+        const activeNameservers =
+          transferNameservers
+            .map(
+              (item) =>
+                item
+                  .trim()
+                  .toLowerCase()
+            )
+            .filter(Boolean);
+
+        const response =
+          await fetch(
+            `${API_BASE_URL}/api/transfers/domain-details`,
+            {
+              method:
+                'POST',
+              headers: {
+                'Content-Type':
+                  'application/json',
+                Authorization:
+                  `Bearer ${token}`,
+              },
+              body:
+                JSON.stringify({
+                  domainId,
+                  registrantType:
+                    transferRegistrantType,
+                  ownerDetails:
+                    transferOwner,
+                  nameservers:
+                    activeNameservers,
+                }),
+            }
+          );
+
+        const body =
+          await response
+            .json()
+            .catch(
+              () => ({})
+            );
+
+        if (
+          !response.ok ||
+          body?.success === false
+        ) {
+          throw new Error(
+            body?.message ||
+            'Unable to save the transfer owner details.'
+          );
+        }
+
+        return body;
+      };
+
     const transferIsZispa =
       useMemo(
         () => {
@@ -294,6 +549,36 @@ export const DashboardDomains: React.FC =
         transferDomain.trim()
       ) &&
       !transferIsZispa;
+
+    useEffect(() => {
+      const cleaned =
+        domainService.cleanDomain(
+          transferDomain
+        );
+
+      if (
+        !transferIsZispa ||
+        !cleaned ||
+        transferNoticeDomain ===
+          cleaned
+      ) {
+        return;
+      }
+
+      setTransferNoticeDomain(
+        cleaned
+      );
+
+      window.alert(
+        'Important ZISPA requirement\n\n' +
+        'For this transfer, Runtime needs the complete and correct details of the current domain owner. ' +
+        'Use the real owner information and a full physical address. Incomplete or incorrect details can cause the transfer to be rejected.'
+      );
+    }, [
+      transferDomain,
+      transferIsZispa,
+      transferNoticeDomain,
+    ]);
 
     /*
      * A transfer can be started from the public Runtime domain search.
@@ -1053,6 +1338,19 @@ export const DashboardDomains: React.FC =
           return;
         }
 
+        if (transferIsZispa) {
+          const ownerError =
+            validateTransferOwner();
+
+          if (ownerError) {
+            showNotification(
+              ownerError,
+              'error'
+            );
+            return;
+          }
+        }
+
         if (transferSubmitting) {
           return;
         }
@@ -1069,6 +1367,14 @@ export const DashboardDomains: React.FC =
                 ? transferAuthCode.trim()
                 : ''
             );
+
+          if (
+            transferIsZispa
+          ) {
+            await saveZispaTransferDetails(
+              result.domain.id
+            );
+          }
 
           /*
            * DashboardBilling already watches this key and opens
@@ -1430,6 +1736,230 @@ export const DashboardDomains: React.FC =
                     setTransferAuthCode
                   }
                 />
+              )}
+
+              {transferIsZispa && (
+                <div className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
+                  <div>
+                    <p className="text-xs font-bold text-amber-950">
+                      Current domain owner details
+                    </p>
+                    <p className="mt-1 text-[11px] leading-5 text-amber-800">
+                      ZISPA requires the complete and correct details of the current owner. If this domain belongs to your client, enter the client&apos;s information. A full physical address is required.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setTransferRegistrantType(
+                          'myself'
+                        )
+                      }
+                      className={`rounded-xl border p-3 text-left text-xs font-semibold ${
+                        transferRegistrantType ===
+                        'myself'
+                          ? 'border-[#3120ff] bg-white text-[#3120ff]'
+                          : 'border-zinc-200 bg-white text-zinc-700'
+                      }`}
+                    >
+                      Current owner is me
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setTransferRegistrantType(
+                          'client'
+                        )
+                      }
+                      className={`rounded-xl border p-3 text-left text-xs font-semibold ${
+                        transferRegistrantType ===
+                        'client'
+                          ? 'border-[#3120ff] bg-white text-[#3120ff]'
+                          : 'border-zinc-200 bg-white text-zinc-700'
+                      }`}
+                    >
+                      Current owner is a client
+                    </button>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field
+                      label="Full applicant name"
+                      value={
+                        transferOwner.full_name || ''
+                      }
+                      onChange={(value) =>
+                        updateTransferOwner(
+                          'full_name',
+                          value
+                        )
+                      }
+                    />
+
+                    <Field
+                      label="Organisation name"
+                      value={
+                        transferOwner.org_name || ''
+                      }
+                      placeholder="Use Individual if personal"
+                      onChange={(value) =>
+                        updateTransferOwner(
+                          'org_name',
+                          value
+                        )
+                      }
+                    />
+
+                    <Field
+                      label="Full physical address"
+                      value={
+                        transferOwner.physical_address || ''
+                      }
+                      placeholder="House/stand, street, suburb/area"
+                      onChange={(value) =>
+                        updateTransferOwner(
+                          'physical_address',
+                          value
+                        )
+                      }
+                    />
+
+                    <Field
+                      label="Postal address"
+                      value={
+                        transferOwner.postal_address || ''
+                      }
+                      onChange={(value) =>
+                        updateTransferOwner(
+                          'postal_address',
+                          value
+                        )
+                      }
+                    />
+
+                    <Field
+                      label="Town / City"
+                      value={
+                        transferOwner.city || ''
+                      }
+                      onChange={(value) =>
+                        updateTransferOwner(
+                          'city',
+                          value
+                        )
+                      }
+                    />
+
+                    <Field
+                      label="Country"
+                      value={
+                        transferOwner.country || ''
+                      }
+                      onChange={(value) =>
+                        updateTransferOwner(
+                          'country',
+                          value
+                        )
+                      }
+                    />
+
+                    <Field
+                      label="Phone"
+                      value={
+                        transferOwner.phone || ''
+                      }
+                      onChange={(value) =>
+                        updateTransferOwner(
+                          'phone',
+                          value
+                        )
+                      }
+                    />
+
+                    <Field
+                      label="Email"
+                      value={
+                        transferOwner.email || ''
+                      }
+                      onChange={(value) =>
+                        updateTransferOwner(
+                          'email',
+                          value
+                        )
+                      }
+                    />
+
+                    <Field
+                      label="Organisation / activity"
+                      value={
+                        transferOwner.org_description || ''
+                      }
+                      onChange={(value) =>
+                        updateTransferOwner(
+                          'org_description',
+                          value
+                        )
+                      }
+                    />
+
+                    <Field
+                      label="Proposed domain use"
+                      value={
+                        transferOwner.proposed_usage || ''
+                      }
+                      placeholder="Website, email, online store..."
+                      onChange={(value) =>
+                        updateTransferOwner(
+                          'proposed_usage',
+                          value
+                        )
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <p className="mb-2 text-xs font-bold text-zinc-950">
+                      Nameservers
+                    </p>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {transferNameservers.map(
+                        (
+                          value,
+                          index
+                        ) => (
+                          <Field
+                            key={
+                              index
+                            }
+                            label={`Nameserver ${index + 1}${index < 2 ? ' *' : ''}`}
+                            value={
+                              value
+                            }
+                            placeholder={`ns${index + 1}.example.com`}
+                            onChange={(next) => {
+                              const copy = [
+                                ...transferNameservers,
+                              ];
+
+                              copy[
+                                index
+                              ] =
+                                next;
+
+                              setTransferNameservers(
+                                copy
+                              );
+                            }}
+                          />
+                        )
+                      )}
+                    </div>
+                  </div>
+                </div>
               )}
 
               <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">

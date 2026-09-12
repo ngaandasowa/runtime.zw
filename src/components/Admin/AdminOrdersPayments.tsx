@@ -28,7 +28,6 @@ export const AdminOrdersPayments:
       replacePaidDomain,
       replacePaidDomainWithExisting,
       cancelOrder,
-      deleteOrder,
       showNotification,
     } = useStore();
 
@@ -62,6 +61,76 @@ export const AdminOrdersPayments:
     ] = useState<
       string | null
     >(null);
+
+    const API_BASE_URL =
+      import.meta.env
+        .VITE_API_BASE_URL ||
+      (import.meta.env.DEV
+        ? 'http://localhost:4000'
+        : 'https://api.runtime.co.zw');
+
+    const adminApiRequest =
+      async (
+        path: string,
+        options:
+          RequestInit = {}
+      ) => {
+        const { getAuth } =
+          await import(
+            'firebase/auth'
+          );
+
+        const user =
+          getAuth()
+            .currentUser;
+
+        if (!user) {
+          throw new Error(
+            'Authentication required.'
+          );
+        }
+
+        const token =
+          await user
+            .getIdToken();
+
+        const response =
+          await fetch(
+            `${API_BASE_URL}${path}`,
+            {
+              ...options,
+              headers: {
+                'Content-Type':
+                  'application/json',
+                Authorization:
+                  `Bearer ${token}`,
+                ...(options
+                  .headers ||
+                  {}),
+              },
+            }
+          );
+
+        const body =
+          await response
+            .json()
+            .catch(
+              () => ({})
+            );
+
+        if (
+          !response.ok ||
+          body?.success ===
+            false
+        ) {
+          throw new Error(
+            body?.message ||
+            `Request failed (${response.status}).`
+          );
+        }
+
+        return body;
+      };
 
     const customerForPayment = (
       userId: string
@@ -614,8 +683,26 @@ export const AdminOrdersPayments:
         );
 
         try {
-          await deleteOrder(
-            orderId
+          await adminApiRequest(
+            `/api/cleanup/orders/${encodeURIComponent(
+              orderId
+            )}`,
+            {
+              method:
+                'DELETE',
+            }
+          );
+
+          showNotification(
+            `Order ${reference} and its abandoned payment records were deleted safely.`,
+            'success'
+          );
+
+          window.setTimeout(
+            () =>
+              window.location
+                .reload(),
+            250
           );
         } catch (error) {
           showNotification(
@@ -626,6 +713,73 @@ export const AdminOrdersPayments:
           );
         } finally {
           setBusyOrderId(
+            null
+          );
+        }
+      };
+
+
+    const deleteWalletTopup =
+      async (
+        paymentId: string,
+        reference: string,
+        status: string
+      ) => {
+        if (
+          status ===
+          'verified'
+        ) {
+          showNotification(
+            'Verified Runtime Credit top-ups cannot be deleted because the credit has already been added.',
+            'error'
+          );
+          return;
+        }
+
+        const confirmed =
+          window.confirm(
+            `Delete Runtime Credit top-up ${reference}? Only non-verified top-ups can be removed.`
+          );
+
+        if (!confirmed) {
+          return;
+        }
+
+        setBusyPaymentId(
+          paymentId
+        );
+
+        try {
+          await adminApiRequest(
+            `/api/cleanup/wallet-topups/${encodeURIComponent(
+              paymentId
+            )}`,
+            {
+              method:
+                'DELETE',
+            }
+          );
+
+          showNotification(
+            `Runtime Credit top-up ${reference} deleted.`,
+            'success'
+          );
+
+          window.setTimeout(
+            () =>
+              window.location
+                .reload(),
+            250
+          );
+        } catch (error) {
+          showNotification(
+            error instanceof Error
+              ? error.message
+              : 'Unable to delete the top-up.',
+            'error'
+          );
+        } finally {
+          setBusyPaymentId(
             null
           );
         }
@@ -893,6 +1047,33 @@ export const AdminOrdersPayments:
                                 Reject
                               </button>
                             </>
+                          )}
+
+                          {payment.status !==
+                            'verified' && (
+                            <button
+                              type="button"
+                              disabled={
+                                busyPaymentId ===
+                                payment.id
+                              }
+                              onClick={() =>
+                                deleteWalletTopup(
+                                  payment.id,
+                                  payment.reference,
+                                  String(
+                                    payment.status
+                                  )
+                                )
+                              }
+                              className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-xs font-bold text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              {busyPaymentId ===
+                              payment.id
+                                ? 'Deleting...'
+                                : 'Delete Top-up'}
+                            </button>
                           )}
 
                           {payment.status ===

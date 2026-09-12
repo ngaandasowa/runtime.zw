@@ -21,6 +21,7 @@ export type AdminAuditAction =
   | 'CUSTOMER_PROFILE_CHANGED'
   | 'PAYMENT_APPROVED'
   | 'PAYMENT_REJECTED'
+  | 'PAYMENT_DELETED'
   | 'ORDER_CANCELLED'
   | 'ORDER_DELETED';
 
@@ -59,17 +60,76 @@ export interface AdminAuditLog {
   created_at?: unknown;
 }
 
+/*
+ * Firestore rejects undefined anywhere inside a document,
+ * including nested before/after audit objects.
+ *
+ * Keep null values, remove undefined recursively.
+ */
+const stripUndefined =
+  (value: unknown): unknown => {
+    if (
+      Array.isArray(value)
+    ) {
+      return value
+        .filter(
+          (item) =>
+            item !==
+            undefined
+        )
+        .map(
+          stripUndefined
+        );
+    }
+
+    if (
+      value &&
+      typeof value ===
+        'object' &&
+      !(value instanceof Date)
+    ) {
+      return Object.fromEntries(
+        Object.entries(
+          value as Record<
+            string,
+            unknown
+          >
+        )
+          .filter(
+            ([, item]) =>
+              item !==
+              undefined
+          )
+          .map(
+            ([key, item]) => [
+              key,
+              stripUndefined(
+                item
+              ),
+            ]
+          )
+      );
+    }
+
+    return value;
+  };
+
 class AdminAuditService {
   async log(
     entry: AdminAuditLog
   ) {
+    const safeEntry =
+      stripUndefined(
+        entry
+      ) as AdminAuditLog;
+
     await addDoc(
       collection(
         db,
         'admin_audit_logs'
       ),
       {
-        ...entry,
+        ...safeEntry,
 
         created_at:
           serverTimestamp(),
@@ -94,7 +154,8 @@ class AdminAuditService {
 
     return snapshot.docs.map(
       (document) => ({
-        id: document.id,
+        id:
+          document.id,
         ...document.data(),
       })
     );

@@ -621,6 +621,13 @@ const [placedOrder, setPlacedOrder] =
     );
 
     if (requiresZispaDetails(result.domain)) {
+      window.alert(
+        'Important ZISPA requirement\n\n' +
+        'ZISPA requires complete and correct registrant information for .co.zw, .org.zw and .ac.zw domains. ' +
+        'Enter the real current owner details, including the full physical and postal address, town/city, country, phone and email. ' +
+        'Incomplete or incorrect information can cause the domain application to be rejected.'
+      );
+
       fillFromAccount();
       setStep('owner');
     } else {
@@ -1820,6 +1827,15 @@ const [placedOrder, setPlacedOrder] =
                     </h3>
                     <p className="mt-1 text-xs leading-5 text-zinc-500">
                       These details are required for .co.zw, .org.zw and .ac.zw registrations.
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                    <p className="text-xs font-bold text-amber-950">
+                      ZISPA requires complete and correct owner information
+                    </p>
+                    <p className="mt-1 text-[11px] leading-5 text-amber-800">
+                      Enter the real registrant details. Use a complete physical address, not a short area name only. If you are registering for a client, enter the client&apos;s details as the domain owner. Incomplete or incorrect information can cause the application to be rejected.
                     </p>
                   </div>
 

@@ -556,4 +556,702 @@ router.get(
   }
 );
 
+
+const cleanRegistrantDetails = (
+  value: any
+) => ({
+  full_name:
+    String(
+      value?.full_name || ''
+    ).trim(),
+
+  org_name:
+    String(
+      value?.org_name || ''
+    ).trim(),
+
+  physical_address:
+    String(
+      value?.physical_address || ''
+    ).trim(),
+
+  postal_address:
+    String(
+      value?.postal_address || ''
+    ).trim(),
+
+  city:
+    String(
+      value?.city || ''
+    ).trim(),
+
+  country:
+    String(
+      value?.country || ''
+    ).trim(),
+
+  phone:
+    String(
+      value?.phone || ''
+    ).trim(),
+
+  email:
+    String(
+      value?.email || ''
+    ).trim(),
+
+  org_description:
+    String(
+      value?.org_description || ''
+    ).trim(),
+
+  proposed_usage:
+    String(
+      value?.proposed_usage || ''
+    ).trim(),
+});
+
+const validateRegistrantDetails = (
+  owner: ReturnType<
+    typeof cleanRegistrantDetails
+  >
+) => {
+  const required = [
+    ['full applicant name', owner.full_name],
+    ['organisation name', owner.org_name],
+    ['physical address', owner.physical_address],
+    ['postal address', owner.postal_address],
+    ['town or city', owner.city],
+    ['country', owner.country],
+    ['phone number', owner.phone],
+    ['email address', owner.email],
+    ['organisation/activity description', owner.org_description],
+    ['proposed domain use', owner.proposed_usage],
+  ] as const;
+
+  for (
+    const [
+      label,
+      value,
+    ] of required
+  ) {
+    if (!value) {
+      return `${label} is required.`;
+    }
+  }
+
+  if (
+    !owner.email.includes('@')
+  ) {
+    return 'A valid owner email address is required.';
+  }
+
+  if (
+    owner.physical_address.length <
+    8
+  ) {
+    return 'A complete physical address is required.';
+  }
+
+  return null;
+};
+
+const cleanNameservers = (
+  value: unknown
+) =>
+  Array.isArray(value)
+    ? value
+        .map(
+          (item) =>
+            String(
+              item || ''
+            )
+              .trim()
+              .replace(
+                /\.$/,
+                ''
+              )
+              .toLowerCase()
+        )
+        .filter(Boolean)
+    : [];
+
+const validateNameservers = (
+  nameservers: string[]
+) => {
+  if (
+    nameservers.length < 2 ||
+    nameservers.length > 4
+  ) {
+    return 'Enter between two and four nameservers.';
+  }
+
+  if (
+    new Set(
+      nameservers
+    ).size !==
+    nameservers.length
+  ) {
+    return 'Nameservers must be unique.';
+  }
+
+  return null;
+};
+
+/*
+ * ----------------------------------------------------------
+ * ZISPA TRANSFER DOMAIN DETAILS
+ * ----------------------------------------------------------
+ *
+ * The transfer order is created by Runtime's existing order
+ * system first. Before Billing opens, the customer saves the
+ * complete current-owner details required for the ZISPA
+ * transfer template.
+ */
+router.post(
+  '/domain-details',
+  authenticate,
+  async (
+    req:
+      AuthenticatedRequest,
+    res:
+      Response
+  ) => {
+    try {
+      const runtimeUser =
+        req.runtimeUser!;
+
+      const domainId =
+        String(
+          req.body?.domainId ||
+          ''
+        ).trim();
+
+      if (!domainId) {
+        return res
+          .status(400)
+          .json({
+            success:
+              false,
+            message:
+              'Domain ID is required.',
+          });
+      }
+
+      const domainRef =
+        adminDb
+          .collection(
+            'domains'
+          )
+          .doc(domainId);
+
+      const snapshot =
+        await domainRef
+          .get();
+
+      if (
+        !snapshot.exists
+      ) {
+        return res
+          .status(404)
+          .json({
+            success:
+              false,
+            message:
+              'Transfer domain not found.',
+          });
+      }
+
+      const domain =
+        snapshot.data()!;
+
+      if (
+        String(
+          domain.user_id ||
+          ''
+        ) !==
+        runtimeUser.uid
+      ) {
+        return res
+          .status(403)
+          .json({
+            success:
+              false,
+            message:
+              'You cannot update this transfer.',
+          });
+      }
+
+      const domainName =
+        String(
+          domain.domain_name ||
+          ''
+        )
+          .trim()
+          .toLowerCase();
+
+      const zispaDomain =
+        domainName.endsWith(
+          '.co.zw'
+        ) ||
+        domainName.endsWith(
+          '.org.zw'
+        ) ||
+        domainName.endsWith(
+          '.ac.zw'
+        );
+
+      if (!zispaDomain) {
+        return res
+          .status(400)
+          .json({
+            success:
+              false,
+            message:
+              'Detailed ZISPA owner information is only required for ZISPA-managed domains.',
+          });
+      }
+
+      if (
+        !domain.transfer_order
+      ) {
+        return res
+          .status(400)
+          .json({
+            success:
+              false,
+            message:
+              'This domain is not a transfer order.',
+          });
+      }
+
+      const owner =
+        cleanRegistrantDetails(
+          req.body
+            ?.ownerDetails
+        );
+
+      const ownerError =
+        validateRegistrantDetails(
+          owner
+        );
+
+      if (ownerError) {
+        return res
+          .status(400)
+          .json({
+            success:
+              false,
+            message:
+              ownerError,
+          });
+      }
+
+      const nameservers =
+        cleanNameservers(
+          req.body
+            ?.nameservers
+        );
+
+      const nsError =
+        validateNameservers(
+          nameservers
+        );
+
+      if (nsError) {
+        return res
+          .status(400)
+          .json({
+            success:
+              false,
+            message:
+              nsError,
+          });
+      }
+
+      const registrantType =
+        req.body
+          ?.registrantType ===
+        'client'
+          ? 'client'
+          : 'myself';
+
+      const now =
+        new Date()
+          .toISOString();
+
+      await domainRef.set(
+        {
+          registrant_type:
+            registrantType,
+
+          owner_details:
+            owner,
+
+          nameservers,
+
+          updated_at:
+            now,
+        },
+        {
+          merge:
+            true,
+        }
+      );
+
+      const updated =
+        await domainRef
+          .get();
+
+      return res.json({
+        success:
+          true,
+        domain: {
+          id:
+            updated.id,
+          ...updated.data(),
+        },
+      });
+    } catch (error) {
+      console.error(
+        'Unable to save ZISPA transfer details:',
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success:
+            false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Unable to save the transfer details.',
+        });
+    }
+  }
+);
+
+/*
+ * ----------------------------------------------------------
+ * SUPER ADMIN DOMAIN DETAILS
+ * ----------------------------------------------------------
+ *
+ * Admin can correct registrant data and nameservers regardless
+ * of the customer's current domain-processing status. This is
+ * intentionally backend-owned so customer Firestore rules do
+ * not block registrar corrections.
+ */
+router.post(
+  '/admin/domain-details',
+  authenticate,
+  async (
+    req:
+      AuthenticatedRequest,
+    res:
+      Response
+  ) => {
+    try {
+      if (
+        req.runtimeUser
+          ?.role !==
+        'super_admin'
+      ) {
+        return res
+          .status(403)
+          .json({
+            success:
+              false,
+            message:
+              'Super admin permission required.',
+          });
+      }
+
+      const domainId =
+        String(
+          req.body?.domainId ||
+          ''
+        ).trim();
+
+      if (!domainId) {
+        return res
+          .status(400)
+          .json({
+            success:
+              false,
+            message:
+              'Domain ID is required.',
+          });
+      }
+
+      const domainRef =
+        adminDb
+          .collection(
+            'domains'
+          )
+          .doc(domainId);
+
+      const snapshot =
+        await domainRef
+          .get();
+
+      if (
+        !snapshot.exists
+      ) {
+        return res
+          .status(404)
+          .json({
+            success:
+              false,
+            message:
+              'Domain not found.',
+          });
+      }
+
+      const current =
+        snapshot.data()!;
+
+      const changes:
+        Record<
+          string,
+          unknown
+        > = {
+          updated_at:
+            new Date()
+              .toISOString(),
+        };
+
+      if (
+        req.body
+          ?.ownerDetails
+      ) {
+        const owner =
+          cleanRegistrantDetails(
+            req.body
+              .ownerDetails
+          );
+
+        const ownerError =
+          validateRegistrantDetails(
+            owner
+          );
+
+        if (ownerError) {
+          return res
+            .status(400)
+            .json({
+              success:
+                false,
+              message:
+                ownerError,
+            });
+        }
+
+        changes.owner_details =
+          owner;
+      }
+
+      if (
+        req.body
+          ?.nameservers
+      ) {
+        const nameservers =
+          cleanNameservers(
+            req.body
+              .nameservers
+          );
+
+        const nsError =
+          validateNameservers(
+            nameservers
+          );
+
+        if (nsError) {
+          return res
+            .status(400)
+            .json({
+              success:
+                false,
+              message:
+                nsError,
+            });
+        }
+
+        changes.nameservers =
+          nameservers;
+
+        if (
+          Array.isArray(
+            req.body
+              ?.nameserverIps
+          )
+        ) {
+          changes.nameserver_ips =
+            req.body
+              .nameserverIps
+              .slice(
+                0,
+                nameservers.length
+              )
+              .map(
+                (
+                  item:
+                    unknown
+                ) =>
+                  String(
+                    item || ''
+                  ).trim()
+              );
+        }
+      }
+
+      if (
+        req.body
+          ?.registrantType
+      ) {
+        changes.registrant_type =
+          req.body
+            .registrantType ===
+          'client'
+            ? 'client'
+            : 'myself';
+      }
+
+      if (
+        req.body
+          ?.renewalPrice !==
+        undefined
+      ) {
+        const renewalPrice =
+          Number(
+            req.body
+              .renewalPrice
+          );
+
+        if (
+          !Number.isFinite(
+            renewalPrice
+          ) ||
+          renewalPrice < 0
+        ) {
+          return res
+            .status(400)
+            .json({
+              success:
+                false,
+              message:
+                'Renewal price is invalid.',
+            });
+        }
+
+        changes.renewal_price =
+          renewalPrice;
+      }
+
+      if (
+        req.body
+          ?.registeredAt !==
+        undefined
+      ) {
+        changes.registered_at =
+          req.body
+            .registeredAt ||
+          null;
+      }
+
+      if (
+        req.body
+          ?.expiresAt !==
+        undefined
+      ) {
+        changes.expires_at =
+          req.body
+            .expiresAt ||
+          null;
+      }
+
+      if (
+        typeof req.body
+          ?.autoRenew ===
+        'boolean'
+      ) {
+        changes.auto_renew =
+          req.body
+            .autoRenew;
+      }
+
+      const history =
+        Array.isArray(
+          current.history
+        )
+          ? current.history
+          : [];
+
+      changes.history = [
+        ...history,
+        {
+          id:
+            `hist-admin-${crypto.randomUUID()}`,
+          domain_id:
+            domainId,
+          action:
+            'MODIFY',
+          description:
+            'Domain details corrected by Runtime administrator.',
+          status:
+            String(
+              current.status ||
+              'updated'
+            ),
+          actor:
+            req.runtimeUser
+              ?.email ||
+            'Runtime administrator',
+          created_at:
+            new Date()
+              .toISOString(),
+        },
+      ];
+
+      await domainRef.set(
+        changes,
+        {
+          merge:
+            true,
+        }
+      );
+
+      const updated =
+        await domainRef
+          .get();
+
+      return res.json({
+        success:
+          true,
+        domain: {
+          id:
+            updated.id,
+          ...updated.data(),
+        },
+      });
+    } catch (error) {
+      console.error(
+        'Admin domain details update failed:',
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success:
+            false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Unable to update domain details.',
+        });
+    }
+  }
+);
+
 export default router;
