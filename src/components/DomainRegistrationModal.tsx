@@ -424,6 +424,10 @@ const [placedOrder, setPlacedOrder] =
               customNameserverIps?: string[];
               postalSameAsPhysical?: boolean;
               gateway: Gateway;
+              pesepayMethodCode?: string;
+              pesepayPhone?: string;
+              acceptedCoZwTerms?: boolean;
+              resumeStep?: Step;
             }
           : null;
 
@@ -444,6 +448,17 @@ const [placedOrder, setPlacedOrder] =
             )
           );
           setGateway(draft.gateway);
+          setPesepayMethodCode(
+            draft.pesepayMethodCode || ''
+          );
+          setPesepayPhone(
+            draft.pesepayPhone || ''
+          );
+          setAcceptedCoZwTerms(
+            Boolean(
+              draft.acceptedCoZwTerms
+            )
+          );
         }
 
         await loadRenewPrice(
@@ -494,7 +509,10 @@ const [placedOrder, setPlacedOrder] =
         }
 
         if (draft?.domain === result.domain) {
-          setStep('payment');
+          setStep(
+            draft.resumeStep ||
+              'payment'
+          );
         }
       } catch (error) {
         console.error(
@@ -1226,7 +1244,16 @@ const [placedOrder, setPlacedOrder] =
           customNameserverIps,
           postalSameAsPhysical,
           gateway,
+          pesepayMethodCode,
+          pesepayPhone,
+          acceptedCoZwTerms,
+          resumeStep: 'payment',
         })
+      );
+
+      sessionStorage.setItem(
+        'runtime_auth_resume',
+        'registration'
       );
 
       setRegistrationModalOpen(

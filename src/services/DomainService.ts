@@ -1951,6 +1951,11 @@ class DomainService {
       cleaned
     );
 
+    sessionStorage.setItem(
+      'runtime_auth_resume',
+      'transfer'
+    );
+
     window.location.assign(
       this.getTransferUrl(
         cleaned

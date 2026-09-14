@@ -27,7 +27,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({ mode }) => {
     loginWithGoogle,
     resetPassword,
     pendingRegisterDomain,
+    setPendingRegisterDomain,
     setRegistrationModalOpen,
+    setDashboardSubView,
   } = useStore();
 
   const navigate = useNavigate();
@@ -43,6 +45,110 @@ export const AuthPage: React.FC<AuthPageProps> = ({ mode }) => {
 
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [resetEmailAddress, setResetEmailAddress] = useState('');
+
+
+  const resumeCheckoutAfterAuth = () => {
+    const resumeIntent =
+      sessionStorage.getItem(
+        'runtime_auth_resume'
+      );
+
+    const registrationDraftRaw =
+      sessionStorage.getItem(
+        'runtime_registration_draft'
+      );
+
+    if (
+      resumeIntent === 'registration' ||
+      registrationDraftRaw
+    ) {
+      let draftDomain =
+        pendingRegisterDomain?.trim() || '';
+
+      if (registrationDraftRaw) {
+        try {
+          const draft = JSON.parse(
+            registrationDraftRaw
+          ) as {
+            domain?: string;
+          };
+
+          draftDomain =
+            String(
+              draft?.domain ||
+              draftDomain
+            ).trim();
+        } catch {
+          // Keep the in-memory domain when an old draft is malformed.
+        }
+      }
+
+      if (draftDomain) {
+        setPendingRegisterDomain(
+          draftDomain
+        );
+
+        sessionStorage.removeItem(
+          'runtime_auth_resume'
+        );
+
+        navigate(
+          '/dashboard?resume=registration',
+          { replace: true }
+        );
+
+        /*
+         * The registration modal already restores the saved draft and
+         * jumps directly to the payment step. Open it only after the
+         * authenticated route has been selected.
+         */
+        window.setTimeout(() => {
+          setRegistrationModalOpen(
+            true
+          );
+        }, 0);
+
+        return;
+      }
+    }
+
+    const pendingTransferDomain =
+      sessionStorage.getItem(
+        'runtime_pending_transfer_domain'
+      )?.trim() || '';
+
+    if (
+      resumeIntent === 'transfer' ||
+      pendingTransferDomain
+    ) {
+      sessionStorage.removeItem(
+        'runtime_auth_resume'
+      );
+
+      setDashboardSubView(
+        'domains'
+      );
+
+      navigate(
+        pendingTransferDomain
+          ? `/dashboard?transfer=${encodeURIComponent(
+              pendingTransferDomain
+            )}`
+          : '/dashboard',
+        { replace: true }
+      );
+
+      return;
+    }
+
+    sessionStorage.removeItem(
+      'runtime_auth_resume'
+    );
+
+    navigate('/dashboard', {
+      replace: true,
+    });
+  };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -90,13 +196,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ mode }) => {
         );
       }
 
-      if (pendingRegisterDomain) {
-        setRegistrationModalOpen(true);
-      }
-
-      navigate('/dashboard', {
-        replace: true,
-      });
+      resumeCheckoutAfterAuth();
     } catch (authError) {
       setError(
         authError instanceof Error
@@ -115,13 +215,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ mode }) => {
     try {
       await loginWithGoogle();
 
-      if (pendingRegisterDomain) {
-        setRegistrationModalOpen(true);
-      }
-
-      navigate('/dashboard', {
-        replace: true,
-      });
+      resumeCheckoutAfterAuth();
     } catch (authError) {
       setError(
         authError instanceof Error
