@@ -1,6 +1,7 @@
 import { adminDb, } from '../firebaseAdmin.js';
 import { fulfillPaidOrder, } from './OrderFulfillmentService.js';
 import { emailService, } from '../email/emailService.js';
+import { runtimeDnsProvisioningService, } from './RuntimeDnsProvisioningService.js';
 const money = (value) => Math.round((Number(value) + Number.EPSILON) *
     100) / 100;
 const paymentMethodLabel = (gateway) => {
@@ -219,6 +220,28 @@ export const settleOrderPayment = async ({ paymentId, actor, providerStatus, pro
             fulfillment,
         };
     });
+    /*
+     * DNS provisioning is deliberately outside the Firestore payment
+     * transaction. Cloudflare is an external API and must never run
+     * inside a Firestore transaction that can be retried.
+     *
+     * Payment remains authoritative: if Cloudflare is temporarily
+     * unavailable, the paid order stays paid and the domain records
+     * dns_status=provisioning_failed for a safe retry.
+     */
+    if (result.fullyPaid &&
+        result.fulfillment.handled &&
+        result.fulfillment.itemType === 'domain_registration' &&
+        result.fulfillment.resourceType === 'domain' &&
+        result.fulfillment.resourceId) {
+        try {
+            await runtimeDnsProvisioningService
+                .provisionPaidRegistration(result.fulfillment.resourceId);
+        }
+        catch (error) {
+            console.error('Runtime DNS provisioning failed after payment settlement:', error);
+        }
+    }
     if (!result.alreadySettled) {
         try {
             const [settledPaymentDoc, settledOrderDoc, allPaymentDocs] = await Promise.all([

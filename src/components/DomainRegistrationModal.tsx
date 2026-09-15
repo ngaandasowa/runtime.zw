@@ -2137,21 +2137,21 @@ const [placedOrder, setPlacedOrder] =
                     </h3>
 
                     <p className="mt-1 text-xs leading-5 text-zinc-500">
-                      Every domain needs at least two active nameservers. Use the nameservers from your hosting or DNS provider, or keep the Runtime defaults for now.
+                      Choose Runtime DNS for free DNS management, or use nameservers supplied by your hosting or DNS provider.
                     </p>
                   </div>
 
                   <div className="rounded-xl border border-[#3120ff]/15 bg-[#3120ff]/5 p-4">
                     <p className="text-xs font-semibold text-zinc-950">
-                      About Runtime nameservers
+                      Runtime DNS — Free
                     </p>
 
                     <p className="mt-1.5 text-xs leading-5 text-zinc-600">
-                      Domain registration does not currently include web hosting or self-service DNS hosting. Runtime&apos;s default nameservers keep your domain properly delegated while you decide where to host it.
+                      Runtime will automatically create a Cloudflare DNS zone after your payment is verified and assign the correct authoritative nameservers to your domain.
                     </p>
 
                     <p className="mt-2 text-xs leading-5 text-zinc-600">
-                      Already have hosting? Choose your provider&apos;s nameservers below. Need DNS only? Contact Runtime for free manual DNS setup. More DNS tools are coming soon.
+                      You do not need a Cloudflare account. DNS is managed through Runtime. If you already use another DNS or hosting provider, choose custom nameservers instead.
                     </p>
                   </div>
 
@@ -2173,25 +2173,13 @@ const [placedOrder, setPlacedOrder] =
 
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-zinc-950">
-                          Use Runtime defaults
+                          Runtime DNS — Free
                         </p>
 
                         <p className="mt-1 text-xs leading-5 text-zinc-500">
-                          Good if you do not have hosting or DNS nameservers yet.
+                          Recommended. Free DNS management included with your active Runtime domain.
                         </p>
 
-                        <div className="mt-2 space-y-1">
-                          {settings.default_nameservers.map(
-                            (ns) => (
-                              <p
-                                key={ns}
-                                className="break-all font-mono text-xs text-zinc-600"
-                              >
-                                {ns}
-                              </p>
-                            )
-                          )}
-                        </div>
                       </div>
                     </div>
                   </button>
@@ -2213,11 +2201,11 @@ const [placedOrder, setPlacedOrder] =
                       <Globe2 className="mt-0.5 h-5 w-5 shrink-0 text-[#3120ff]" />
                       <div>
                         <p className="text-sm font-semibold text-zinc-950">
-                          Use my hosting / DNS nameservers
+                          Use custom nameservers
                         </p>
 
                         <p className="mt-1 text-xs leading-5 text-zinc-500">
-                          Recommended when your hosting or DNS provider has already given you nameservers.
+                          Use nameservers from your hosting provider, another DNS service, or your own Cloudflare account.
                         </p>
                       </div>
                     </div>
@@ -2333,8 +2321,8 @@ const [placedOrder, setPlacedOrder] =
                       label="Nameservers"
                       value={
                         useDefaultNameservers
-                          ? 'Runtime defaults'
-                          : 'Hosting / DNS nameservers'
+                          ? 'Runtime DNS — Free'
+                          : 'Custom nameservers'
                       }
                     />
 
