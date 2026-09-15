@@ -25,6 +25,16 @@ export type CloudflareZone = {
   activated_on?: string | null;
 };
 
+export type CloudflareDnsRecord = {
+  id: string; type: string; name: string; content: string; ttl: number;
+  proxied?: boolean; proxiable?: boolean; priority?: number;
+  created_on?: string; modified_on?: string;
+};
+export type CloudflareDnsRecordInput = {
+  type: 'A' | 'AAAA' | 'CNAME' | 'MX' | 'TXT' | 'CAA';
+  name: string; content: string; ttl?: number; proxied?: boolean; priority?: number;
+};
+
 const normalizeDomain = (
   value: unknown
 ) =>
@@ -239,12 +249,18 @@ export const cloudflareDnsService = {
   async getZone(
     zoneId: string
   ): Promise<CloudflareZone> {
-    return cloudflareRequest<
-      CloudflareZone
-    >(
-      `/zones/${encodeURIComponent(
-        zoneId
-      )}`
-    );
+    return cloudflareRequest<CloudflareZone>(`/zones/${encodeURIComponent(zoneId)}`);
+  },
+  async listDnsRecords(zoneId: string): Promise<CloudflareDnsRecord[]> {
+    return cloudflareRequest<CloudflareDnsRecord[]>(`/zones/${encodeURIComponent(zoneId)}/dns_records?per_page=100&order=type&direction=asc`);
+  },
+  async createDnsRecord(zoneId: string, input: CloudflareDnsRecordInput): Promise<CloudflareDnsRecord> {
+    return cloudflareRequest<CloudflareDnsRecord>(`/zones/${encodeURIComponent(zoneId)}/dns_records`, { method: 'POST', body: input });
+  },
+  async updateDnsRecord(zoneId: string, recordId: string, input: CloudflareDnsRecordInput): Promise<CloudflareDnsRecord> {
+    return cloudflareRequest<CloudflareDnsRecord>(`/zones/${encodeURIComponent(zoneId)}/dns_records/${encodeURIComponent(recordId)}`, { method: 'PUT', body: input });
+  },
+  async deleteDnsRecord(zoneId: string, recordId: string): Promise<{ id: string }> {
+    return cloudflareRequest<{ id: string }>(`/zones/${encodeURIComponent(zoneId)}/dns_records/${encodeURIComponent(recordId)}`, { method: 'DELETE' });
   },
 };

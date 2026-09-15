@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Search,
   Server,
+  Network,
   ShieldAlert,
   Trash2,
   UserRound,
@@ -28,6 +29,7 @@ import {
 import { nameserverService } from '../../services/NameserverService';
 import { domainService } from '../../services/DomainService';
 import { getAuth } from 'firebase/auth';
+import { RuntimeDnsManager } from './RuntimeDnsManager';
 
 import {
   analyticsService,
@@ -47,6 +49,7 @@ type ModalMode =
   | 'cancel'
   | 'activity'
   | 'renew'
+  | 'dns'
   | null;
 
 const formatDate = (
@@ -766,6 +769,10 @@ export const DashboardDomains: React.FC =
 
     const registrationPendingMessage =
       'Available after domain registration.';
+
+    const canManageRuntimeDns = (domain: Domain) => String((domain as any).dns_provider || '').toLowerCase() === 'cloudflare' && Boolean((domain as any).cloudflare?.zone_id);
+
+    const openRuntimeDns = (domain: Domain) => { setSelectedDomain(domain); setModalMode('dns'); };
 
     const openDetails = (
       domain: Domain
@@ -1990,6 +1997,10 @@ export const DashboardDomains: React.FC =
             </form>
           </div>
         )}
+        {modalMode === 'dns' && selectedDomain && (
+          <RuntimeDnsManager domain={selectedDomain as any} onClose={() => setModalMode(null)} />
+        )}
+
         {modalMode ===
           'details' &&
           selectedDomain && (
@@ -2079,6 +2090,10 @@ export const DashboardDomains: React.FC =
                       )
                     }
                   />
+                )}
+
+                {canManageRuntimeDns(selectedDomain) && (
+                  <ActionButton icon={Network} label="Manage DNS" onClick={() => openRuntimeDns(selectedDomain)} />
                 )}
 
                 {canModifyRegisteredDomain(

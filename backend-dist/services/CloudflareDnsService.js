@@ -108,4 +108,16 @@ export const cloudflareDnsService = {
     async getZone(zoneId) {
         return cloudflareRequest(`/zones/${encodeURIComponent(zoneId)}`);
     },
+    async listDnsRecords(zoneId) {
+        return cloudflareRequest(`/zones/${encodeURIComponent(zoneId)}/dns_records?per_page=100&order=type&direction=asc`);
+    },
+    async createDnsRecord(zoneId, input) {
+        return cloudflareRequest(`/zones/${encodeURIComponent(zoneId)}/dns_records`, { method: 'POST', body: input });
+    },
+    async updateDnsRecord(zoneId, recordId, input) {
+        return cloudflareRequest(`/zones/${encodeURIComponent(zoneId)}/dns_records/${encodeURIComponent(recordId)}`, { method: 'PUT', body: input });
+    },
+    async deleteDnsRecord(zoneId, recordId) {
+        return cloudflareRequest(`/zones/${encodeURIComponent(zoneId)}/dns_records/${encodeURIComponent(recordId)}`, { method: 'DELETE' });
+    },
 };
