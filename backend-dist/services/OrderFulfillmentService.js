@@ -151,6 +151,22 @@ const fulfillDomainRenewal = async ({ transaction, order, paymentId, now, actor 
     transaction.set(domainRef, {
         status: 'active',
         expires_at: newExpiry.toISOString(),
+        /*
+         * A successful renewal starts a completely new lifecycle cycle.
+         * Old milestone completion flags must not block next year's
+         * D-60/D-30/D-14/D-7/D0/D+7 processing.
+         */
+        renewal_lifecycle: {
+            state: 'renewed',
+            events: {},
+            renewed_at: now,
+            renewed_payment_id: paymentId,
+            previous_expiry_date: existingExpiry &&
+                !Number.isNaN(existingExpiry.getTime())
+                ? existingExpiry.toISOString()
+                : null,
+            current_expiry_date: newExpiry.toISOString(),
+        },
         updated_at: now,
         history: [
             ...existingHistory,

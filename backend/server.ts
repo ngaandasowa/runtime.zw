@@ -23,6 +23,14 @@ import {
   startAbandonedCleanupScheduler,
 } from './services/AbandonedOrderCleanupService.js';
 
+import {
+  startRuntimeDnsActivationScheduler,
+} from './services/RuntimeDnsActivationService.js';
+
+import {
+  startRenewalLifecycleScheduler,
+} from './services/RenewalLifecycleScheduler.js';
+
 const app = express();
 
 /*
@@ -233,5 +241,7 @@ app.listen(
     );
 
     startAbandonedCleanupScheduler();
+    startRuntimeDnsActivationScheduler();
+    startRenewalLifecycleScheduler();
   }
 );

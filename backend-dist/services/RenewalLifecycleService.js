@@ -14,22 +14,33 @@ const dateOnlyUtc = (value) => {
 const dayDifference = (simulatedDate, expiryDate) => Math.round((simulatedDate.getTime() -
     expiryDate.getTime()) / DAY_MS);
 const milestoneFor = (daysFromExpiry) => {
-    switch (daysFromExpiry) {
-        case -60:
-            return 'd60';
-        case -30:
-            return 'd30';
-        case -14:
-            return 'd14';
-        case -7:
-            return 'd7';
-        case 0:
-            return 'd0';
-        case 7:
-            return 'dplus7';
-        default:
-            return undefined;
+    /*
+     * Production-safe catch-up behaviour:
+     * choose the most important milestone currently due.
+     *
+     * This means a temporary Render outage does not permanently miss an
+     * expiry action just because Runtime was not running on the exact day.
+     * We intentionally do NOT send a stack of stale reminder emails.
+     */
+    if (daysFromExpiry >= 7) {
+        return 'dplus7';
     }
+    if (daysFromExpiry >= 0) {
+        return 'd0';
+    }
+    if (daysFromExpiry >= -7) {
+        return 'd7';
+    }
+    if (daysFromExpiry >= -14) {
+        return 'd14';
+    }
+    if (daysFromExpiry >= -30) {
+        return 'd30';
+    }
+    if (daysFromExpiry >= -60) {
+        return 'd60';
+    }
+    return undefined;
 };
 const renewalOrderId = (domainId, expiresAt) => {
     const expiryKey = dateOnlyUtc(expiresAt)
@@ -164,6 +175,9 @@ const createRenewalOrder = async (domainRef, domain, simulatedDate) => {
     };
 };
 export class RenewalLifecycleService {
+    async runProduction() {
+        return this.run(new Date().toISOString());
+    }
     async run(simulatedDateInput) {
         const simulatedDate = dateOnlyUtc(simulatedDateInput);
         const domainsSnapshot = await adminDb

@@ -16,6 +16,8 @@ import transferRoutes from './routes/transfers.js';
 import cleanupRoutes from './routes/cleanup.js';
 import dnsRoutes from './routes/dns.js';
 import { startAbandonedCleanupScheduler, } from './services/AbandonedOrderCleanupService.js';
+import { startRuntimeDnsActivationScheduler, } from './services/RuntimeDnsActivationService.js';
+import { startRenewalLifecycleScheduler, } from './services/RenewalLifecycleScheduler.js';
 const app = express();
 /*
  * ----------------------------------------------------------
@@ -113,4 +115,6 @@ const PORT = Number(process.env.PORT ||
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Runtime backend running on port ${PORT}`);
     startAbandonedCleanupScheduler();
+    startRuntimeDnsActivationScheduler();
+    startRenewalLifecycleScheduler();
 });
