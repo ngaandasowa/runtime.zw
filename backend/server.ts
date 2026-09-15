@@ -19,6 +19,7 @@ import transferRoutes from './routes/transfers.js';
 import cleanupRoutes from './routes/cleanup.js';
 import dnsRoutes from './routes/dns.js';
 import customerDnsRoutes from './routes/customerDns.js';
+import adminDnsRoutes from './routes/adminDns.js';
 
 import {
   startAbandonedCleanupScheduler,
@@ -197,6 +198,7 @@ app.use(
 );
 
 app.use('/api/customer-dns', customerDnsRoutes);
+app.use('/api/admin-dns', adminDnsRoutes);
 
 /*
  * ----------------------------------------------------------

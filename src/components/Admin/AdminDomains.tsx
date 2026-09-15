@@ -7,6 +7,7 @@ import {
   CalendarDays,
   Clock3,
   Globe2,
+  Network,
   Play,
   RefreshCw,
   Search,
@@ -22,6 +23,8 @@ import {
 import {
   DomainStatus,
 } from '../../types';
+
+import { AdminRuntimeDnsManager } from './AdminRuntimeDnsManager';
 
 const STATUS_LABELS:
   Record<string, string> = {
@@ -122,6 +125,8 @@ export const AdminDomains:
       setEditError,
     ] = useState('');
 
+    const [dnsDomain, setDnsDomain] = useState<any | null>(null);
+
     const [
       editOwner,
       setEditOwner,
@@ -173,6 +178,17 @@ export const AdminDomains:
       editAutoRenew,
       setEditAutoRenew,
     ] = useState(true);
+
+    const isRuntimeDns = (domain: any) =>
+      String(domain?.dns_provider || '').toLowerCase() === 'cloudflare' &&
+      Boolean(domain?.cloudflare?.zone_id);
+
+    const dnsProviderLabel = (domain: any) => {
+      if (isRuntimeDns(domain)) return 'Runtime DNS';
+      const nameservers = Array.isArray(domain?.nameservers) ? domain.nameservers.map((item: any) => String(item).toLowerCase()) : [];
+      if (nameservers.some((item: string) => item === 'ns1.ngaatec.com' || item === 'ns2.ngaatec.com')) return 'Legacy DNS';
+      return nameservers.length ? 'Custom DNS' : 'Not configured';
+    };
 
     const openDomainEditor =
       (domain: any) => {
@@ -626,7 +642,7 @@ export const AdminDomains:
               </div>
 
               <p className="mt-2 text-xs leading-5 text-amber-900/80">
-                Temporary Phase 1 panel. Choose a simulated date and run the renewal processor manually. No scheduled execution is connected here.
+                Production renewals are scheduled automatically. This panel remains available only for controlled lifecycle simulation and testing.
               </p>
 
               <p className="mt-1 text-[11px] leading-5 text-amber-800/70">
@@ -875,6 +891,16 @@ export const AdminDomains:
                             />
 
                             <Info
+                              label="DNS provider"
+                              value={dnsProviderLabel(domain as any)}
+                            />
+
+                            <Info
+                              label="DNS status"
+                              value={isRuntimeDns(domain) ? String((domain as any).dns_status || (domain as any).cloudflare?.status || 'pending').replace(/_/g, ' ') : 'External'}
+                            />
+
+                            <Info
                               label="Renewal lifecycle"
                               value={
                                 lifecycleLabel(
@@ -886,6 +912,17 @@ export const AdminDomains:
                         </div>
 
                         <div className="flex shrink-0 flex-wrap items-center gap-2">
+                          {isRuntimeDns(domain) && (
+                            <button
+                              type="button"
+                              onClick={() => setDnsDomain(domain)}
+                              className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#3120ff]/20 bg-[#3120ff]/5 px-3 py-2.5 text-xs font-bold text-[#3120ff] hover:bg-[#3120ff]/10"
+                            >
+                              <Network className="h-4 w-4" />
+                              Manage DNS
+                            </button>
+                          )}
+
                           <button
                             type="button"
                             onClick={() =>
@@ -976,6 +1013,13 @@ export const AdminDomains:
             </div>
           )}
         </div>
+
+        {dnsDomain && (
+          <AdminRuntimeDnsManager
+            domain={dnsDomain}
+            onClose={() => setDnsDomain(null)}
+          />
+        )}
 
         {editingDomain && (
           <div className="fixed inset-0 z-50 bg-black/40 p-4">
