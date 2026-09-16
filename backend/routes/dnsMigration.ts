@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb } from '../firebaseAdmin.js';
-import { authenticateIdentity } from '../middleware/authenticate.js';
+import { authenticateWithProfile } from '../middleware/authenticate.js';
 import { cloudflareDnsService } from '../services/CloudflareDnsService.js';
 
 const router = Router();
@@ -17,7 +17,9 @@ async function owned(req:R,res:Response) {
   if(!snap.exists){res.status(404).json({success:false,message:'Domain not found.'});return null}
   const d=snap.data()!;
   const email=s(req.runtimeUser?.email).toLowerCase();
-  if(s(d.user_id)!==s(req.runtimeUser?.uid)&&(!email||s(d.user_email).toLowerCase()!==email)){
+  const isSuperAdmin = s((req.runtimeUser as any)?.role) === 'super_admin';
+  const isOwner = s(d.user_id)===s(req.runtimeUser?.uid) || Boolean(email && s(d.user_email).toLowerCase()===email);
+  if(!isSuperAdmin && !isOwner){
     res.status(403).json({success:false,message:'You do not have access to this domain.'});return null;
   }
   if(!['active','expired'].includes(s(d.status))){
@@ -39,7 +41,7 @@ function migrationView(d:any) {
   };
 }
 
-router.use(authenticateIdentity);
+router.use(authenticateWithProfile);
 
 router.get('/:domainId', async(req:R,res)=>{
   try {
@@ -138,6 +140,29 @@ router.post('/:domainId/review', async(req:R,res)=>{
   } catch(e) {
     res.status(400).json({success:false,message:e instanceof Error?e.message:'Unable to import reviewed DNS records.'});
   }
+});
+
+
+router.post('/:domainId/registry-submitted', async(req:R,res)=>{
+  try {
+    const x=await owned(req,res); if(!x)return;
+    if(s((req.runtimeUser as any)?.role)!=='super_admin') return res.status(403).json({success:false,message:'Only a Runtime administrator can confirm registrar submission.'});
+    const m=x.d.dns_migration||{};
+    if(s(m.status)!=='ready_for_registry') return res.status(409).json({success:false,message:'DNS records must be reviewed before registrar cutover.'});
+    const pending=Array.isArray(m.pending_nameservers)?m.pending_nameservers.map((n:any)=>s(n).toLowerCase()).filter(Boolean):[];
+    if(pending.length<2)return res.status(409).json({success:false,message:'Runtime DNS nameservers are missing.'});
+    const dns=await import('node:dns/promises'); const resolved:any[]=[];
+    for(const hostname of pending){let addresses:string[]=[];try{addresses=await dns.resolve4(hostname)}catch{} if(!addresses.length){try{addresses=await dns.resolve6(hostname)}catch{}} resolved.push({hostname,ip:addresses[0]||''});}
+    if(resolved.some(v=>!v.ip))return res.status(409).json({success:false,message:'Unable to resolve one or more Runtime DNS nameserver IPs.'});
+    const now=new Date().toISOString();
+    await x.ref.set({
+      dns_provider:'cloudflare',dns_status:'pending',nameservers:pending,nameserver_ips:resolved,
+      cloudflare:{...(x.d.cloudflare||{}),zone_id:m.cloudflare_zone_id,status:'pending',provisioned_at:x.d.cloudflare?.provisioned_at||m.started_at||now,last_synced_at:now},
+      dns_migration:{...m,status:'delegation_pending',registry_submitted_at:now,registry_submitted_by:s(req.runtimeUser?.uid),last_error:null},
+      updated_at:FieldValue.serverTimestamp()
+    },{merge:true});
+    res.json({success:true,status:'delegation_pending',nameservers:pending,nameserverIps:resolved,message:'Registrar submission recorded. Runtime DNS remains pending until Cloudflare confirms delegation.'});
+  }catch(e){res.status(400).json({success:false,message:e instanceof Error?e.message:'Unable to record registrar submission.'});}
 });
 
 export default router;
