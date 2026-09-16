@@ -111,6 +111,18 @@ export const cloudflareDnsService = {
     async listDnsRecords(zoneId) {
         return cloudflareRequest(`/zones/${encodeURIComponent(zoneId)}/dns_records?per_page=100&order=type&direction=asc`);
     },
+    async triggerDnsScan(zoneId) {
+        return cloudflareRequest(`/zones/${encodeURIComponent(zoneId)}/dns_records/scan/trigger`, { method: 'POST' });
+    },
+    async listScannedDnsRecords(zoneId) {
+        return cloudflareRequest(`/zones/${encodeURIComponent(zoneId)}/dns_records/scan/review`);
+    },
+    async reviewScannedDnsRecords(zoneId, accepts, rejects) {
+        return cloudflareRequest(`/zones/${encodeURIComponent(zoneId)}/dns_records/scan/review`, {
+            method: 'POST',
+            body: { accepts, rejects },
+        });
+    },
     async createDnsRecord(zoneId, input) {
         return cloudflareRequest(`/zones/${encodeURIComponent(zoneId)}/dns_records`, { method: 'POST', body: input });
     },
@@ -119,14 +131,5 @@ export const cloudflareDnsService = {
     },
     async deleteDnsRecord(zoneId, recordId) {
         return cloudflareRequest(`/zones/${encodeURIComponent(zoneId)}/dns_records/${encodeURIComponent(recordId)}`, { method: 'DELETE' });
-    },
-    async triggerDnsScan(zoneId) {
-        await cloudflareRequest(`/zones/${encodeURIComponent(zoneId)}/dns_records/scan/trigger`, { method: 'POST', body: {} });
-    },
-    async listScannedDnsRecords(zoneId) {
-        return cloudflareRequest(`/zones/${encodeURIComponent(zoneId)}/dns_records/scan/review`);
-    },
-    async reviewScannedDnsRecords(zoneId, accepts, rejects = []) {
-        return cloudflareRequest(`/zones/${encodeURIComponent(zoneId)}/dns_records/scan/review`, { method: 'POST', body: { accepts, rejects } });
     },
 };

@@ -28,11 +28,13 @@ export type CloudflareZone = {
 export type CloudflareDnsRecord = {
   id: string; type: string; name: string; content: string; ttl: number;
   proxied?: boolean; proxiable?: boolean; priority?: number;
+  data?: { priority?: number; weight?: number; port?: number; target?: string };
   created_on?: string; modified_on?: string;
 };
 export type CloudflareDnsRecordInput = {
-  type: 'A' | 'AAAA' | 'CNAME' | 'MX' | 'TXT' | 'CAA';
+  type: 'A' | 'AAAA' | 'CNAME' | 'MX' | 'TXT' | 'CAA' | 'SRV';
   name: string; content: string; ttl?: number; proxied?: boolean; priority?: number;
+  data?: { priority: number; weight: number; port: number; target: string };
 };
 
 const normalizeDomain = (
@@ -254,6 +256,33 @@ export const cloudflareDnsService = {
   async listDnsRecords(zoneId: string): Promise<CloudflareDnsRecord[]> {
     return cloudflareRequest<CloudflareDnsRecord[]>(`/zones/${encodeURIComponent(zoneId)}/dns_records?per_page=100&order=type&direction=asc`);
   },
+
+  async triggerDnsScan(zoneId: string): Promise<unknown> {
+    return cloudflareRequest<unknown>(
+      `/zones/${encodeURIComponent(zoneId)}/dns_records/scan/trigger`,
+      { method: 'POST' }
+    );
+  },
+
+  async listScannedDnsRecords(zoneId: string): Promise<CloudflareDnsRecord[]> {
+    return cloudflareRequest<CloudflareDnsRecord[]>(
+      `/zones/${encodeURIComponent(zoneId)}/dns_records/scan/review`
+    );
+  },
+
+  async reviewScannedDnsRecords(
+    zoneId: string,
+    accepts: CloudflareDnsRecord[],
+    rejects: CloudflareDnsRecord[]
+  ): Promise<unknown> {
+    return cloudflareRequest<unknown>(
+      `/zones/${encodeURIComponent(zoneId)}/dns_records/scan/review`,
+      {
+        method: 'POST',
+        body: { accepts, rejects },
+      }
+    );
+  },
   async createDnsRecord(zoneId: string, input: CloudflareDnsRecordInput): Promise<CloudflareDnsRecord> {
     return cloudflareRequest<CloudflareDnsRecord>(`/zones/${encodeURIComponent(zoneId)}/dns_records`, { method: 'POST', body: input });
   },
@@ -263,38 +292,4 @@ export const cloudflareDnsService = {
   async deleteDnsRecord(zoneId: string, recordId: string): Promise<{ id: string }> {
     return cloudflareRequest<{ id: string }>(`/zones/${encodeURIComponent(zoneId)}/dns_records/${encodeURIComponent(recordId)}`, { method: 'DELETE' });
   },
-
-  async triggerDnsScan(zoneId: string): Promise<void> {
-    await cloudflareRequest<unknown>(
-      `/zones/${encodeURIComponent(zoneId)}/dns_records/scan/trigger`,
-      { method: 'POST', body: {} }
-    );
-  },
-
-  async listScannedDnsRecords(zoneId: string): Promise<Array<{
-    id?: string;
-    type: string;
-    name: string;
-    content?: string;
-    ttl?: number;
-    proxied?: boolean;
-    priority?: number;
-  }>> {
-    return cloudflareRequest(
-      `/zones/${encodeURIComponent(zoneId)}/dns_records/scan/review`
-    );
-  },
-
-  async reviewScannedDnsRecords(
-    zoneId: string,
-    accepts: unknown[],
-    rejects: unknown[] = []
-  ): Promise<unknown> {
-    return cloudflareRequest(
-      `/zones/${encodeURIComponent(zoneId)}/dns_records/scan/review`,
-      { method: 'POST', body: { accepts, rejects } }
-    );
-  },
-
-
 };

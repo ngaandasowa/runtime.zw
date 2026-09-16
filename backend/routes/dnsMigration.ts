@@ -51,7 +51,7 @@ router.get('/:domainId', async(req:R,res)=>{
     if(zoneId && ['preparing','review_required'].includes(s(x.d.dns_migration?.status))) {
       scanned=await cloudflareDnsService.listScannedDnsRecords(zoneId);
     }
-    res.json({success:true,domainName:x.d.domain_name,currentNameservers:x.d.nameservers||[],migration:migrationView(x.d),records:scanned.filter(r=>SUPPORTED.has(s(r.type).toUpperCase()))});
+    res.json({success:true,domainName:x.d.domain_name,currentNameservers:x.d.nameservers||[],migration:migrationView(x.d),records:scanned.filter((r:any)=>SUPPORTED.has(s(r.type).toUpperCase()))});
   } catch(e) {
     res.status(502).json({success:false,message:e instanceof Error?e.message:'Unable to load DNS migration.'});
   }
@@ -99,7 +99,7 @@ router.post('/:domainId/refresh', async(req:R,res)=>{
     if(!zoneId)return res.status(409).json({success:false,message:'Start the migration first.'});
     const records=await cloudflareDnsService.listScannedDnsRecords(zoneId);
     await x.ref.set({dns_migration:{...x.d.dns_migration,status:'review_required',last_scan_check_at:new Date().toISOString(),last_error:null},updated_at:FieldValue.serverTimestamp()},{merge:true});
-    res.json({success:true,records:records.filter(r=>SUPPORTED.has(s(r.type).toUpperCase()))});
+    res.json({success:true,records:records.filter((r:any)=>SUPPORTED.has(s(r.type).toUpperCase()))});
   } catch(e) {
     res.status(502).json({success:false,message:e instanceof Error?e.message:'Unable to refresh scanned DNS records.'});
   }
@@ -121,7 +121,7 @@ router.post('/:domainId/review', async(req:R,res)=>{
       if(r.priority!==undefined)o.priority=Number(r.priority);
       return o;
     };
-    const accepts=discovered.filter(r=>SUPPORTED.has(s(r.type).toUpperCase())&&selected.has(key(r))).map(safe);
+    const accepts=discovered.filter((r:any)=>SUPPORTED.has(s(r.type).toUpperCase())&&selected.has(key(r))).map(safe);
     if(!accepts.length)return res.status(400).json({success:false,message:'The selected records are no longer available. Refresh the scan.'});
 
     await cloudflareDnsService.reviewScannedDnsRecords(zoneId,accepts,[]);
