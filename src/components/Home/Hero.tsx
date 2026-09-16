@@ -318,6 +318,10 @@ const whatsappRegistration = (
           Name what’s next
         </h1>
 
+        <p className="mt-5 max-w-2xl text-base leading-7 text-zinc-600 sm:text-lg">
+          Register your domain and manage its DNS from one Runtime account.
+        </p>
+
         <div className="mt-8 flex items-center rounded-full border border-zinc-200 bg-white p-1 shadow-sm">
           <button
             type="button"

@@ -285,6 +285,18 @@ export const Footer: React.FC = () => {
             >
               WHOIS Lookup
             </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                goToPage(
+                  '/login'
+                )
+              }
+              className="block w-full text-left transition-colors hover:text-[#3120ff]"
+            >
+              Runtime DNS
+            </button>
           </FooterSection>
 
           {/* TOOLS */}

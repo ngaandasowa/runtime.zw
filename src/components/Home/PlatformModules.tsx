@@ -5,6 +5,7 @@ import {
   Code2,
   Database,
   FileText,
+  Globe2,
   Sparkles,
 } from 'lucide-react';
 
@@ -17,6 +18,23 @@ import SpotlightCard from '../SpotlightCard';
 const services = [
   {
     title:
+      'Runtime DNS',
+
+    description:
+      'Manage your domain’s DNS records directly from Runtime.',
+
+    icon:
+      Globe2,
+
+    service:
+      'dns',
+
+    available:
+      true,
+  },
+
+  {
+    title:
       'Cloud hosting',
 
     description:
@@ -27,6 +45,9 @@ const services = [
 
     service:
       'cloud',
+
+    available:
+      false,
   },
 
   {
@@ -41,6 +62,9 @@ const services = [
 
     service:
       'api',
+
+    available:
+      false,
   },
 
   {
@@ -55,6 +79,9 @@ const services = [
 
     service:
       'data',
+
+    available:
+      false,
   },
 
   {
@@ -69,6 +96,9 @@ const services = [
 
     service:
       'developer',
+
+    available:
+      false,
   },
 
   {
@@ -83,6 +113,9 @@ const services = [
 
     service:
       'ai',
+
+    available:
+      false,
   },
 ] as const;
 
@@ -92,10 +125,13 @@ export const PlatformModules:
       useNavigate();
 
     const openService = (
-      service: string
+      service: string,
+      available: boolean
     ) => {
       navigate(
-        `/coming-soon?service=${service}`
+        available
+          ? '/login'
+          : `/coming-soon?service=${service}`
       );
 
       requestAnimationFrame(
@@ -136,22 +172,21 @@ export const PlatformModules:
             </h2>
 
             <p className="mt-4 leading-7 text-zinc-600">
-              Domains are available now.
-              Hosting, APIs, data,
-              developer tools and
-              automation will be added
-              as Runtime grows.
+              Domains and Runtime DNS are available now.
+              Hosting, APIs, data, developer tools and
+              automation will be added as Runtime grows.
             </p>
           </div>
 
           {/* SERVICES */}
-          <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             {services.map(
               ({
                 title,
                 description,
                 icon: Icon,
                 service,
+                available,
               }) => (
                 <button
                   key={
@@ -160,7 +195,8 @@ export const PlatformModules:
                   type="button"
                   onClick={() =>
                     openService(
-                      service
+                      service,
+                      available
                     )
                   }
                   className="
@@ -238,7 +274,9 @@ export const PlatformModules:
                             group-hover:text-[#3120ff]
                           "
                         >
-                          Coming soon
+                          {available
+                            ? 'Available now'
+                            : 'Coming soon'}
                         </span>
                       </div>
 

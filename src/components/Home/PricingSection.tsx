@@ -145,6 +145,12 @@ export const PricingSection: React.FC =
                       Clear renewal pricing
                     </p>
 
+                    <p className="flex items-center gap-2">
+                      <Check className="h-4 w-4 shrink-0 text-[#3120ff]" />
+
+                      Runtime DNS included
+                    </p>
+
                     {assisted && (
                       <p className="flex items-start gap-2">
                         <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#3120ff]" />

@@ -23,7 +23,7 @@ export const LegalPage: React.FC<LegalPageProps> = ({ type }) => {
           <h1 className="mt-6 text-4xl font-bold tracking-tight text-zinc-950 sm:text-5xl">
             {isTerms ? 'Terms of Service' : 'Privacy Policy'}
           </h1>
-          <p className="mt-4 text-sm text-zinc-500">Last updated: August 21, 2026</p>
+          <p className="mt-4 text-sm text-zinc-500">Last updated: September 16, 2026</p>
           <p className="mt-6 text-base leading-7 text-zinc-600">
             {isTerms
               ? 'These terms explain the rules for using Runtime domain registration and related services.'
@@ -34,13 +34,14 @@ export const LegalPage: React.FC<LegalPageProps> = ({ type }) => {
         <div className="space-y-8">
           {isTerms ? (
             <>
-              <Section title="1. Using Runtime"><p>Runtime provides domain search, registration, renewal, transfer, account, and payment services. You must provide accurate information and keep your account details current.</p><p>You must be at least 18 years old, or use Runtime with the involvement and permission of a parent, guardian, or authorised organisation representative.</p></Section>
+              <Section title="1. Using Runtime"><p>Runtime provides domain search, registration, renewal, transfer, DNS management, account, and payment services. You must provide accurate information and keep your account details current.</p><p>You must be at least 18 years old, or use Runtime with the involvement and permission of a parent, guardian, or authorised organisation representative.</p></Section>
               <Section title="2. Accounts and security"><p>You are responsible for protecting your sign-in credentials and for activity performed through your account. Contact us promptly if you believe your account has been accessed without permission.</p><p>We may suspend access when necessary to protect users, investigate misuse, or comply with applicable requirements.</p></Section>
               <Section title="3. Domain registrations"><p>Domain names are registered subject to the rules and availability of the relevant domain authority. A search result does not guarantee that a name can be registered until payment and registration processing are complete.</p><p>You confirm that your requested domain and submitted contact information do not infringe another person’s rights or violate applicable law.</p></Section>
               <Section title="4. Prices and payments"><p>Prices are shown before checkout and may vary by domain extension. Registration and renewal prices are charged in the currency shown at checkout. You authorise Runtime and its payment providers to process the selected payment.</p><p>Because domain registration can begin immediately after payment, refunds may be limited once a registration or renewal has been submitted.</p></Section>
-              <Section title="5. Acceptable use"><p>You may not use Runtime to register or manage domains for unlawful activity, fraud, abuse, malware, impersonation, infringement, or activity that could harm the service or other users.</p></Section>
-              <Section title="6. Availability and liability"><p>We work to keep Runtime available, but we do not guarantee uninterrupted access or successful registration of every requested domain. Services may be changed, paused, or unavailable for maintenance or circumstances outside our control.</p><p>To the extent permitted by law, Runtime is not responsible for indirect losses, lost profits, or losses caused by inaccurate information supplied by you.</p></Section>
-              <Section title="7. Contact"><p>Questions about these terms can be sent to <a className="font-semibold text-[#3120ff] hover:underline" href="tel:+263788350229">+263 788 350 229</a> or through <a className="font-semibold text-[#3120ff] hover:underline" href="https://wa.me/263788350229">WhatsApp</a>.</p></Section>
+              <Section title="5. DNS management"><p>Runtime DNS lets you create and manage DNS records for supported domains. DNS changes can affect website, email, and other domain services, so you are responsible for the records and nameserver changes you submit.</p><p>Nameserver changes may require processing by the relevant domain authority or registrar before they become active. DNS propagation may also take time after a change is completed.</p></Section>
+              <Section title="6. Acceptable use"><p>You may not use Runtime to register or manage domains for unlawful activity, fraud, abuse, malware, impersonation, infringement, or activity that could harm the service or other users.</p></Section>
+              <Section title="7. Availability and liability"><p>We work to keep Runtime available, but we do not guarantee uninterrupted access or successful registration of every requested domain. Services may be changed, paused, or unavailable for maintenance or circumstances outside our control.</p><p>To the extent permitted by law, Runtime is not responsible for indirect losses, lost profits, or losses caused by inaccurate information supplied by you.</p></Section>
+              <Section title="8. Contact"><p>Questions about these terms can be sent to <a className="font-semibold text-[#3120ff] hover:underline" href="tel:+263788350229">+263 788 350 229</a> or through <a className="font-semibold text-[#3120ff] hover:underline" href="https://wa.me/263788350229">WhatsApp</a>.</p></Section>
             </>
           ) : (
             <>
