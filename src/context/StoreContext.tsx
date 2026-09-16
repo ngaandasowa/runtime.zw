@@ -1840,10 +1840,27 @@ const getDomainOrderDetails = async (
           .toLowerCase()
           .endsWith('.co.zw')
       ) {
+        /*
+         * The backend keeps the currently-active delegation unchanged until
+         * registry confirmation. Build the MODIFY template from the pending
+         * nameservers returned by the backend.
+         */
+        const registryDomain = {
+          ...updated,
+          nameservers:
+            (updated as any)
+              .pending_nameservers ||
+            normalizedNameservers,
+          nameserver_ips:
+            (updated as any)
+              .pending_nameserver_ips ||
+            normalizedIps,
+        } as Domain;
+
         const request =
           registryService
             .createRequest(
-              updated,
+              registryDomain,
               'M',
               currentUser.email ||
                 'customer'
@@ -1875,7 +1892,7 @@ const getDomainOrderDetails = async (
         );
 
       showNotification(
-        'Nameservers updated successfully. DNS changes may take up to 24 hours to fully propagate.',
+        'Nameserver change submitted. Your current DNS remains active until the registry confirms the new nameservers.',
         'success'
       );
     };
@@ -4291,11 +4308,61 @@ const getDomainOrderDetails = async (
         const nextYear = new Date(now);
         nextYear.setFullYear(nextYear.getFullYear() + 1);
 
+        const isNameserverModify =
+          target.action === 'M' &&
+          Array.isArray(
+            (d as any).pending_nameservers
+          ) &&
+          (d as any).pending_nameservers.length >= 2;
+
+        const confirmedNameservers =
+          isNameserverModify
+            ? (d as any).pending_nameservers
+            : d.nameservers;
+
+        const confirmedNameserverIps =
+          isNameserverModify
+            ? (
+                (d as any).pending_nameserver_ips ||
+                []
+              )
+            : (
+                (d as any).nameserver_ips ||
+                []
+              );
+
         const updatedDomain: Domain = {
           ...d,
           status: newStatus,
           registered_at: d.registered_at || now.toISOString(),
           expires_at: d.expires_at || nextYear.toISOString(),
+          ...(isNameserverModify
+            ? {
+                nameservers:
+                  confirmedNameservers,
+                nameserver_ips:
+                  confirmedNameserverIps,
+
+                /*
+                 * A confirmed manual nameserver change means registry
+                 * delegation is no longer Runtime DNS. Only transition after
+                 * registry confirmation, never when the customer merely
+                 * submits the request.
+                 */
+                dns_provider:
+                  'custom',
+                dns_status:
+                  'custom',
+                pending_nameservers:
+                  null,
+                pending_nameserver_ips:
+                  null,
+                nameserver_change_status:
+                  'confirmed',
+                nameserver_change_confirmed_at:
+                  now.toISOString(),
+              }
+            : {}),
           updated_at: now.toISOString(),
           history: [
             ...d.history,
@@ -4318,6 +4385,28 @@ const getDomainOrderDetails = async (
           status: updatedDomain.status,
           registered_at: updatedDomain.registered_at,
           expires_at: updatedDomain.expires_at,
+          ...(isNameserverModify
+            ? {
+                nameservers:
+                  (updatedDomain as any)
+                    .nameservers,
+                nameserver_ips:
+                  (updatedDomain as any)
+                    .nameserver_ips,
+                dns_provider:
+                  'custom',
+                dns_status:
+                  'custom',
+                pending_nameservers:
+                  null,
+                pending_nameserver_ips:
+                  null,
+                nameserver_change_status:
+                  'confirmed',
+                nameserver_change_confirmed_at:
+                  now.toISOString(),
+              }
+            : {}),
           history: updatedDomain.history,
           updated_at: updatedDomain.updated_at,
         }).catch((error) => {

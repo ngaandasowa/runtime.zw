@@ -723,12 +723,28 @@ router.post('/customer/domain-update', authenticate, async (req, res) => {
                         .slice(0, nameservers.length)
                         .map((value) => String(value || '').trim())
                     : [];
-                changes.nameservers =
+                /*
+                 * Registry delegation is authoritative.
+                 *
+                 * Do not replace the currently-active nameservers yet. Store the
+                 * requested delegation separately until the registrar confirms
+                 * the ZISPA MODIFY request. This is especially important when a
+                 * domain is leaving Runtime DNS: Runtime DNS must remain the
+                 * active provider until the registry has actually switched NS.
+                 */
+                changes.pending_nameservers =
                     nameservers;
-                changes.nameserver_ips =
+                changes.pending_nameserver_ips =
                     nameserverIps;
+                changes.nameserver_change_status =
+                    'pending_registry';
+                changes.nameserver_change_requested_at =
+                    now;
+                changes.nameserver_change_requested_by =
+                    runtimeUser.email ||
+                        runtimeUser.uid;
                 description =
-                    'Nameserver change requested.';
+                    'Nameserver change requested and awaiting registry confirmation.';
             }
             else if (action ===
                 'owner') {
