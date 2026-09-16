@@ -30,6 +30,7 @@ import { nameserverService } from '../../services/NameserverService';
 import { domainService } from '../../services/DomainService';
 import { getAuth } from 'firebase/auth';
 import { RuntimeDnsManager } from './RuntimeDnsManager';
+import { RuntimeDnsMigration } from '../dns/RuntimeDnsMigration';
 
 import {
   analyticsService,
@@ -50,6 +51,7 @@ type ModalMode =
   | 'activity'
   | 'renew'
   | 'dns'
+  | 'dns_migration'
   | null;
 
 const formatDate = (
@@ -773,6 +775,13 @@ export const DashboardDomains: React.FC =
     const canManageRuntimeDns = (domain: Domain) => String((domain as any).dns_provider || '').toLowerCase() === 'cloudflare' && Boolean((domain as any).cloudflare?.zone_id);
 
     const openRuntimeDns = (domain: Domain) => { setSelectedDomain(domain); setModalMode('dns'); };
+    const canMoveToRuntimeDns = (domain: Domain) =>
+      canModifyRegisteredDomain(domain) &&
+      !canManageRuntimeDns(domain);
+    const openRuntimeDnsMigration = (domain: Domain) => {
+      setSelectedDomain(domain);
+      setModalMode('dns_migration');
+    };
 
     const openDetails = (
       domain: Domain
@@ -2001,6 +2010,10 @@ export const DashboardDomains: React.FC =
           <RuntimeDnsManager domain={selectedDomain as any} onClose={() => setModalMode(null)} />
         )}
 
+        {modalMode === 'dns_migration' && selectedDomain && (
+          <RuntimeDnsMigration domain={selectedDomain as any} actor="customer" onClose={() => setModalMode(null)} />
+        )}
+
         {modalMode ===
           'details' &&
           selectedDomain && (
@@ -2094,6 +2107,9 @@ export const DashboardDomains: React.FC =
 
                 {canManageRuntimeDns(selectedDomain) && (
                   <ActionButton icon={Network} label="Manage DNS" onClick={() => openRuntimeDns(selectedDomain)} />
+                )}
+                {canMoveToRuntimeDns(selectedDomain) && (
+                  <ActionButton icon={Network} label="Move to Runtime DNS" onClick={() => openRuntimeDnsMigration(selectedDomain)} />
                 )}
 
                 {canModifyRegisteredDomain(

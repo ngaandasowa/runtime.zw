@@ -17,6 +17,7 @@ import cleanupRoutes from './routes/cleanup.js';
 import dnsRoutes from './routes/dns.js';
 import customerDnsRoutes from './routes/customerDns.js';
 import adminDnsRoutes from './routes/adminDns.js';
+import dnsMigrationRoutes from './routes/dnsMigration.js';
 import { startAbandonedCleanupScheduler, } from './services/AbandonedOrderCleanupService.js';
 import { startRuntimeDnsActivationScheduler, } from './services/RuntimeDnsActivationService.js';
 import { startRenewalLifecycleScheduler, } from './services/RenewalLifecycleScheduler.js';
@@ -97,6 +98,7 @@ app.use('/api/cleanup', cleanupRoutes);
 app.use('/api/dns', dnsRoutes);
 app.use('/api/customer-dns', customerDnsRoutes);
 app.use('/api/admin-dns', adminDnsRoutes);
+app.use('/api/dns-migration', dnsMigrationRoutes);
 /*
  * ----------------------------------------------------------
  * ERROR HANDLER

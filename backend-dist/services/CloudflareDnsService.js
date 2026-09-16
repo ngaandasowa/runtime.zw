@@ -120,4 +120,13 @@ export const cloudflareDnsService = {
     async deleteDnsRecord(zoneId, recordId) {
         return cloudflareRequest(`/zones/${encodeURIComponent(zoneId)}/dns_records/${encodeURIComponent(recordId)}`, { method: 'DELETE' });
     },
+    async triggerDnsScan(zoneId) {
+        await cloudflareRequest(`/zones/${encodeURIComponent(zoneId)}/dns_records/scan/trigger`, { method: 'POST', body: {} });
+    },
+    async listScannedDnsRecords(zoneId) {
+        return cloudflareRequest(`/zones/${encodeURIComponent(zoneId)}/dns_records/scan/review`);
+    },
+    async reviewScannedDnsRecords(zoneId, accepts, rejects = []) {
+        return cloudflareRequest(`/zones/${encodeURIComponent(zoneId)}/dns_records/scan/review`, { method: 'POST', body: { accepts, rejects } });
+    },
 };

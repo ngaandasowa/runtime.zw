@@ -25,6 +25,7 @@ import {
 } from '../../types';
 
 import { AdminRuntimeDnsManager } from './AdminRuntimeDnsManager';
+import { RuntimeDnsMigration } from '../dns/RuntimeDnsMigration';
 
 const STATUS_LABELS:
   Record<string, string> = {
@@ -126,6 +127,7 @@ export const AdminDomains:
     ] = useState('');
 
     const [dnsDomain, setDnsDomain] = useState<any | null>(null);
+    const [dnsMigrationDomain, setDnsMigrationDomain] = useState<any | null>(null);
 
     const [
       editOwner,
@@ -189,6 +191,10 @@ export const AdminDomains:
       if (nameservers.some((item: string) => item === 'ns1.ngaatec.com' || item === 'ns2.ngaatec.com')) return 'Legacy DNS';
       return nameservers.length ? 'Custom DNS' : 'Not configured';
     };
+
+    const canMoveToRuntimeDns = (domain: any) =>
+      ['active', 'expired'].includes(String(domain?.status || '')) &&
+      !isRuntimeDns(domain);
 
     const openDomainEditor =
       (domain: any) => {
@@ -923,6 +929,14 @@ export const AdminDomains:
                             </button>
                           )}
 
+                          {canMoveToRuntimeDns(domain) && (
+                            <button type="button" onClick={() => setDnsMigrationDomain(domain)}
+                              className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-xs font-bold text-zinc-700 hover:bg-zinc-50">
+                              <Network className="h-4 w-4" />
+                              Move to Runtime DNS
+                            </button>
+                          )}
+
                           <button
                             type="button"
                             onClick={() =>
@@ -1013,6 +1027,14 @@ export const AdminDomains:
             </div>
           )}
         </div>
+
+        {dnsMigrationDomain && (
+          <RuntimeDnsMigration
+            domain={dnsMigrationDomain}
+            actor="admin"
+            onClose={() => setDnsMigrationDomain(null)}
+          />
+        )}
 
         {dnsDomain && (
           <AdminRuntimeDnsManager

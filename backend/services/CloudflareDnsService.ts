@@ -263,4 +263,38 @@ export const cloudflareDnsService = {
   async deleteDnsRecord(zoneId: string, recordId: string): Promise<{ id: string }> {
     return cloudflareRequest<{ id: string }>(`/zones/${encodeURIComponent(zoneId)}/dns_records/${encodeURIComponent(recordId)}`, { method: 'DELETE' });
   },
+
+  async triggerDnsScan(zoneId: string): Promise<void> {
+    await cloudflareRequest<unknown>(
+      `/zones/${encodeURIComponent(zoneId)}/dns_records/scan/trigger`,
+      { method: 'POST', body: {} }
+    );
+  },
+
+  async listScannedDnsRecords(zoneId: string): Promise<Array<{
+    id?: string;
+    type: string;
+    name: string;
+    content?: string;
+    ttl?: number;
+    proxied?: boolean;
+    priority?: number;
+  }>> {
+    return cloudflareRequest(
+      `/zones/${encodeURIComponent(zoneId)}/dns_records/scan/review`
+    );
+  },
+
+  async reviewScannedDnsRecords(
+    zoneId: string,
+    accepts: unknown[],
+    rejects: unknown[] = []
+  ): Promise<unknown> {
+    return cloudflareRequest(
+      `/zones/${encodeURIComponent(zoneId)}/dns_records/scan/review`,
+      { method: 'POST', body: { accepts, rejects } }
+    );
+  },
+
+
 };
