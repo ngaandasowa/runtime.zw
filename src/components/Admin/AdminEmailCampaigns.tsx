@@ -169,6 +169,18 @@ const starterCampaigns = {
     ctaUrl:
       'https://runtime.co.zw/dashboard',
   },
+  runtime_dns: {
+    subject:
+      'Runtime DNS is now available',
+    title:
+      'Manage your domain and DNS in one place',
+    message:
+      "Runtime DNS is now available. You can manage A, AAAA, CNAME, MX, TXT, CAA and SRV records directly from your Runtime dashboard.\n\nRuntime DNS is included free with your domain.\n\nIf your domain already uses other nameservers, nothing has been changed automatically. You can choose to move to Runtime DNS when you are ready.",
+    ctaLabel:
+      'Open your domains',
+    ctaUrl:
+      'https://runtime.co.zw/dashboard',
+  },
 };
 
 export const AdminEmailCampaigns:
@@ -761,6 +773,18 @@ export const AdminEmailCampaigns:
                   className="rounded-lg border border-zinc-200 px-3 py-2 text-xs font-semibold text-zinc-700 hover:bg-zinc-50"
                 >
                   Runtime Credit update
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    applyStarter(
+                      'runtime_dns'
+                    )
+                  }
+                  className="rounded-lg border border-zinc-200 px-3 py-2 text-xs font-semibold text-zinc-700 hover:bg-zinc-50"
+                >
+                  Runtime DNS update
                 </button>
               </div>
             )}

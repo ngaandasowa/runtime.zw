@@ -184,6 +184,18 @@ const layout = ({ title, intro, data, note, }) => {
 
                       ${row('Nameservers', nsText)}
 
+                      ${row('DNS', data.dnsProvider === 'cloudflare'
+        ? 'Runtime DNS'
+        : data.dnsProvider === 'custom'
+            ? 'Custom DNS'
+            : data.dnsProvider === 'legacy'
+                ? 'Existing DNS'
+                : undefined)}
+
+                      ${row('DNS status', data.dnsStatus
+        ? data.dnsStatus.replace(/_/g, ' ')
+        : undefined)}
+
                       ${row('Reason', data.reason)}
                     </table>
 
@@ -236,7 +248,7 @@ const customerContent = (event) => {
                 subject: (data) => `Order ${data.orderReference || ''} received`.trim(),
                 title: 'Your domain order has been created',
                 intro: 'we received your domain order.',
-                note: 'Complete the payment shown in your Runtime account. Registration starts after payment is verified.',
+                note: 'Complete the payment shown in your Runtime account. Registration starts after payment is verified. If you selected Runtime DNS, it is included free and will be prepared automatically during registration.',
             };
         case 'renewal_order_created':
             return {
@@ -292,6 +304,11 @@ const customerContent = (event) => {
                 subject: (data) => `${data.domainName} is now active`,
                 title: 'Your domain is active',
                 intro: 'your domain registration has been completed.',
+                note: (data) => data.dnsProvider === 'cloudflare'
+                    ? 'Runtime DNS is included with your domain. You can manage A, AAAA, CNAME, MX, TXT, CAA and SRV records directly from your Runtime dashboard.'
+                    : data.dnsProvider === 'custom'
+                        ? 'Your domain is using the custom nameservers you selected. Runtime has not replaced your DNS settings.'
+                        : 'You can manage your domain and review its DNS settings from your Runtime dashboard.',
             };
         case 'domain_assigned':
             return {
@@ -331,7 +348,7 @@ const customerContent = (event) => {
                 subject: (data) => `Transfer request received for ${data.domainName}`,
                 title: 'Domain transfer request received',
                 intro: 'we received your domain transfer request.',
-                note: 'Runtime will process the transfer and update the domain status when the next step is completed.',
+                note: 'Runtime will process the transfer and update the domain status when the next step is completed. Your existing DNS remains unchanged unless you explicitly choose to move the domain to Runtime DNS.',
             };
         case 'domain_expiry_60_day':
             return {

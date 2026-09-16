@@ -2508,6 +2508,15 @@ const getDomainOrderDetails = async (
 
               renewalDate:
                 updated.expires_at,
+
+              nameservers:
+                (updated as any).nameservers || [],
+
+              dnsProvider:
+                (updated as any).dns_provider,
+
+              dnsStatus:
+                (updated as any).dns_status,
             }
           );
       }
@@ -4359,6 +4368,15 @@ const getDomainOrderDetails = async (
             renewalDate:
               activatedDomain
                 .expires_at,
+
+            nameservers:
+              (activatedDomain as any).nameservers || [],
+
+            dnsProvider:
+              (activatedDomain as any).dns_provider,
+
+            dnsStatus:
+              (activatedDomain as any).dns_status,
           }
         );
       }

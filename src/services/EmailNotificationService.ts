@@ -58,6 +58,8 @@ export type EmailNotificationPayload = {
     proposed_usage?: string;
   };
   updatedByAdmin?: boolean;
+  dnsProvider?: 'cloudflare' | 'custom' | 'legacy' | string;
+  dnsStatus?: string;
 };
 
 const API_BASE_URL =
