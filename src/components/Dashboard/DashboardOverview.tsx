@@ -349,37 +349,49 @@ export const DashboardOverview:
     const overviewDomainStatus = (
       domain: any
     ) => {
+      const linkedOrder =
+        linkedOrderForDomain(
+          domain
+        );
+
+      /*
+       * A cancelled order must never leave its
+       * non-active domain stub looking like it is
+       * still being processed on the overview.
+       */
+      if (
+        linkedOrder &&
+        String(
+          linkedOrder.status
+        ) === 'cancelled' &&
+        [
+          'pending',
+          'pending_payment',
+          'pending_registration',
+          'pending_transfer',
+          'pending_delete',
+          'cancelled',
+        ].includes(
+          String(domain.status)
+        )
+      ) {
+        return 'cancelled';
+      }
+
       if (
         domain.status ===
-          'pending_payment'
-      ) {
-        const linkedOrder =
-          linkedOrderForDomain(
-            domain
-          );
-
-        if (
-          linkedOrder &&
+          'pending_payment' &&
+        linkedOrder &&
+        [
+          'paid',
+          'completed',
+        ].includes(
           String(
             linkedOrder.status
-          ) === 'cancelled'
-        ) {
-          return 'cancelled';
-        }
-
-        if (
-          linkedOrder &&
-          [
-            'paid',
-            'completed',
-          ].includes(
-            String(
-              linkedOrder.status
-            )
           )
-        ) {
-          return 'pending_registration';
-        }
+        )
+      ) {
+        return 'pending_registration';
       }
 
       return domain.status;
@@ -392,13 +404,19 @@ export const DashboardOverview:
 
     const processingCount =
       visibleDomains.filter(
-        (domain) =>
-          domain.status ===
-            'pending_registration' ||
-          domain.status ===
-            'pending_transfer' ||
-          domain.status ===
-            'pending_delete'
+        (domain) => {
+          const status =
+            overviewDomainStatus(
+              domain
+            );
+
+          return (
+            status ===
+              'pending_registration' ||
+            status ===
+              'pending_transfer'
+          );
+        }
       ).length;
 
     const verifiedPayments =
@@ -411,7 +429,21 @@ export const DashboardOverview:
       ).length;
 
     const recentDomains =
-      [...visibleDomains]
+      visibleDomains
+        .filter(
+          (domain) =>
+            ![
+              'cancelled',
+              'replaced',
+              'registry_rejected',
+            ].includes(
+              String(
+                overviewDomainStatus(
+                  domain
+                )
+              )
+            )
+        )
         .sort(
           (a, b) =>
             new Date(
