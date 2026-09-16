@@ -3,21 +3,46 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb } from '../firebaseAdmin.js';
 export const DNS_TYPES = new Set(['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'CAA', 'SRV']);
 export const PROXY_TYPES = new Set(['A', 'AAAA', 'CNAME']);
-const s = (v) => String(v ?? '').trim();
-export function normalizeRecordName(v, domain) { const x = s(v).toLowerCase().replace(/\.$/, ''); if (!x || x === '@')
-    return domain; if (x === domain || x.endsWith('.' + domain))
-    return x; if (!/^[a-z0-9_*.-]+$/i.test(x))
-    throw new Error('Enter a valid DNS record name.'); return `${x}.${domain}`; }
-function hostname(v, label) { const x = s(v).toLowerCase().replace(/\.$/, ''); if (!x || x.length > 253 || !/^[a-z0-9._-]+$/i.test(x))
-    throw new Error(`${label} must be a valid hostname.`); return x; }
-function integer(v, label, min = 0, max = 65535) { const n = Number(v); if (!Number.isInteger(n) || n < min || n > max)
-    throw new Error(`${label} must be between ${min} and ${max}.`); return n; }
+const s = (value) => String(value ?? '').trim();
+export function normalizeRecordName(value, domain) {
+    const name = s(value).toLowerCase().replace(/\.$/, '');
+    if (!name || name === '@')
+        return domain;
+    if (name === domain || name.endsWith(`.${domain}`))
+        return name;
+    if (!/^[a-z0-9_*.-]+$/i.test(name))
+        throw new Error('Enter a valid DNS record name.');
+    return `${name}.${domain}`;
+}
+function hostname(value, label) {
+    const host = s(value).toLowerCase().replace(/\.$/, '');
+    if (!host || host.length > 253 || !/^[a-z0-9._-]+$/i.test(host)) {
+        throw new Error(`${label} must be a valid hostname.`);
+    }
+    return host;
+}
+function integer(value, label, min = 0, max = 65535) {
+    const number = Number(value);
+    if (!Number.isInteger(number) || number < min || number > max) {
+        throw new Error(`${label} must be between ${min} and ${max}.`);
+    }
+    return number;
+}
+function normalizeTtl(value) {
+    const raw = Number(value ?? 1);
+    if (raw === 1)
+        return 1;
+    if (!Number.isInteger(raw) || raw < 60 || raw > 86400) {
+        throw new Error('TTL must be Auto or between 60 and 86400 seconds.');
+    }
+    return raw;
+}
 export function dnsInput(body, domain) {
     const type = s(body?.type).toUpperCase();
-    if (!DNS_TYPES.has(type))
+    if (!DNS_TYPES.has(type)) {
         throw new Error('Supported record types are A, AAAA, CNAME, MX, TXT, CAA and SRV.');
-    const raw = Number(body?.ttl ?? 1);
-    const ttl = raw === 1 ? 1 : Math.max(60, Math.min(86400, Math.floor(raw || 1)));
+    }
+    const ttl = normalizeTtl(body?.ttl);
     const name = normalizeRecordName(body?.name, domain);
     const value = s(body?.value ?? body?.content);
     if (type === 'A' && isIP(value) !== 4)
@@ -25,8 +50,8 @@ export function dnsInput(body, domain) {
     if (type === 'AAAA' && isIP(value) !== 6)
         throw new Error('Value must be a valid IPv6 address.');
     if (type === 'CNAME') {
-        const t = hostname(value, 'CNAME value');
-        if (t === name)
+        const target = hostname(value, 'CNAME value');
+        if (target === name)
             throw new Error('A CNAME cannot point to itself.');
     }
     if (type === 'MX')
@@ -35,16 +60,36 @@ export function dnsInput(body, domain) {
         throw new Error(`${type} value is required.`);
     if (type === 'SRV') {
         const target = hostname(body?.target ?? value, 'SRV target');
-        const priority = integer(body?.priority, 'SRV priority'), weight = integer(body?.weight, 'SRV weight'), port = integer(body?.port, 'SRV port');
-        return { type: 'SRV', name, content: `${weight} ${port} ${target}`, ttl, proxied: false, data: { priority, weight, port, target } };
+        const priority = integer(body?.priority, 'SRV priority');
+        const weight = integer(body?.weight, 'SRV weight');
+        const port = integer(body?.port, 'SRV port');
+        return {
+            type: 'SRV',
+            name,
+            content: `${weight} ${port} ${target}`,
+            ttl,
+            proxied: false,
+            data: { priority, weight, port, target },
+        };
     }
     if (!value)
         throw new Error('Record value is required.');
-    const o = { type, name, content: value, ttl, proxied: PROXY_TYPES.has(type) ? Boolean(body?.proxied) : false };
+    const input = {
+        type: type,
+        name,
+        content: value,
+        ttl,
+        proxied: PROXY_TYPES.has(type) ? Boolean(body?.proxied) : false,
+    };
     if (type === 'MX') {
-        o.priority = integer(body?.priority, 'MX priority');
-        o.proxied = false;
+        input.priority = integer(body?.priority, 'MX priority');
+        input.proxied = false;
     }
-    return o;
+    return input;
 }
-export async function dnsAudit(a) { await adminDb.collection('dns_activity').add({ ...a, created_at: FieldValue.serverTimestamp() }); }
+export async function dnsAudit(input) {
+    await adminDb.collection('dns_activity').add({
+        ...input,
+        created_at: FieldValue.serverTimestamp(),
+    });
+}
