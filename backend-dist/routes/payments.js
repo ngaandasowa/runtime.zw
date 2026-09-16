@@ -696,6 +696,31 @@ router.post('/customer/domain-update', authenticate, async (req, res) => {
             let historyStatus = 'pending';
             if (action ===
                 'nameservers') {
+                const domainName = String(domain.domain_name ||
+                    '')
+                    .trim()
+                    .toLowerCase();
+                /*
+                 * ZISPA/manual-registry domains must wait for registry
+                 * confirmation before Runtime changes the active delegation.
+                 * Other domains do not create a ZISPA request.
+                 */
+                const requiresRegistryConfirmation = String(domain.processing_type ||
+                    '')
+                    .trim()
+                    .toLowerCase() ===
+                    'zispa' ||
+                    domainName.endsWith('.co.zw');
+                if (requiresRegistryConfirmation &&
+                    String(domain.nameserver_change_status ||
+                        '')
+                        .trim()
+                        .toLowerCase() ===
+                        'pending_registry') {
+                    const error = new Error('A nameserver change is already in progress. Your new nameservers will appear after the registry successfully completes the current request.');
+                    error.statusCode = 409;
+                    throw error;
+                }
                 const nameservers = Array.isArray(req.body?.nameservers)
                     ? req.body.nameservers
                         .map((value) => String(value || '')
@@ -723,28 +748,55 @@ router.post('/customer/domain-update', authenticate, async (req, res) => {
                         .slice(0, nameservers.length)
                         .map((value) => String(value || '').trim())
                     : [];
-                /*
-                 * Registry delegation is authoritative.
-                 *
-                 * Do not replace the currently-active nameservers yet. Store the
-                 * requested delegation separately until the registrar confirms
-                 * the ZISPA MODIFY request. This is especially important when a
-                 * domain is leaving Runtime DNS: Runtime DNS must remain the
-                 * active provider until the registry has actually switched NS.
-                 */
-                changes.pending_nameservers =
-                    nameservers;
-                changes.pending_nameserver_ips =
-                    nameserverIps;
-                changes.nameserver_change_status =
-                    'pending_registry';
-                changes.nameserver_change_requested_at =
-                    now;
-                changes.nameserver_change_requested_by =
-                    runtimeUser.email ||
-                        runtimeUser.uid;
-                description =
-                    'Nameserver change requested and awaiting registry confirmation.';
+                if (requiresRegistryConfirmation) {
+                    /*
+                     * Registry delegation is authoritative. Keep the currently
+                     * active delegation until the registry confirms the MODIFY.
+                     */
+                    changes.pending_nameservers =
+                        nameservers;
+                    changes.pending_nameserver_ips =
+                        nameserverIps;
+                    changes.nameserver_change_status =
+                        'pending_registry';
+                    changes.nameserver_change_requested_at =
+                        now;
+                    changes.nameserver_change_requested_by =
+                        runtimeUser.email ||
+                            runtimeUser.uid;
+                    description =
+                        'Nameserver change requested and awaiting registry confirmation.';
+                }
+                else {
+                    /*
+                     * Non-ZISPA domains must never create a ZISPA pending state.
+                     * Their saved delegation is updated directly in Runtime.
+                     */
+                    changes.nameservers =
+                        nameservers;
+                    changes.nameserver_ips =
+                        nameserverIps;
+                    changes.nameserver_change_status =
+                        'completed';
+                    changes.nameserver_change_completed_at =
+                        now;
+                    changes.pending_nameservers =
+                        null;
+                    changes.pending_nameserver_ips =
+                        null;
+                    if (String(domain.dns_provider ||
+                        '')
+                        .trim()
+                        .toLowerCase() ===
+                        'cloudflare') {
+                        changes.dns_provider =
+                            'custom';
+                        changes.dns_status =
+                            'custom';
+                    }
+                    description =
+                        'Nameservers updated.';
+                }
             }
             else if (action ===
                 'owner') {

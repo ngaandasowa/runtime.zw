@@ -774,6 +774,15 @@ export const DashboardDomains: React.FC =
 
     const canManageRuntimeDns = (domain: Domain) => String((domain as any).dns_provider || '').toLowerCase() === 'cloudflare' && Boolean((domain as any).cloudflare?.zone_id);
 
+    const hasPendingNameserverChange = (domain: Domain) =>
+      String(
+        (domain as any).nameserver_change_status ||
+        ''
+      )
+        .trim()
+        .toLowerCase() ===
+      'pending_registry';
+
     const openRuntimeDns = (domain: Domain) => { setSelectedDomain(domain); setModalMode('dns'); };
     const canMoveToRuntimeDns = (domain: Domain) =>
       canModifyRegisteredDomain(domain) &&
@@ -804,6 +813,18 @@ export const DashboardDomains: React.FC =
       ) {
         showNotification(
           'Nameservers can be changed after your domain is registered.',
+          'info'
+        );
+        return;
+      }
+
+      if (
+        hasPendingNameserverChange(
+          domain
+        )
+      ) {
+        showNotification(
+          'A nameserver change is already in progress. Your new nameservers will appear after the registry successfully completes the current request.',
           'info'
         );
         return;
@@ -867,6 +888,17 @@ export const DashboardDomains: React.FC =
         ) {
           setNameserverError(
             'Nameservers can be changed after your domain is registered.'
+          );
+          return;
+        }
+
+        if (
+          hasPendingNameserverChange(
+            selectedDomain
+          )
+        ) {
+          setNameserverError(
+            'A nameserver change is already in progress. Your new nameservers will appear after the registry successfully completes the current request.'
           );
           return;
         }
@@ -2115,15 +2147,31 @@ export const DashboardDomains: React.FC =
                 {canModifyRegisteredDomain(
                   selectedDomain
                 ) ? (
-                  <ActionButton
-                    icon={Server}
-                    label="Change Nameservers"
-                    onClick={() =>
-                      openNameservers(
-                        selectedDomain
-                      )
-                    }
-                  />
+                  hasPendingNameserverChange(
+                    selectedDomain
+                  ) ? (
+                    <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-left text-xs text-amber-800">
+                      <Server className="mt-0.5 h-4 w-4 shrink-0" />
+                      <div>
+                        <p className="font-semibold text-amber-900">
+                          Nameserver change in progress
+                        </p>
+                        <p className="mt-0.5 text-[10px] leading-4">
+                          Your new nameservers will appear here after the registry successfully completes the change. You cannot submit another nameserver change while this request is being processed.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <ActionButton
+                      icon={Server}
+                      label="Change Nameservers"
+                      onClick={() =>
+                        openNameservers(
+                          selectedDomain
+                        )
+                      }
+                    />
+                  )
                 ) : (
                   <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-left text-xs text-zinc-500">
                     <Server className="h-4 w-4 shrink-0" />

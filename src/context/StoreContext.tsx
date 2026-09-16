@@ -1891,8 +1891,20 @@ const getDomainOrderDetails = async (
           }
         );
 
+      const awaitingRegistry =
+        String(
+          (updated as any)
+            .nameserver_change_status ||
+          ''
+        )
+          .trim()
+          .toLowerCase() ===
+        'pending_registry';
+
       showNotification(
-        'Nameserver change submitted. Your current DNS remains active until the registry confirms the new nameservers.',
+        awaitingRegistry
+          ? 'Nameserver change submitted. Your current nameservers remain active until the registry confirms the change.'
+          : 'Nameservers updated successfully. DNS propagation may take time.',
         'success'
       );
     };
