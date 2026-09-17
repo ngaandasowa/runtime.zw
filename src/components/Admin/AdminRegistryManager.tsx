@@ -183,11 +183,66 @@ export const AdminRegistryManager: React.FC =
           ) || null
         : null;
 
+    const registryDomainForRequest = (
+      request: RegistryRequest
+    ) => {
+      const domain = domains.find(
+        (item) =>
+          item.id === request.domain_id ||
+          item.domain_name === request.domain_name
+      );
+
+      if (!domain) return null;
+
+      const requestedNameservers =
+        (request as any).requested_nameservers;
+      const requestedIps =
+        (request as any).requested_nameserver_ips;
+
+      if (
+        (request as any).workflow_type === 'runtime_dns_migration' &&
+        Array.isArray(requestedNameservers) &&
+        requestedNameservers.length >= 2
+      ) {
+        return {
+          ...domain,
+          nameservers: requestedNameservers,
+          nameserver_ips:
+            Array.isArray(requestedIps)
+              ? requestedIps
+              : [],
+        };
+      }
+
+      return domain;
+    };
+
+    const templateForRequest = (
+      request: RegistryRequest
+    ) => {
+      const domain = registryDomainForRequest(request);
+      if (domain) {
+        return registryTemplateService.generateTemplate(
+          domain,
+          request.action
+        );
+      }
+      return request.generated_template || '';
+    };
+
     const missingFields =
-      selectedDomain
-        ? registryTemplateService.validateTemplateData(
-            selectedDomain
-          )
+      selectedRequest
+        ? (() => {
+            const domain =
+              registryDomainForRequest(
+                selectedRequest
+              );
+            return domain
+              ? registryTemplateService.validateTemplateData(
+                  domain
+                )
+              : [];
+          })()
         : [];
 
     const downloadTemplate = (
@@ -204,7 +259,7 @@ export const AdminRegistryManager: React.FC =
        * Strip non-ASCII characters from the generated attachment.
        */
       const ascii =
-        request.generated_template
+        templateForRequest(request)
           .normalize('NFKD')
           .replace(
             /[^\x00-\x7F]/g,
@@ -670,7 +725,7 @@ export const AdminRegistryManager: React.FC =
 
                   <pre className="mt-4 overflow-x-auto whitespace-pre rounded-xl bg-zinc-950 p-4 font-mono text-[11px] leading-5 text-zinc-100">
                     {
-                      selectedRequest.generated_template
+                      templateForRequest(selectedRequest)
                     }
                   </pre>
                 </div>

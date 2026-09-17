@@ -128,6 +128,7 @@ export const AdminDomains:
 
     const [dnsDomain, setDnsDomain] = useState<any | null>(null);
     const [dnsMigrationDomain, setDnsMigrationDomain] = useState<any | null>(null);
+    const [reconcilingDnsId, setReconcilingDnsId] = useState<string | null>(null);
 
     const [
       editOwner,
@@ -195,6 +196,111 @@ export const AdminDomains:
     const canMoveToRuntimeDns = (domain: any) =>
       ['active', 'expired'].includes(String(domain?.status || '')) &&
       !isRuntimeDns(domain);
+
+    /*
+     * Recovery is intentionally offered only for domains Runtime currently
+     * considers external/custom. The backend performs the real safety checks:
+     * existing Runtime Cloudflare zone + Active + public NS exact match.
+     */
+    const canReconcileRuntimeDns = (domain: any) =>
+      ['active', 'expired'].includes(
+        String(domain?.status || '')
+      ) &&
+      !isRuntimeDns(domain);
+
+    const reconcileRuntimeDns =
+      async (domain: any) => {
+        if (reconcilingDnsId) return;
+
+        const confirmed =
+          window.confirm(
+            `Reconcile Runtime DNS for ${domain.domain_name}?\n\nRuntime will verify Cloudflare is Active and independently verify the domain's public authoritative nameservers. No registry or nameserver change will be made.`
+          );
+
+        if (!confirmed) return;
+
+        try {
+          setReconcilingDnsId(domain.id);
+
+          const { getAuth } =
+            await import('firebase/auth');
+          const user =
+            getAuth().currentUser;
+
+          if (!user) {
+            throw new Error(
+              'Authentication required.'
+            );
+          }
+
+          const token =
+            await user.getIdToken();
+
+          const apiBase =
+            import.meta.env
+              .VITE_API_BASE_URL ||
+            (import.meta.env.DEV
+              ? 'http://localhost:4000'
+              : 'https://api.runtime.co.zw');
+
+          const response =
+            await fetch(
+              `${apiBase}/api/dns/cloudflare/reconcile`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type':
+                    'application/json',
+                  Authorization:
+                    `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  domainId: domain.id,
+                }),
+              }
+            );
+
+          const body =
+            await response
+              .json()
+              .catch(() => ({}));
+
+          if (
+            !response.ok ||
+            body?.success === false
+          ) {
+            throw new Error(
+              body?.message ||
+                'Unable to reconcile Runtime DNS.'
+            );
+          }
+
+          showNotification(
+            `${domain.domain_name} is now correctly recognised as Runtime DNS. Refreshing domain state…`,
+            'success'
+          );
+
+          /*
+           * Domain data is supplied by StoreContext listeners/loading.
+           * Reload once after a successful admin recovery so both admin
+           * and all derived UI state are rebuilt from Firestore.
+           */
+          window.setTimeout(
+            () =>
+              window.location.reload(),
+            650
+          );
+        } catch (error) {
+          showNotification(
+            error instanceof Error
+              ? error.message
+              : 'Unable to reconcile Runtime DNS.',
+            'error'
+          );
+        } finally {
+          setReconcilingDnsId(null);
+        }
+      };
 
     const openDomainEditor =
       (domain: any) => {
@@ -934,6 +1040,27 @@ export const AdminDomains:
                               className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-xs font-bold text-zinc-700 hover:bg-zinc-50">
                               <Network className="h-4 w-4" />
                               Move to Runtime DNS
+                            </button>
+                          )}
+
+                          {canReconcileRuntimeDns(domain) && (
+                            <button
+                              type="button"
+                              disabled={reconcilingDnsId === domain.id}
+                              onClick={() => void reconcileRuntimeDns(domain)}
+                              className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-bold text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              title="Verify Cloudflare and the public delegation, then repair stale Runtime DNS state"
+                            >
+                              <RefreshCw
+                                className={
+                                  reconcilingDnsId === domain.id
+                                    ? 'h-4 w-4 animate-spin'
+                                    : 'h-4 w-4'
+                                }
+                              />
+                              {reconcilingDnsId === domain.id
+                                ? 'Checking DNS…'
+                                : 'Reconcile Runtime DNS'}
                             </button>
                           )}
 

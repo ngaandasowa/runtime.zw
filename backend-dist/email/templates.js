@@ -330,6 +330,13 @@ const customerContent = (event) => {
                 intro: 'we received your nameserver change request.',
                 note: 'The requested nameservers will be processed according to the domain registry workflow.',
             };
+        case 'dns_migration_ready':
+            return {
+                subject: (data) => `Runtime DNS requires registry processing: ${data.domainName}`,
+                title: 'Runtime DNS is ready for registry processing',
+                intro: 'the DNS records have been prepared and the Runtime DNS nameservers are ready.',
+                note: 'The current nameservers remain active until the manual registrar or ZISPA modification is processed. No customer action is required.',
+            };
         case 'domain_modify_requested':
             return {
                 subject: (data) => `Domain update received for ${data.domainName}`,
@@ -427,6 +434,7 @@ const adminEvents = new Set([
     'renewal_order_created',
     'order_cancelled',
     'nameserver_change_requested',
+    'dns_migration_ready',
     'domain_modify_requested',
     'domain_delete_requested',
     'domain_transfer_requested',

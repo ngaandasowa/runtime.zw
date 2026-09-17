@@ -15,6 +15,7 @@ import {
 } from '../types';
 import { runtimePricingService } from '../services/RuntimePricingService';
 import { registryService } from '../services/RegistryService';
+import { registryRequestApiService } from '../services/RegistryRequestApiService';
 import { orderService } from '../services/OrderService';
 import { paymentService } from '../services/PaymentService';
 import { firebaseAuthService } from '../services/FirebaseAuthService';
@@ -805,6 +806,25 @@ useEffect(() => {
   };
 
   loadDomains();
+}, [currentUser]);
+
+useEffect(() => {
+  const loadRegistryRequests = async () => {
+    if (!currentUser || currentUser.role !== 'super_admin') {
+      setRegistryRequests([]);
+      return;
+    }
+
+    try {
+      const requests = await registryRequestApiService.getAll();
+      setRegistryRequests(requests);
+    } catch (error) {
+      console.error('Failed to load persistent registry requests:', error);
+      setRegistryRequests([]);
+    }
+  };
+
+  void loadRegistryRequests();
 }, [currentUser]);
 
 useEffect(() => {
@@ -1866,10 +1886,16 @@ const getDomainOrderDetails = async (
                 'customer'
             );
 
+        const persistedRequest =
+          await registryRequestApiService.create({
+            ...request,
+            workflow_type: 'standard_registry',
+          } as RegistryRequest);
+
         setRegistryRequests(
           (prev) => [
-            request,
-            ...prev,
+            persistedRequest,
+            ...prev.filter((item) => item.id !== persistedRequest.id),
           ]
         );
       }
@@ -2003,10 +2029,16 @@ const getDomainOrderDetails = async (
                 'customer'
             );
 
+        const persistedRequest =
+          await registryRequestApiService.create({
+            ...request,
+            workflow_type: 'standard_registry',
+          } as RegistryRequest);
+
         setRegistryRequests(
           (prev) => [
-            request,
-            ...prev,
+            persistedRequest,
+            ...prev.filter((item) => item.id !== persistedRequest.id),
           ]
         );
       }
@@ -2151,10 +2183,16 @@ const getDomainOrderDetails = async (
                 'customer'
             );
 
+        const persistedRequest =
+          await registryRequestApiService.create({
+            ...request,
+            workflow_type: 'standard_registry',
+          } as RegistryRequest);
+
         setRegistryRequests(
           (prev) => [
-            request,
-            ...prev,
+            persistedRequest,
+            ...prev.filter((item) => item.id !== persistedRequest.id),
           ]
         );
       }
@@ -3076,10 +3114,16 @@ const getDomainOrderDetails = async (
               .payment_reference =
               approvedPayment.reference;
 
+            const persistedRegistryRequest =
+              await registryRequestApiService.create({
+                ...registryRequest,
+                workflow_type: 'standard_registry',
+              } as RegistryRequest);
+
             setRegistryRequests(
               (prev) => [
-                registryRequest,
-                ...prev,
+                persistedRegistryRequest,
+                ...prev.filter((item) => item.id !== persistedRegistryRequest.id),
               ]
             );
           }
@@ -3152,10 +3196,16 @@ const getDomainOrderDetails = async (
           registryRequest.payment_reference =
             approvedPayment.reference;
 
+          const persistedRegistryRequest =
+            await registryRequestApiService.create({
+              ...registryRequest,
+              workflow_type: 'standard_registry',
+            } as RegistryRequest);
+
           setRegistryRequests(
             (prev) => [
-              registryRequest,
-              ...prev,
+              persistedRegistryRequest,
+              ...prev.filter((item) => item.id !== persistedRegistryRequest.id),
             ]
           );
         }
@@ -4263,8 +4313,40 @@ const getDomainOrderDetails = async (
     const target = registryRequests.find(r => r.id === requestId);
     if (!target) return;
 
+    if ((target as any).workflow_type === 'runtime_dns_migration') {
+      const authUser = getAuth().currentUser;
+      if (!authUser) throw new Error('Authentication required.');
+      const token = await authUser.getIdToken();
+      const response = await fetch(
+        `${API_BASE_URL}/api/dns-migration/${target.domain_id}/registry-submitted`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || body?.success === false) {
+        throw new Error(body?.message || 'Unable to record registry submission.');
+      }
+
+      const refreshed = await registryRequestApiService.getAll();
+      setRegistryRequests(refreshed);
+      showNotification(
+        `${target.domain_name} marked as submitted. Runtime DNS will activate automatically after delegation is detected.`,
+        'success'
+      );
+      return;
+    }
+
     const res = await registryService.submitToRegistry(target);
-    setRegistryRequests(prev => prev.map(r => r.id === requestId ? res.updatedRequest : r));
+    const persisted = await registryRequestApiService.update(
+      requestId,
+      res.updatedRequest
+    );
+    setRegistryRequests(prev => prev.map(r => r.id === requestId ? persisted : r));
     
     // Also record in domain history
     setDomains(prev => prev.map(d => {
@@ -4301,12 +4383,24 @@ const getDomainOrderDetails = async (
     showNotification(res.message, 'success');
   };
 
-  const confirmRegistryRequest = (requestId: string) => {
+  const confirmRegistryRequest = async (requestId: string) => {
     const target = registryRequests.find(r => r.id === requestId);
     if (!target) return;
 
+    if ((target as any).workflow_type === 'runtime_dns_migration') {
+      showNotification(
+        'Runtime DNS migration is confirmed automatically after Cloudflare detects the new delegation. Mark it Submitted after you send the ZISPA request.',
+        'info'
+      );
+      return;
+    }
+
     const updated = registryService.confirmRegistration(target);
-    setRegistryRequests(prev => prev.map(r => r.id === requestId ? updated : r));
+    const persisted = await registryRequestApiService.update(
+      requestId,
+      updated
+    );
+    setRegistryRequests(prev => prev.map(r => r.id === requestId ? persisted : r));
 
     // Update the domain status accordingly
     setDomains(prev => prev.map(d => {
@@ -4320,8 +4414,13 @@ const getDomainOrderDetails = async (
         const nextYear = new Date(now);
         nextYear.setFullYear(nextYear.getFullYear() + 1);
 
+        const isRuntimeDnsMigrationModify =
+          target.action === 'M' &&
+          (target as any).workflow_type === 'runtime_dns_migration';
+
         const isNameserverModify =
           target.action === 'M' &&
+          !isRuntimeDnsMigrationModify &&
           Array.isArray(
             (d as any).pending_nameservers
           ) &&
@@ -4486,12 +4585,16 @@ const getDomainOrderDetails = async (
     showNotification(`Domain update for ${target.domain_name} completed.`, 'success');
   };
 
-  const createManualRegistryRequest = (domainId: string, action: RegistryAction) => {
+  const createManualRegistryRequest = async (domainId: string, action: RegistryAction) => {
     const domain = domains.find(d => d.id === domainId);
     if (!domain) return;
 
     const req = registryService.createRequest(domain, action, currentUser?.email || 'admin');
-    setRegistryRequests(prev => [req, ...prev]);
+    const persisted = await registryRequestApiService.create({
+      ...req,
+      workflow_type: 'standard_registry',
+    } as RegistryRequest);
+    setRegistryRequests(prev => [persisted, ...prev.filter(item => item.id !== persisted.id)]);
     showNotification(`Manual domain registry ${action} request created for ${domain.domain_name}.`, 'info');
   };
 

@@ -21,6 +21,8 @@ import dnsRoutes from './routes/dns.js';
 import customerDnsRoutes from './routes/customerDns.js';
 import adminDnsRoutes from './routes/adminDns.js';
 import dnsMigrationRoutes from './routes/dnsMigration.js';
+import registryRequestRoutes from './routes/registryRequests.js';
+
 
 import {
   startAbandonedCleanupScheduler,
@@ -201,6 +203,7 @@ app.use(
 app.use('/api/customer-dns', customerDnsRoutes);
 app.use('/api/admin-dns', adminDnsRoutes);
 app.use('/api/dns-migration', dnsMigrationRoutes);
+app.use('/api/registry-requests', registryRequestRoutes);
 
 /*
  * ----------------------------------------------------------
