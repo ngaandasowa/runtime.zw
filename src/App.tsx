@@ -148,9 +148,82 @@ const AppContent: React.FC = () => {
   const {
     notification,
     registrationModalOpen,
+    setRegistrationModalOpen,
+    pendingRegisterDomain,
+    setPendingRegisterDomain,
+    currentUser,
+    authReady,
   } = useStore();
 
   const location = useLocation();
+
+  /*
+   * ----------------------------------------------------------
+   * RESUME AN UNFINISHED DOMAIN REGISTRATION
+   * ----------------------------------------------------------
+   *
+   * DomainRegistrationModal stores the customer's unfinished
+   * checkout in sessionStorage before authentication. React
+   * modal state itself does not survive navigation or refresh,
+   * so the dashboard must restore the modal from that durable
+   * draft after Firebase authentication is ready.
+   *
+   * This deliberately lives at App level because the modal is
+   * also rendered here. It therefore works after login, account
+   * creation, Google sign-in and a normal dashboard refresh.
+   */
+  useEffect(() => {
+    if (!authReady || !currentUser) return;
+    if (!location.pathname.startsWith('/dashboard')) return;
+    if (registrationModalOpen) return;
+
+    const savedDraft = sessionStorage.getItem(
+      'runtime_registration_draft'
+    );
+
+    if (!savedDraft) return;
+
+    try {
+      const draft = JSON.parse(savedDraft) as {
+        domain?: unknown;
+      };
+
+      const domain =
+        typeof draft.domain === 'string'
+          ? draft.domain.trim().toLowerCase()
+          : '';
+
+      if (!domain) {
+        sessionStorage.removeItem(
+          'runtime_registration_draft'
+        );
+        return;
+      }
+
+      if (pendingRegisterDomain !== domain) {
+        setPendingRegisterDomain(domain);
+      }
+
+      setRegistrationModalOpen(true);
+    } catch (error) {
+      console.error(
+        'Unable to restore unfinished domain registration:',
+        error
+      );
+
+      sessionStorage.removeItem(
+        'runtime_registration_draft'
+      );
+    }
+  }, [
+    authReady,
+    currentUser,
+    location.pathname,
+    registrationModalOpen,
+    pendingRegisterDomain,
+    setPendingRegisterDomain,
+    setRegistrationModalOpen,
+  ]);
 
   const isAuthRoute = [
   '/login',
