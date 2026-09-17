@@ -198,7 +198,7 @@ export const DomainRegistrationModal: React.FC = () => {
     useState(false);
 
 const [gateway, setGateway] =
-  useState<Gateway>('ecocash_usd');
+  useState<Gateway>('pesepay');
 
 const [pesepayMethods, setPesepayMethods] =
   useState<PesePayMethod[]>([]);
@@ -229,6 +229,9 @@ const [placedOrder, setPlacedOrder] =
     gateway: Gateway;
     paymentId?: string;
     transactionStatus?: string;
+    paymentMethodName?: string;
+    metadataCode?: string;
+    metadataQrCode?: string;
   } | null>(null);
 
   const selectedDomain = availabilityResult?.domain || '';
@@ -341,7 +344,7 @@ const [placedOrder, setPlacedOrder] =
     );
     setNameserverError(null);
     setIsResolvingNameservers(false);
-    setGateway('ecocash_usd');
+    setGateway('pesepay');
     setPesepayMethods([]);
     setPesepayMethodCode('');
     setPesepayMethodsError(null);
@@ -1372,6 +1375,19 @@ const [placedOrder, setPlacedOrder] =
               transaction.transactionStatus ||
               'INITIATED'
             ),
+          paymentMethodName:
+            String(
+              transaction.paymentMethodName ||
+              selectedPesePayMethod!.name
+            ),
+          metadataCode:
+            transaction.metadataCode
+              ? String(transaction.metadataCode)
+              : undefined,
+          metadataQrCode:
+            transaction.metadataQrCode
+              ? String(transaction.metadataQrCode)
+              : undefined,
         });
 
         sessionStorage.removeItem(
@@ -2326,6 +2342,24 @@ const [placedOrder, setPlacedOrder] =
                       }
                     />
 
+                    {placedOrder?.metadataQrCode && (
+                      <div className="border-t border-zinc-200 bg-white p-4 text-center">
+                        <p className="mb-3 text-xs font-semibold text-zinc-700">
+                          Scan to pay
+                        </p>
+                        <img
+                          src={
+                            placedOrder.metadataQrCode.startsWith('data:') ||
+                            placedOrder.metadataQrCode.startsWith('http')
+                              ? placedOrder.metadataQrCode
+                              : `data:image/png;base64,${placedOrder.metadataQrCode}`
+                          }
+                          alt="Payment QR code"
+                          className="mx-auto h-44 w-44 object-contain"
+                        />
+                      </div>
+                    )}
+
                     <div className="flex items-center justify-between gap-4 bg-zinc-50 px-4 py-4">
                       <span className="text-sm font-semibold text-zinc-950">
                         Total
@@ -2573,6 +2607,14 @@ const [placedOrder, setPlacedOrder] =
                               : 'Awaiting confirmation'
                           }
                         />
+
+                        {placedOrder.metadataCode && (
+                          <SummaryRow
+                            label="Payment code"
+                            value={placedOrder.metadataCode}
+                            mono
+                          />
+                        )}
                       </>
                     )}
 
@@ -2654,7 +2696,7 @@ const [placedOrder, setPlacedOrder] =
                               );
                             } else {
                               showNotification(
-                                'Payment is not confirmed yet. Complete the EcoCash prompt and try again.',
+                                'Payment is not confirmed yet. Complete the payment request and try again.',
                                 'info'
                               );
                             }

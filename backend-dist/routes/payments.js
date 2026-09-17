@@ -196,28 +196,30 @@ const normalisePesePayMethod = (value) => {
     const isEcoCash = code === 'PZW211' ||
         searchable.includes('ecocash');
     const isInnBucks = code === 'PZW212' ||
-        searchable.includes('innbucks');
+        searchable.includes('innbucks') ||
+        searchable.includes('inn bucks');
+    const isOmari = searchable.includes("o'mari") ||
+        searchable.includes('omari') ||
+        searchable.includes('o mari');
+    /*
+     * Runtime keeps card details off our own UI. PesePay's
+     * seamless API supports mobile-money methods with a phone
+     * number, so those can stay inside Runtime. Everything else
+     * safely falls back to PesePay's hosted redirect checkout.
+     *
+     * This is deliberately capability-based at Runtime's edge:
+     * new/unknown PesePay methods still work via redirect instead
+     * of being rejected or guessed as seamless.
+     */
+    const seamlessMobileMoney = isEcoCash || isInnBucks || isOmari;
     return {
         code,
         name: name || code,
         description: String(value?.description ??
             value?.paymentMethodDescription ??
             '').trim(),
-        /*
-         * EcoCash is handled as a direct/seamless request
-         * because Runtime supplies the required phone number.
-         *
-         * InnBucks is intentionally sent through PesePay's
-         * hosted checkout. Runtime was previously treating it
-         * as seamless without receiving/rendering the QR/code
-         * data required to complete that flow.
-         */
-        seamless: isEcoCash,
-        requiresPhone: isEcoCash,
-        // Kept only so method identification remains explicit.
-        ...(isInnBucks
-            ? {}
-            : {}),
+        seamless: seamlessMobileMoney,
+        requiresPhone: seamlessMobileMoney,
     };
 };
 const fetchPesePayMethods = async (currencyCode) => {
@@ -1858,6 +1860,208 @@ router.post('/order/ecocash', authenticate, async (req, res) => {
 });
 /*
  * ----------------------------------------------------------
+ * INITIATE PESEPAY RUNTIME CREDIT TOP-UP
+ * ----------------------------------------------------------
+ * Uses the same PesePay method capability rules as order
+ * payments. Mobile-money methods stay seamless; unsupported
+ * methods fall back to PesePay's hosted redirect checkout.
+ */
+router.post('/wallet/pesepay/initiate', authenticate, async (req, res) => {
+    let paymentId = '';
+    try {
+        const runtimeUser = req.runtimeUser;
+        const amount = Math.round((Number(req.body?.amount) + Number.EPSILON) * 100) / 100;
+        const paymentMethodCode = typeof req.body?.paymentMethodCode === 'string'
+            ? req.body.paymentMethodCode.trim()
+            : '';
+        const customerPhoneNumber = typeof req.body?.customerPhoneNumber === 'string'
+            ? req.body.customerPhoneNumber.trim()
+            : '';
+        if (!Number.isFinite(amount) || amount <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Top-up amount must be greater than zero.',
+            });
+        }
+        if (!paymentMethodCode) {
+            return res.status(400).json({
+                success: false,
+                message: 'Choose a PesePay payment method.',
+            });
+        }
+        const currency = 'USD';
+        const availableMethods = await fetchPesePayMethods(currency);
+        const selectedMethod = availableMethods.find((method) => method.code === paymentMethodCode);
+        if (!selectedMethod) {
+            return res.status(400).json({
+                success: false,
+                message: 'That PesePay payment method is not currently available.',
+            });
+        }
+        if (selectedMethod.requiresPhone && !customerPhoneNumber) {
+            return res.status(400).json({
+                success: false,
+                message: `${selectedMethod.name} phone number is required.`,
+            });
+        }
+        const customerEmail = String(runtimeUser.email || '').trim();
+        if (!customerEmail) {
+            return res.status(400).json({
+                success: false,
+                message: 'Customer email is missing.',
+            });
+        }
+        const paymentRef = adminDb.collection('payments').doc();
+        paymentId = paymentRef.id;
+        const merchantReference = `RT-CREDIT-${paymentId.slice(0, 12).toUpperCase()}`;
+        const now = new Date().toISOString();
+        await paymentRef.set({
+            id: paymentId,
+            purpose: 'wallet_topup',
+            user_id: runtimeUser.uid,
+            reference: merchantReference,
+            amount,
+            currency,
+            gateway: 'pesepay',
+            provider_payment_method: selectedMethod.code,
+            provider_payment_method_name: selectedMethod.name,
+            provider_payment_flow: selectedMethod.seamless ? 'seamless' : 'redirect',
+            status: 'pending',
+            customer_confirmed_payment: false,
+            created_at: now,
+            updated_at: now,
+        });
+        const { integrationKey, encryptionKey } = getPesePayCredentials();
+        const apiBaseUrl = process.env.RUNTIME_API_URL || 'https://api.runtime.co.zw';
+        const frontendUrl = process.env.RUNTIME_FRONTEND_URL || 'https://runtime.co.zw';
+        const resultUrl = `${apiBaseUrl}/api/payments/pesepay/result?paymentId=${encodeURIComponent(paymentId)}`;
+        const returnUrl = `${frontendUrl}/dashboard`;
+        const customer = {
+            email: customerEmail,
+            phoneNumber: customerPhoneNumber,
+            name: runtimeUser.name,
+        };
+        const paymentBody = selectedMethod.seamless
+            ? {
+                amountDetails: { amount, currencyCode: currency },
+                merchantReference,
+                reasonForPayment: 'Runtime Credit top-up',
+                resultUrl,
+                returnUrl,
+                paymentMethodCode: selectedMethod.code,
+                customer,
+                paymentMethodRequiredFields: selectedMethod.requiresPhone
+                    ? { customerPhoneNumber }
+                    : {},
+            }
+            : {
+                amountDetails: { amount, currencyCode: currency },
+                merchantReference,
+                reasonForPayment: 'Runtime Credit top-up',
+                resultUrl,
+                returnUrl,
+                customer,
+            };
+        const encryptedPayload = encryptPayload(paymentBody, encryptionKey);
+        const providerUrl = selectedMethod.seamless
+            ? PESEPAY_MAKE_PAYMENT_URL
+            : PESEPAY_INITIATE_URL;
+        const response = await nodeFetch(providerUrl, {
+            method: 'POST',
+            headers: {
+                authorization: integrationKey,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ payload: encryptedPayload }),
+            insecureHTTPParser: true,
+        });
+        let responseBody = null;
+        try {
+            responseBody = await response.json();
+        }
+        catch {
+            responseBody = null;
+        }
+        if (!response.ok || !responseBody?.payload) {
+            await paymentRef.set({
+                status: 'failed',
+                rejection_reason: `PesePay initiation failed${response.ok ? '' : ` with HTTP ${response.status}`}.`,
+                updated_at: new Date().toISOString(),
+            }, { merge: true });
+            return res.status(502).json({
+                success: false,
+                message: 'PesePay could not initiate the top-up payment.',
+            });
+        }
+        const transaction = decryptPayload(responseBody.payload, encryptionKey);
+        if (!transaction.referenceNumber) {
+            await paymentRef.set({
+                status: 'failed',
+                rejection_reason: 'PesePay response did not include a reference number.',
+                updated_at: new Date().toISOString(),
+            }, { merge: true });
+            return res.status(502).json({
+                success: false,
+                message: 'PesePay returned an incomplete transaction.',
+            });
+        }
+        await paymentRef.set({
+            provider_reference: transaction.referenceNumber,
+            transaction_id: transaction.internalReference || transaction.referenceNumber,
+            provider_status: transaction.transactionStatus || 'INITIATED',
+            provider_status_description: transaction.transactionStatusDescription || '',
+            pesepay_poll_url: transaction.pollUrl || '',
+            redirect_url: transaction.redirectUrl || '',
+            updated_at: new Date().toISOString(),
+        }, { merge: true });
+        return res.json({
+            success: true,
+            paymentId,
+            transaction: {
+                referenceNumber: transaction.referenceNumber,
+                transactionStatus: transaction.transactionStatus,
+                redirectRequired: Boolean(transaction.redirectRequired),
+                redirectUrl: transaction.redirectUrl || null,
+                pollUrl: transaction.pollUrl || null,
+                flow: selectedMethod.seamless ? 'seamless' : 'redirect',
+                paymentMethodCode: selectedMethod.code,
+                paymentMethodName: selectedMethod.name,
+                metadataCode: transaction.metadataCode ??
+                    transaction.code ??
+                    transaction.transactionMetadata?.code ??
+                    transaction.transactionMetadata?.paymentCode ??
+                    null,
+                metadataQrCode: transaction.metadataQrCode ??
+                    transaction.qrCode ??
+                    transaction.transactionMetadata?.qrCode ??
+                    transaction.transactionMetadata?.qrcode ??
+                    null,
+                transactionMetadata: transaction.transactionMetadata ?? transaction.metadata ?? null,
+            },
+        });
+    }
+    catch (error) {
+        console.error('PesePay Runtime Credit initiation error:', error);
+        if (paymentId) {
+            try {
+                await adminDb.collection('payments').doc(paymentId).set({
+                    status: 'failed',
+                    rejection_reason: 'Unable to initiate PesePay top-up.',
+                    updated_at: new Date().toISOString(),
+                }, { merge: true });
+            }
+            catch (cleanupError) {
+                console.error('Unable to clean up failed PesePay top-up:', cleanupError);
+            }
+        }
+        return res.status(500).json({
+            success: false,
+            message: 'Unable to initiate PesePay top-up.',
+        });
+    }
+});
+/*
+ * ----------------------------------------------------------
  * INITIATE PESEPAY ECOCASH USD PAYMENT
  * ----------------------------------------------------------
  */
@@ -2228,6 +2432,19 @@ router.post('/pesepay/initiate', authenticate, async (req, res) => {
                     : 'redirect',
                 paymentMethodCode: selectedMethod.code,
                 paymentMethodName: selectedMethod.name,
+                metadataCode: transaction.metadataCode ??
+                    transaction.code ??
+                    transaction.transactionMetadata?.code ??
+                    transaction.transactionMetadata?.paymentCode ??
+                    null,
+                metadataQrCode: transaction.metadataQrCode ??
+                    transaction.qrCode ??
+                    transaction.transactionMetadata?.qrCode ??
+                    transaction.transactionMetadata?.qrcode ??
+                    null,
+                transactionMetadata: transaction.transactionMetadata ??
+                    transaction.metadata ??
+                    null,
             },
         });
     }

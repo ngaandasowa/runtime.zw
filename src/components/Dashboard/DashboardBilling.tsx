@@ -87,7 +87,7 @@ export const DashboardBilling:
       retryGateway,
       setRetryGateway,
     ] = useState<RetryGateway>(
-      'ecocash_usd'
+      'pesepay'
     );
 
     const [
@@ -460,13 +460,11 @@ export const DashboardBilling:
         );
 
         /*
-         * Restore the original manual EcoCash experience
-         * as the immediately available option.
-         * PesePay methods are loaded only if the customer
-         * explicitly selects PesePay.
+         * Use PesePay as the primary automated checkout.
+         * Manual EcoCash remains available as a backup.
          */
         setRetryGateway(
-          'ecocash_usd'
+          'pesepay'
         );
 
         setPaymentModalError(
@@ -492,6 +490,13 @@ export const DashboardBilling:
         setOrderPaymentSummary(
           null
         );
+
+        if (
+          pesePayMethods.length === 0 &&
+          !pesePayMethodsLoading
+        ) {
+          void loadPesePayMethods();
+        }
 
         try {
           await loadOrderPaymentSummary(
