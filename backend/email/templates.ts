@@ -10,7 +10,12 @@ export type EmailEvent =
   | 'domain_assigned'
   | 'domain_replaced'
   | 'nameserver_change_requested'
+  | 'nameserver_change_completed'
   | 'dns_migration_ready'
+  | 'dns_migration_completed'
+  | 'domain_modify_completed'
+  | 'domain_delete_completed'
+  | 'domain_transfer_completed'
   | 'domain_modify_requested'
   | 'domain_delete_requested'
   | 'domain_transfer_requested'
@@ -161,7 +166,7 @@ const layout = ({
   title: string;
   intro: string;
   data: EmailEventData;
-  note?: string | undefined;
+  note?: string;
 }) => {
   const safeName =
     escapeHtml(
@@ -453,7 +458,7 @@ const customerContent = (
     | string
     | ((
         data: EmailEventData
-      ) => string | undefined);
+      ) => string);
 } => {
   switch (event) {
     case 'domain_order_created':
@@ -498,11 +503,6 @@ const customerContent = (
           'Your payment has been verified',
         intro:
           'we verified your payment. Domain processing can now continue.',
-        note:
-          (data) =>
-            data.domainName?.toLowerCase().endsWith('.co.zw')
-              ? 'Your .co.zw registration is now awaiting ZISPA processing and approval. Please allow up to 24 hours for processing. ZISPA requires correct domain owner details, so please check the registrant information in your Runtime account and update any incorrect details as soon as possible.'
-              : undefined,
       };
 
     case 'payment_received':
@@ -526,11 +526,6 @@ const customerContent = (
               data.paymentBreakdown.includes('+')
             ) {
               return 'This order was paid using more than one payment source. The complete verified payment split is shown above.';
-            }
-            if (
-              data.domainName?.toLowerCase().endsWith('.co.zw')
-            ) {
-              return 'Payment is complete. Your .co.zw registration is now awaiting ZISPA processing and approval. Please allow up to 24 hours for processing. ZISPA requires correct domain owner details, so please check the registrant information in your Runtime account and update any incorrect details as soon as possible.';
             }
             return 'This payment has been recorded successfully in your Runtime account.';
           },
@@ -606,7 +601,7 @@ const customerContent = (
         intro:
           'we received your nameserver change request.',
         note:
-          'For .co.zw domains, nameserver changes are processed through ZISPA. Please allow up to 24 hours for the registry request to be processed. Your current nameservers remain active until ZISPA confirms the change.',
+          'The requested nameservers will be processed according to the domain registry workflow.',
       };
 
     case 'dns_migration_ready':
@@ -621,6 +616,66 @@ const customerContent = (
           'The current nameservers remain active until the manual registrar or ZISPA modification is processed. No customer action is required.',
       };
 
+    case 'nameserver_change_completed':
+      return {
+        subject: (data) =>
+          `Nameserver change completed for ${data.domainName}`,
+        title:
+          'Nameserver change completed',
+        intro:
+          'the registry has confirmed your nameserver change.',
+        note:
+          'The new nameservers are now recorded for your domain. DNS propagation can take some time across the internet.',
+      };
+
+    case 'dns_migration_completed':
+      return {
+        subject: (data) =>
+          `Runtime DNS is now active for ${data.domainName}`,
+        title:
+          'Runtime DNS is now active',
+        intro:
+          'your domain has successfully moved to Runtime DNS.',
+        note:
+          'Your DNS records can now be managed from your Runtime dashboard. No further action is required.',
+      };
+
+    case 'domain_modify_completed':
+      return {
+        subject: (data) =>
+          `Domain details updated for ${data.domainName}`,
+        title:
+          'Domain details updated',
+        intro:
+          'the registry has confirmed your domain details update.',
+        note:
+          'The updated owner details are now recorded for your domain.',
+      };
+
+    case 'domain_delete_completed':
+      return {
+        subject: (data) =>
+          `Domain cancellation completed for ${data.domainName}`,
+        title:
+          'Domain cancellation completed',
+        intro:
+          'the registry has confirmed the cancellation of this domain.',
+        note:
+          'The domain is now marked as cancelled in Runtime.',
+      };
+
+    case 'domain_transfer_completed':
+      return {
+        subject: (data) =>
+          `Domain transfer completed for ${data.domainName}`,
+        title:
+          'Domain transfer completed',
+        intro:
+          'the registry has confirmed your domain transfer.',
+        note:
+          'The transferred domain is now available in your Runtime account.',
+      };
+
     case 'domain_modify_requested':
       return {
         subject: (data) =>
@@ -629,8 +684,6 @@ const customerContent = (
           'Domain details update received',
         intro:
           'we received your domain details update request.',
-        note:
-          'For .co.zw domains, registry changes are processed through ZISPA. Please allow up to 24 hours for processing. Please make sure the domain owner details are correct because ZISPA requires accurate registrant information.',
       };
 
     case 'domain_delete_requested':
@@ -642,7 +695,7 @@ const customerContent = (
         intro:
           'we received your request to cancel this domain.',
         note:
-          'The domain is not considered cancelled until the cancellation process is completed. For .co.zw domains, please allow up to 24 hours for ZISPA registry processing.',
+          'The domain is not considered cancelled until the cancellation process is completed.',
       };
 
     case 'domain_transfer_requested':

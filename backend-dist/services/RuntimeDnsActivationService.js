@@ -1,12 +1,22 @@
 import { adminDb, } from '../firebaseAdmin.js';
 import { cloudflareDnsService, } from './CloudflareDnsService.js';
-const normalizeStatus = (value) => String(value || '')
-    .trim()
-    .toLowerCase();
-const eligibleStatuses = new Set([
+import { emailService, } from '../email/emailService.js';
+const normalizeStatus = (value) => String(value || '').trim().toLowerCase();
+const normalizeNameservers = (value) => Array.isArray(value)
+    ? value
+        .map((item) => String(item || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\.$/, ''))
+        .filter(Boolean)
+    : [];
+const eligibleDnsStatuses = new Set([
     'pending',
     'initializing',
     'moved',
+]);
+const eligibleMigrationStatuses = new Set([
+    'delegation_pending',
 ]);
 class RuntimeDnsActivationService {
     running = false;
@@ -23,8 +33,9 @@ class RuntimeDnsActivationService {
         this.running = true;
         try {
             /*
-             * Deliberately query only Cloudflare-backed domains.
-             * Existing legacy/custom-DNS domains are never touched.
+             * Do not query only dns_provider=cloudflare.
+             * During a safe Custom DNS -> Runtime DNS migration the old provider
+             * remains authoritative until the new delegation is confirmed.
              */
             const snapshot = await adminDb
                 .collection('domains')
@@ -37,17 +48,15 @@ class RuntimeDnsActivationService {
                 const domain = doc.data();
                 const dnsStatus = normalizeStatus(domain.dns_status);
                 const migrationStatus = normalizeStatus(domain.dns_migration?.status);
-                const delegationPending = migrationStatus ===
-                    'delegation_pending';
-                const cloudflareCandidate = normalizeStatus(domain.dns_provider) === 'cloudflare';
-                if (!delegationPending &&
-                    (!cloudflareCandidate ||
-                        dnsStatus === 'active' ||
-                        !eligibleStatuses.has(dnsStatus || 'pending'))) {
+                const isMigration = eligibleMigrationStatuses.has(migrationStatus);
+                const isNormalRuntimeActivation = normalizeStatus(domain.dns_provider) === 'cloudflare' &&
+                    eligibleDnsStatuses.has(dnsStatus || 'pending');
+                if (!isMigration &&
+                    !isNormalRuntimeActivation) {
                     continue;
                 }
                 const zoneId = String(domain.cloudflare?.zone_id ||
-                    domain.dns_migration?.cloudflare_zone_id ||
+                    domain.dns_migration?.zone_id ||
                     '').trim();
                 const domainName = cloudflareDnsService
                     .normalizeDomain(domain.domain_name);
@@ -61,77 +70,153 @@ class RuntimeDnsActivationService {
                         .getZone(zoneId);
                     const zoneStatus = normalizeStatus(zone.status || 'pending') || 'pending';
                     const becameActive = zoneStatus === 'active';
-                    const assignedNameservers = Array.isArray(zone.name_servers)
+                    if (!becameActive) {
+                        await doc.ref.set({
+                            cloudflare: {
+                                ...(domain.cloudflare || {}),
+                                status: zoneStatus,
+                                last_synced_at: now,
+                                last_error: null,
+                            },
+                            updated_at: now,
+                        }, { merge: true });
+                        results.push({
+                            domainId: doc.id,
+                            domainName,
+                            zoneId,
+                            previousStatus: dnsStatus,
+                            status: zoneStatus,
+                            action: 'still_pending',
+                        });
+                        continue;
+                    }
+                    const assignedNameservers = normalizeNameservers(zone.name_servers?.length
                         ? zone.name_servers
-                            .map((value) => String(value || '')
-                            .trim()
-                            .toLowerCase()
-                            .replace(/\.$/, ''))
-                            .filter(Boolean)
-                        : [];
-                    const pendingIps = Array.isArray(domain.dns_migration?.pending_nameserver_ips)
-                        ? domain.dns_migration.pending_nameserver_ips
-                        : [];
+                        : domain.cloudflare
+                            ?.assigned_nameservers);
+                    const pendingNameserverIps = Array.isArray(domain.dns_migration
+                        ?.pending_nameserver_ips)
+                        ? domain.dns_migration
+                            .pending_nameserver_ips
+                        : Array.isArray(domain.nameserver_ips)
+                            ? domain.nameserver_ips
+                            : [];
+                    const migrationUpdate = isMigration
+                        ? {
+                            ...(domain.dns_migration || {}),
+                            status: 'completed',
+                            completed_at: domain.dns_migration
+                                ?.completed_at || now,
+                            last_error: null,
+                        }
+                        : undefined;
                     await doc.ref.set({
-                        dns_status: becameActive
-                            ? 'active'
-                            : 'pending',
-                        ...(becameActive && delegationPending
+                        dns_provider: 'cloudflare',
+                        dns_status: 'active',
+                        ...(assignedNameservers.length
                             ? {
-                                dns_provider: 'cloudflare',
                                 nameservers: assignedNameservers,
-                                nameserver_ips: pendingIps,
-                                dns_migration: {
-                                    ...(domain.dns_migration || {}),
-                                    status: 'completed',
-                                    completed_at: now,
-                                    last_error: null,
-                                },
                             }
                             : {}),
+                        nameserver_ips: pendingNameserverIps,
                         cloudflare: {
                             ...(domain.cloudflare || {}),
                             zone_id: zoneId,
-                            assigned_nameservers: assignedNameservers,
-                            status: zoneStatus,
-                            last_synced_at: now,
-                            last_error: null,
-                            ...(becameActive
+                            ...(assignedNameservers.length
                                 ? {
-                                    activated_at: domain.cloudflare?.activated_at ||
-                                        zone.activated_on ||
-                                        now,
+                                    assigned_nameservers: assignedNameservers,
                                 }
                                 : {}),
+                            status: 'active',
+                            activated_at: domain.cloudflare
+                                ?.activated_at ||
+                                zone.activated_on ||
+                                now,
+                            last_synced_at: now,
+                            last_error: null,
                         },
+                        ...(migrationUpdate
+                            ? {
+                                dns_migration: migrationUpdate,
+                            }
+                            : {}),
+                        ...(isMigration
+                            ? {
+                                nameserver_change_status: null,
+                                pending_nameservers: null,
+                                pending_nameserver_ips: null,
+                            }
+                            : {}),
                         updated_at: now,
                     }, { merge: true });
-                    if (becameActive && delegationPending) {
-                        const requestId = String(domain.dns_migration?.registry_request_id || '').trim();
-                        if (requestId) {
+                    if (isMigration) {
+                        const registryRequestId = String(domain.dns_migration
+                            ?.registry_request_id || '').trim();
+                        if (registryRequestId) {
                             await adminDb
                                 .collection('registry_requests')
-                                .doc(requestId)
+                                .doc(registryRequestId)
                                 .set({
                                 status: 'confirmed',
                                 confirmed_at: now,
-                                registry_response_notes: 'Runtime DNS delegation detected active by Cloudflare. Migration completed automatically.',
+                                registry_response_notes: 'Runtime DNS activation detected automatically after Cloudflare confirmed the delegated zone is active.',
                                 updated_at: now,
                             }, { merge: true });
                         }
+                        /*
+                         * Send the migration completion email only once.
+                         * The marker is written only after sendEvent succeeds, so a
+                         * temporary mail failure can be retried by a later scheduler run.
+                         */
+                        if (!domain.dns_migration
+                            ?.completion_email_sent_at &&
+                            String(domain.user_email || '').trim()) {
+                            try {
+                                await emailService.sendEvent('dns_migration_completed', {
+                                    email: String(domain.user_email).trim(),
+                                    name: String(domain.owner_details
+                                        ?.full_name || '').trim() ||
+                                        undefined,
+                                    domainName,
+                                    nameservers: assignedNameservers,
+                                    dnsProvider: 'cloudflare',
+                                    dnsStatus: 'active',
+                                });
+                                await doc.ref.set({
+                                    dns_migration: {
+                                        ...migrationUpdate,
+                                        completion_email_sent_at: now,
+                                        completion_email_error: null,
+                                    },
+                                    updated_at: now,
+                                }, { merge: true });
+                            }
+                            catch (mailError) {
+                                const message = mailError instanceof Error
+                                    ? mailError.message
+                                    : 'Unable to send Runtime DNS completion email.';
+                                await doc.ref.set({
+                                    dns_migration: {
+                                        ...migrationUpdate,
+                                        completion_email_error: message,
+                                        completion_email_last_attempt_at: now,
+                                    },
+                                    updated_at: now,
+                                }, { merge: true });
+                                console.error(`Runtime DNS completion email failed for ${domainName}:`, mailError);
+                            }
+                        }
                     }
-                    if (becameActive) {
-                        activated += 1;
-                    }
+                    activated += 1;
                     results.push({
                         domainId: doc.id,
                         domainName,
                         zoneId,
                         previousStatus: dnsStatus,
-                        status: zoneStatus,
-                        action: becameActive
-                            ? 'activated'
-                            : 'still_pending',
+                        status: 'active',
+                        action: isMigration
+                            ? 'migration_completed'
+                            : 'activated',
                     });
                 }
                 catch (error) {
@@ -145,6 +230,15 @@ class RuntimeDnsActivationService {
                             last_synced_at: now,
                             last_error: message,
                         },
+                        ...(isMigration
+                            ? {
+                                dns_migration: {
+                                    ...(domain.dns_migration ||
+                                        {}),
+                                    last_error: message,
+                                },
+                            }
+                            : {}),
                         updated_at: now,
                     }, { merge: true });
                     results.push({
@@ -190,10 +284,6 @@ export const startRuntimeDnsActivationScheduler = () => {
             console.error('[Runtime DNS] activation scheduler failed:', error);
         }
     };
-    /*
-     * Run once shortly after startup, then periodically.
-     * The delay lets the API finish booting first.
-     */
     setTimeout(() => {
         void runSafely();
     }, 15_000);

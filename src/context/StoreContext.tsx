@@ -1890,15 +1890,6 @@ const getDomainOrderDetails = async (
           await registryRequestApiService.create({
             ...request,
             workflow_type: 'standard_registry',
-            // Preserve the exact delegation requested by the customer.
-            // The active domain.nameservers intentionally remain unchanged
-            // until ZISPA confirms the MODIFY request.
-            requested_nameservers:
-              (updated as any).pending_nameservers ||
-              normalizedNameservers,
-            requested_nameserver_ips:
-              (updated as any).pending_nameserver_ips ||
-              normalizedIps,
           } as RegistryRequest);
 
         setRegistryRequests(
@@ -4539,8 +4530,7 @@ const getDomainOrderDetails = async (
     }));
 
     if (
-      target.action === 'N' ||
-      target.action === 'T'
+      target.action === 'N'
     ) {
       const activatedDomain =
         domains.find(
@@ -4588,6 +4578,86 @@ const getDomainOrderDetails = async (
               (activatedDomain as any).dns_status,
           }
         );
+      }
+    }
+
+    /*
+     * Registry completion notifications.
+     * Request-received emails are sent when the customer submits the
+     * change. These emails are deliberately sent only after an admin
+     * confirms that the registry/ZISPA operation has completed.
+     */
+    const confirmedDomain =
+      domains.find(
+        (item) =>
+          item.id === target.domain_id ||
+          item.domain_name === target.domain_name
+      );
+
+    if (confirmedDomain) {
+      const customerEmail =
+        confirmedDomain.user_email ||
+        target.customer_email;
+
+      const customerName =
+        confirmedDomain.owner_details
+          ?.full_name;
+
+      if (target.action === 'M') {
+        const requestedNameservers =
+          Array.isArray(
+            (confirmedDomain as any)
+              .pending_nameservers
+          )
+            ? (confirmedDomain as any)
+                .pending_nameservers
+            : [];
+
+        const isNameserverChange =
+          requestedNameservers.length >= 2;
+
+        emailNotificationService
+          .notifyQuietly(
+            isNameserverChange
+              ? 'nameserver_change_completed'
+              : 'domain_modify_completed',
+            {
+              email: customerEmail,
+              name: customerName,
+              domainName:
+                confirmedDomain.domain_name,
+              nameservers:
+                isNameserverChange
+                  ? requestedNameservers
+                  : confirmedDomain.nameservers,
+              ownerDetails:
+                confirmedDomain.owner_details,
+            }
+          );
+      } else if (target.action === 'D') {
+        emailNotificationService
+          .notifyQuietly(
+            'domain_delete_completed',
+            {
+              email: customerEmail,
+              name: customerName,
+              domainName:
+                confirmedDomain.domain_name,
+            }
+          );
+      } else if (target.action === 'T') {
+        emailNotificationService
+          .notifyQuietly(
+            'domain_transfer_completed',
+            {
+              email: customerEmail,
+              name: customerName,
+              domainName:
+                confirmedDomain.domain_name,
+              nameservers:
+                confirmedDomain.nameservers,
+            }
+          );
       }
     }
 
