@@ -1890,6 +1890,15 @@ const getDomainOrderDetails = async (
           await registryRequestApiService.create({
             ...request,
             workflow_type: 'standard_registry',
+            // Preserve the exact delegation requested by the customer.
+            // The active domain.nameservers intentionally remain unchanged
+            // until ZISPA confirms the MODIFY request.
+            requested_nameservers:
+              (updated as any).pending_nameservers ||
+              normalizedNameservers,
+            requested_nameserver_ips:
+              (updated as any).pending_nameserver_ips ||
+              normalizedIps,
           } as RegistryRequest);
 
         setRegistryRequests(

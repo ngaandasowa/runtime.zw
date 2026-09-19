@@ -3,6 +3,16 @@ import { adminDb } from '../firebaseAdmin.js';
 import { authenticateWithProfile } from '../middleware/authenticate.js';
 const router = Router();
 const s = (v) => String(v ?? '').trim();
+const normalizeNameservers = (value) => Array.isArray(value)
+    ? value
+        .map((item) => s(item).toLowerCase().replace(/\.$/, ''))
+        .filter(Boolean)
+    : [];
+const sameNameservers = (left, right) => {
+    const a = normalizeNameservers(left);
+    const b = normalizeNameservers(right);
+    return a.length === b.length && a.every((item, index) => item === b[index]);
+};
 router.use(authenticateWithProfile);
 const requireAdmin = (req, res) => {
     if (s(req.runtimeUser?.role) !== 'super_admin') {
@@ -55,13 +65,37 @@ router.post('/', async (req, res) => {
             return res.status(403).json({ success: false, message: 'You do not have access to this domain.' });
         }
         const now = new Date().toISOString();
+        /*
+         * For a ZISPA nameserver MODIFY, domain.nameservers must remain the
+         * currently-active delegation until registry confirmation. Therefore the
+         * durable registry request must carry the exact pending delegation that
+         * the customer requested. The client-generated ZISPA template is accepted
+         * only when those requested nameservers exactly match the authoritative
+         * pending_nameservers already saved on the domain by the backend.
+         */
+        const pendingNameservers = normalizeNameservers(domain.pending_nameservers);
+        const requestedNameservers = normalizeNameservers(input.requested_nameservers);
+        const isVerifiedNameserverModify = s(input.action).toUpperCase() === 'M' &&
+            pendingNameservers.length >= 2 &&
+            sameNameservers(requestedNameservers, pendingNameservers);
+        const pendingNameserverIps = Array.isArray(domain.pending_nameserver_ips)
+            ? domain.pending_nameserver_ips.map((item) => s(item))
+            : [];
         const request = {
             ...input,
             id,
             domain_id: domainId,
             domain_name: s(domain.domain_name) || s(input.domain_name),
             customer_email: s(domain.user_email) || s(input.customer_email),
-            generated_template: '',
+            generated_template: isVerifiedNameserverModify
+                ? s(input.generated_template)
+                : '',
+            ...(isVerifiedNameserverModify
+                ? {
+                    requested_nameservers: pendingNameservers,
+                    requested_nameserver_ips: pendingNameserverIps,
+                }
+                : {}),
             created_at: s(input.created_at) || now,
             updated_at: now,
             persisted_at: now,

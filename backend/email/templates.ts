@@ -161,7 +161,7 @@ const layout = ({
   title: string;
   intro: string;
   data: EmailEventData;
-  note?: string;
+  note?: string | undefined;
 }) => {
   const safeName =
     escapeHtml(
@@ -453,7 +453,7 @@ const customerContent = (
     | string
     | ((
         data: EmailEventData
-      ) => string);
+      ) => string | undefined);
 } => {
   switch (event) {
     case 'domain_order_created':
@@ -498,6 +498,11 @@ const customerContent = (
           'Your payment has been verified',
         intro:
           'we verified your payment. Domain processing can now continue.',
+        note:
+          (data) =>
+            data.domainName?.toLowerCase().endsWith('.co.zw')
+              ? 'Your .co.zw registration is now awaiting ZISPA processing and approval. Please allow up to 24 hours for processing. ZISPA requires correct domain owner details, so please check the registrant information in your Runtime account and update any incorrect details as soon as possible.'
+              : undefined,
       };
 
     case 'payment_received':
@@ -521,6 +526,11 @@ const customerContent = (
               data.paymentBreakdown.includes('+')
             ) {
               return 'This order was paid using more than one payment source. The complete verified payment split is shown above.';
+            }
+            if (
+              data.domainName?.toLowerCase().endsWith('.co.zw')
+            ) {
+              return 'Payment is complete. Your .co.zw registration is now awaiting ZISPA processing and approval. Please allow up to 24 hours for processing. ZISPA requires correct domain owner details, so please check the registrant information in your Runtime account and update any incorrect details as soon as possible.';
             }
             return 'This payment has been recorded successfully in your Runtime account.';
           },
@@ -596,7 +606,7 @@ const customerContent = (
         intro:
           'we received your nameserver change request.',
         note:
-          'The requested nameservers will be processed according to the domain registry workflow.',
+          'For .co.zw domains, nameserver changes are processed through ZISPA. Please allow up to 24 hours for the registry request to be processed. Your current nameservers remain active until ZISPA confirms the change.',
       };
 
     case 'dns_migration_ready':
@@ -619,6 +629,8 @@ const customerContent = (
           'Domain details update received',
         intro:
           'we received your domain details update request.',
+        note:
+          'For .co.zw domains, registry changes are processed through ZISPA. Please allow up to 24 hours for processing. Please make sure the domain owner details are correct because ZISPA requires accurate registrant information.',
       };
 
     case 'domain_delete_requested':
@@ -630,7 +642,7 @@ const customerContent = (
         intro:
           'we received your request to cancel this domain.',
         note:
-          'The domain is not considered cancelled until the cancellation process is completed.',
+          'The domain is not considered cancelled until the cancellation process is completed. For .co.zw domains, please allow up to 24 hours for ZISPA registry processing.',
       };
 
     case 'domain_transfer_requested':
