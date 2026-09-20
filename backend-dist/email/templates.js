@@ -241,6 +241,10 @@ const layout = ({ title, intro, data, note, }) => {
     </html>
   `;
 };
+const isCoZwDomain = (domainName) => String(domainName || '').trim().toLowerCase().endsWith('.co.zw');
+const coZwProcessingNote = (data) => isCoZwDomain(data.domainName)
+    ? ' In line with the .co.zw registry process, please allow up to 24 hours for the request to be processed.'
+    : '';
 const customerContent = (event) => {
     switch (event) {
         case 'domain_order_created':
@@ -328,14 +332,14 @@ const customerContent = (event) => {
                 subject: (data) => `Nameserver request received for ${data.domainName}`,
                 title: 'Nameserver change request received',
                 intro: 'we received your nameserver change request.',
-                note: 'The requested nameservers will be processed according to the domain registry workflow.',
+                note: (data) => `The requested nameservers will be processed according to the domain registry workflow.${coZwProcessingNote(data)}`,
             };
         case 'dns_migration_ready':
             return {
                 subject: (data) => `Runtime DNS requires registry processing: ${data.domainName}`,
                 title: 'Runtime DNS is ready for registry processing',
                 intro: 'the DNS records have been prepared and the Runtime DNS nameservers are ready.',
-                note: 'The current nameservers remain active until the manual registrar or ZISPA modification is processed. No customer action is required.',
+                note: (data) => `The current nameservers remain active until the manual registrar or ZISPA modification is processed. No customer action is required.${coZwProcessingNote(data)}`,
             };
         case 'nameserver_change_completed':
             return {
@@ -377,20 +381,23 @@ const customerContent = (event) => {
                 subject: (data) => `Domain update received for ${data.domainName}`,
                 title: 'Domain details update received',
                 intro: 'we received your domain details update request.',
+                note: (data) => `Your request has been queued for registry processing.${coZwProcessingNote(data)}`,
             };
         case 'domain_delete_requested':
             return {
                 subject: (data) => `Cancellation request received for ${data.domainName}`,
                 title: 'Domain cancellation request received',
                 intro: 'we received your request to cancel this domain.',
-                note: 'The domain is not considered cancelled until the cancellation process is completed.',
+                note: (data) => `The domain is not considered cancelled until the cancellation process is completed.${coZwProcessingNote(data)}`,
             };
         case 'domain_transfer_requested':
             return {
                 subject: (data) => `Transfer request received for ${data.domainName}`,
                 title: 'Domain transfer request received',
                 intro: 'we received your domain transfer request.',
-                note: 'Runtime will process the transfer and update the domain status when the next step is completed. Your existing DNS remains unchanged unless you explicitly choose to move the domain to Runtime DNS.',
+                note: (data) => String(data.domainName || '').trim().toLowerCase().endsWith('.co.zw')
+                    ? 'Before Runtime can process this transfer, we must first receive the required release email from the domain\'s current registrar. Once the release has been received, please allow up to 24 hours for the .co.zw transfer request to be processed. Your existing DNS remains unchanged unless you explicitly choose to move the domain to Runtime DNS.'
+                    : 'Runtime will process the transfer and update the domain status when the next step is completed. Your existing DNS remains unchanged unless you explicitly choose to move the domain to Runtime DNS.',
             };
         case 'domain_expiry_60_day':
             return {
