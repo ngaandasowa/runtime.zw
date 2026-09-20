@@ -199,18 +199,43 @@ export const AdminRegistryManager: React.FC =
       const requestedIps =
         (request as any).requested_nameserver_ips;
 
-      if (
-        (request as any).workflow_type === 'runtime_dns_migration' &&
-        Array.isArray(requestedNameservers) &&
-        requestedNameservers.length >= 2
-      ) {
+      /*
+       * A registry MODIFY must be generated from the delegation requested by
+       * the customer, not from domain.nameservers (which intentionally remains
+       * the currently-active delegation until ZISPA confirms the change).
+       *
+       * New durable requests carry requested_nameservers. The pending_* fallback
+       * also keeps older/in-flight nameserver requests usable in Admin Registry.
+       */
+      const pendingNameservers =
+        Array.isArray((domain as any).pending_nameservers)
+          ? (domain as any).pending_nameservers
+          : [];
+      const pendingIps =
+        Array.isArray((domain as any).pending_nameserver_ips)
+          ? (domain as any).pending_nameserver_ips
+          : [];
+
+      const effectiveNameservers =
+        Array.isArray(requestedNameservers) && requestedNameservers.length >= 2
+          ? requestedNameservers
+          : request.action === 'M' &&
+              String((domain as any).nameserver_change_status || '') ===
+                'pending_registry' &&
+              pendingNameservers.length >= 2
+            ? pendingNameservers
+            : [];
+
+      if (effectiveNameservers.length >= 2) {
+        const effectiveIps =
+          Array.isArray(requestedNameservers) && requestedNameservers.length >= 2
+            ? (Array.isArray(requestedIps) ? requestedIps : [])
+            : pendingIps;
+
         return {
           ...domain,
-          nameservers: requestedNameservers,
-          nameserver_ips:
-            Array.isArray(requestedIps)
-              ? requestedIps
-              : [],
+          nameservers: effectiveNameservers,
+          nameserver_ips: effectiveIps,
         };
       }
 
