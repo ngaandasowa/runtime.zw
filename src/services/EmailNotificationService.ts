@@ -18,6 +18,7 @@ export type EmailNotificationEvent =
   | 'domain_modify_completed'
   | 'domain_delete_completed'
   | 'domain_transfer_completed'
+  | 'dns_migration_ready'
   | 'dns_migration_completed'
   | 'domain_modify_requested'
   | 'domain_delete_requested'
@@ -72,7 +73,7 @@ const API_BASE_URL =
     .VITE_API_BASE_URL ||
   (import.meta.env.DEV
     ? 'http://localhost:4000'
-    : '');
+    : 'https://api.runtime.co.zw');
 
 class EmailNotificationService {
   async notify(
