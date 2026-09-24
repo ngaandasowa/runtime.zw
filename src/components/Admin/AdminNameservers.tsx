@@ -202,19 +202,9 @@ export const AdminNameservers:
       status?.tokenStatus ===
         'active';
 
-    const legacyNameservers =
-      Array.isArray(
-        settings
-          .default_nameservers
-      )
-        ? settings
-            .default_nameservers
-            .filter(Boolean)
-        : [];
-
-    /*
+/*
      * The backend is still the authority and will reject an
-     * active legacy domain. This frontend filter simply keeps
+     * active custom-DNS domain. This frontend filter simply keeps
      * obviously unsafe domains out of the test selector.
      *
      * pending_registration is the best real-world test because
@@ -665,57 +655,6 @@ export const AdminNameservers:
           </div>
         </section>
 
-        <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-6">
-          <div className="flex items-start gap-3">
-            <Server className="mt-0.5 h-5 w-5 shrink-0 text-zinc-500" />
-
-            <div className="min-w-0 flex-1">
-              <h2 className="text-sm font-bold text-zinc-950">
-                Legacy DNS
-              </h2>
-
-              <p className="mt-1 text-xs leading-5 text-zinc-500">
-                Existing domains using Runtime's previous DNS remain untouched.
-              </p>
-
-              <div className="mt-4 space-y-2">
-                {legacyNameservers.length >
-                0 ? (
-                  legacyNameservers.map(
-                    (
-                      nameserver,
-                      index
-                    ) => (
-                      <div
-                        key={`${nameserver}-${index}`}
-                        className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3"
-                      >
-                        <span className="w-8 shrink-0 text-[10px] font-bold uppercase text-zinc-400">
-                          NS{index + 1}
-                        </span>
-
-                        <span className="break-all font-mono text-xs font-semibold text-zinc-800">
-                          {nameserver}
-                        </span>
-                      </div>
-                    )
-                  )
-                ) : (
-                  <p className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-xs text-zinc-500">
-                    No legacy nameservers are currently stored.
-                  </p>
-                )}
-              </div>
-
-              <div className="mt-4 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
-                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
-                <p className="text-xs leading-5 text-amber-900">
-                  Existing active domains must stay on their current nameservers unless their DNS records are migrated and the nameserver change is explicitly approved.
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
       </div>
     );
   };

@@ -480,10 +480,7 @@ interface StoreContextType {
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 const SEED_SETTINGS: PlatformSettings = {
-  default_nameservers: [
-    'ns1.ngaatec.com',
-    'ns2.ngaatec.com',
-  ],
+  default_nameservers: [],
   registry_email_from: 'dns@ngaatec.com',
   registry_email_to: 'admin@zispa.org.zw',
   auto_submit_registry: false,
@@ -525,11 +522,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ...SEED_SETTINGS,
         ...parsed,
 
-        // Runtime's current authoritative DNS defaults.
-        default_nameservers: [
-          'ns1.ngaatec.com',
-          'ns2.ngaatec.com',
-        ],
+        // Runtime DNS has no fixed nameserver pair.
+        // Cloudflare assigns authoritative nameservers per zone.
+        default_nameservers: [],
 
         // Current registrar dispatch details.
         registry_email_from: 'dns@ngaatec.com',
@@ -1510,15 +1505,18 @@ const getDomainOrderDetails = async (
     status:
       'pending_payment',
 
-    nameservers:
-      nameservers.length > 0
-        ? nameservers
-        : [
-            ...settings.default_nameservers,
-          ],
+    // Empty nameservers means the customer selected Runtime DNS.
+    // The backend creates the Cloudflare zone after payment and stores
+    // the exact Cloudflare-assigned authoritative nameservers.
+    nameservers,
 
     nameserver_ips:
       nameserverIps,
+
+    dns_provider:
+      nameservers.length > 0
+        ? 'custom'
+        : 'cloudflare',
 
     auto_renew:
       true,
@@ -2307,9 +2305,12 @@ const getDomainOrderDetails = async (
       status:
         'pending_payment' as DomainStatus,
 
-      nameservers: [
-        ...settings.default_nameservers,
-      ],
+      // A transfer must not invent Runtime nameservers.
+      // The customer's existing/requested delegation is supplied by
+      // the transfer workflow.
+      nameservers: [],
+
+      dns_provider: 'custom',
 
       auto_renew:
         true,

@@ -302,17 +302,12 @@ export const DashboardDomains: React.FC =
     const [
       transferNameservers,
       setTransferNameservers,
-    ] = useState<string[]>(() => {
-      const initial = [
-        ...(settings.default_nameservers || []),
-      ];
-
-      while (initial.length < 4) {
-        initial.push('');
-      }
-
-      return initial.slice(0, 4);
-    });
+    ] = useState<string[]>(() => [
+      '',
+      '',
+      '',
+      '',
+    ]);
 
     const [
       transferNoticeDomain,

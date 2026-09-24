@@ -1,10 +1,6 @@
 export class NameserverService {
-  private defaultNameservers: string[] = [
-    'ns1.ngaatec.com',
-    'ns2.ngaatec.com',
-  ];
-
-  getDefaultNameservers(): string[] {
+  private defaultNameservers: string[] = [];
+getDefaultNameservers(): string[] {
     return [...this.defaultNameservers];
   }
 

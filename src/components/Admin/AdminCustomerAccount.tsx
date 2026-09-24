@@ -1271,35 +1271,23 @@ const AssignDomainModal = ({
   const [
     ns1,
     setNs1,
-  ] = useState(
-    settings
-      .default_nameservers?.[0] ||
-      ''
-  );
+  ] = useState('');
 
 
   const [
     ns2,
     setNs2,
-  ] = useState(
-    settings
-      .default_nameservers?.[1] ||
-      ''
-  );
+  ] = useState('');
 
   const [
     ns1Ip,
     setNs1Ip,
-  ] = useState(
-    '148.163.100.131'
-  );
+  ] = useState('');
 
   const [
     ns2Ip,
     setNs2Ip,
-  ] = useState(
-    '148.163.100.132'
-  );
+  ] = useState('');
 
 
   const [
@@ -1888,7 +1876,7 @@ const AssignDomainModal = ({
                 label="Primary nameserver IP"
                 value={ns1Ip}
                 onChange={setNs1Ip}
-                placeholder="148.163.100.131"
+                placeholder="192.0.2.10"
                 required
               />
 
@@ -1896,7 +1884,7 @@ const AssignDomainModal = ({
                 label="Secondary nameserver IP"
                 value={ns2Ip}
                 onChange={setNs2Ip}
-                placeholder="148.163.100.132"
+                placeholder="192.0.2.11"
                 required
               />
 

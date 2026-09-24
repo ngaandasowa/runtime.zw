@@ -1,10 +1,6 @@
 import { promises as dns } from 'node:dns';
 import { adminDb, } from '../firebaseAdmin.js';
 import { cloudflareDnsService, } from './CloudflareDnsService.js';
-const LEGACY_RUNTIME_DEFAULT_NAMESERVERS = [
-    'ns1.ngaatec.com',
-    'ns2.ngaatec.com',
-];
 const normalizeNameservers = (value) => Array.isArray(value)
     ? value
         .map((item) => String(item || '')
@@ -13,8 +9,6 @@ const normalizeNameservers = (value) => Array.isArray(value)
         .toLowerCase())
         .filter(Boolean)
     : [];
-const sameNameservers = (left, right) => left.length === right.length &&
-    left.every((value, index) => value === right[index]);
 const resolveOne = async (hostname) => {
     try {
         const ipv4 = await dns.resolve4(hostname);
@@ -71,20 +65,14 @@ class RuntimeDnsProvisioningService {
             .trim()
             .toLowerCase();
         /*
-         * Production migration rule:
-         * - A newly registered domain that still carries Runtime's old
-         *   default pair means the customer selected "Runtime DNS - Free".
-         * - A domain already marked cloudflare is safe to resume/retry.
-         * - Any other nameservers are customer-supplied and MUST NOT be
-         *   replaced automatically.
+         * Runtime DNS is explicit.
          *
-         * This also protects every existing live domain that still uses
-         * old/custom DNS because this service is called only from a fully
-         * paid domain_registration fulfillment result.
+         * Only domains marked for Runtime/Cloudflare DNS are provisioned.
+         * Existing domains using any other nameservers remain untouched and
+         * are treated as Custom DNS, regardless of what those hostnames are.
          */
         const selectedRuntimeDns = dnsProvider === 'cloudflare' ||
-            dnsProvider === 'runtime' ||
-            sameNameservers(currentNameservers, LEGACY_RUNTIME_DEFAULT_NAMESERVERS);
+            dnsProvider === 'runtime';
         if (!selectedRuntimeDns) {
             return {
                 handled: false,

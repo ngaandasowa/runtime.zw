@@ -52,14 +52,6 @@ const ZISPA_PRICES: Record<string, number> = {
 
 const ZISPA_TLDS = Object.keys(ZISPA_PRICES);
 
-const KNOWN_NAMESERVER_IPS:
-  Record<string, string> = {
-    'ns1.ngaatec.com':
-      '148.163.100.131',
-    'ns2.ngaatec.com':
-      '148.163.100.132',
-  };
-
 const isValidIpAddress = (
   value: string
 ) => {
@@ -904,9 +896,7 @@ const [placedOrder, setPlacedOrder] =
 
   const finalNameservers = () =>
     useDefaultNameservers
-      ? [
-          ...settings.default_nameservers,
-        ]
+      ? []
       : customNameservers
           .map((value) =>
             value.trim()
@@ -915,17 +905,9 @@ const [placedOrder, setPlacedOrder] =
 
   const finalNameserverIps = () => {
     if (useDefaultNameservers) {
-      return settings
-        .default_nameservers
-        .map(
-          (hostname) =>
-            KNOWN_NAMESERVER_IPS[
-              hostname
-                .trim()
-                .toLowerCase()
-            ] ||
-            ''
-        );
+      // Runtime DNS nameservers are assigned by Cloudflare only after
+      // the paid domain is provisioned. Never manufacture a fixed pair.
+      return [];
     }
 
     return customNameservers

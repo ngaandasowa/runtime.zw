@@ -20,11 +20,6 @@ const REGISTRAR = {
   technicalEmail: 'support@ngaatec.com',
 };
 
-const KNOWN_NAMESERVER_IPS: Record<string, string> = {
-  'ns1.ngaatec.com': '148.163.100.131',
-  'ns2.ngaatec.com': '148.163.100.132',
-};
-
 const value = (
   input?: string
 ) =>
@@ -72,9 +67,6 @@ export class RegistryTemplateService {
       value(
         suppliedIps[index]
       ) ||
-      KNOWN_NAMESERVER_IPS[
-        hostname.toLowerCase()
-      ] ||
       '';
 
     const ns1Ip =

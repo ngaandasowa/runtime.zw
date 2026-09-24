@@ -108,10 +108,9 @@ router.get(
  * Cloudflare-assigned nameservers on the matching
  * Runtime domain, but DOES NOT change the registry.
  *
- * IMPORTANT LEGACY RULE:
- * Existing active Runtime domains keep their current
- * nameservers. We do not silently migrate old
- * ns1/ns2.ngaatec.com domains to Cloudflare.
+ * IMPORTANT CUSTOM-DNS RULE:
+ * Existing active domains keep their current nameservers.
+ * Runtime never silently migrates custom DNS to Cloudflare.
  */
 router.post(
   '/cloudflare/provision-test',

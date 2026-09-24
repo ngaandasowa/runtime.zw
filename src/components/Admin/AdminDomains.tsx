@@ -189,7 +189,6 @@ export const AdminDomains:
     const dnsProviderLabel = (domain: any) => {
       if (isRuntimeDns(domain)) return 'Runtime DNS';
       const nameservers = Array.isArray(domain?.nameservers) ? domain.nameservers.map((item: any) => String(item).toLowerCase()) : [];
-      if (nameservers.some((item: string) => item === 'ns1.ngaatec.com' || item === 'ns2.ngaatec.com')) return 'Legacy DNS';
       return nameservers.length ? 'Custom DNS' : 'Not configured';
     };
 
