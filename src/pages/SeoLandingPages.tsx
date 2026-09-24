@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, Cloud, Globe2, Server, ShieldCheck } from 'lucide-react';
+import { guideApi, RuntimeGuide } from '../services/GuideService';
 
 const Shell: React.FC<{eyebrow:string; title:string; intro:string; children:React.ReactNode}> = ({eyebrow,title,intro,children}) => (
   <div className="bg-white">
@@ -53,19 +54,12 @@ export const DnsPage: React.FC = () => (
   </Shell>
 );
 
-const guides = [
-  ['Connect a domain to Vercel','/guides/connect-domain-to-vercel'],
-  ['Connect a domain to Netlify','/guides/connect-domain-to-netlify'],
-  ['Connect a domain to Render','/guides/connect-domain-to-render'],
-  ['Connect a domain to GitHub Pages','/guides/connect-domain-to-github-pages'],
-  ['Connect a domain to Firebase Hosting','/guides/connect-domain-to-firebase'],
-  ['Connect a domain to a VPS or hosting server','/guides/connect-domain-to-vps-hosting'],
-  ['Understand common DNS records','/guides/dns-records'],
-  ['Register a .co.zw domain','/guides/register-co-zw-domain'],
-] as const;
-
-export const GuidesPage: React.FC = () => (
-  <Shell eyebrow="Guides" title="Domain and DNS guides" intro="Practical instructions for registering domains and connecting them to websites, cloud platforms and hosting services.">
-    <div className="grid gap-4 md:grid-cols-2">{guides.map(([title,path]) => <Link key={path} to={path} className="group rounded-2xl border border-zinc-200 p-6 transition hover:border-[#3120ff]/40 hover:bg-[#3120ff]/2"><h2 className="font-bold text-zinc-950">{title}</h2><span className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-[#3120ff]">Read guide <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" /></span></Link>)}</div>
-  </Shell>
-);
+export const GuidesPage: React.FC = () => {
+  const [published,setPublished]=useState<RuntimeGuide[]>([]);
+  useEffect(()=>{ guideApi('/').then(d=>setPublished(d.guides||[])).catch(()=>{}); },[]);
+  return <Shell eyebrow="Guides" title="Domain and DNS guides" intro="Practical instructions for registering domains and connecting them to websites, cloud platforms and hosting services.">
+    <div className="grid gap-4 md:grid-cols-2">
+      {published.map(g=><Link key={g.slug} to={`/guides/${g.slug}`} className="group overflow-hidden rounded-2xl border border-zinc-200 transition hover:border-[#3120ff]/40"><div className="aspect-1200/630 bg-zinc-100">{g.featured_image?<img src={g.featured_image} alt={g.featured_image_alt||g.title} className="h-full w-full object-cover" loading="lazy"/>:<div className="flex h-full items-center justify-center px-8 text-center text-sm font-semibold text-zinc-400">Runtime Guide</div>}</div><div className="p-6"><p className="text-[11px] font-bold uppercase tracking-wide text-[#3120ff]">{g.category||'Guide'}</p><h2 className="mt-2 font-bold text-zinc-950">{g.title}</h2><p className="mt-2 line-clamp-2 text-sm leading-6 text-zinc-500">{g.excerpt}</p><span className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-[#3120ff]">Read guide <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" /></span></div></Link>)}
+    </div>
+  </Shell>;
+};

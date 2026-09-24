@@ -1,12 +1,39 @@
 {
   "redirects": [
-    { "source": "/pricing", "destination": "/domain-pricing", "permanent": true }
+    {
+      "source": "/pricing",
+      "destination": "/domain-pricing",
+      "permanent": true
+    }
   ],
   "rewrites": [
-    { "source": "/login", "destination": "/index.html" },
-    { "source": "/register", "destination": "/index.html" },
-    { "source": "/auth/action", "destination": "/index.html" },
-    { "source": "/coming-soon", "destination": "/index.html" },
-    { "source": "/dashboard/:path*", "destination": "/index.html" }
+    {
+      "source": "/sitemap.xml",
+      "destination": "https://api.runtime.co.zw/api/guides/sitemap.xml"
+    },
+    {
+      "source": "/guides/:slug",
+      "destination": "https://api.runtime.co.zw/api/guides/render/:slug"
+    },
+    {
+      "source": "/login",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/register",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/auth/action",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/coming-soon",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/dashboard/:path*",
+      "destination": "/index.html"
+    }
   ]
 }

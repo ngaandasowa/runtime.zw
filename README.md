@@ -138,3 +138,23 @@ A blog is not currently part of the project. Add one only when Runtime has a sus
 - Preserve idempotency around payment settlement, fulfillment, renewals and scheduled lifecycle work.
 - Keep customer ownership/authorization checks on domain, DNS, transfer and billing operations.
 - Treat registrar identity in ZISPA templates separately from DNS architecture.
+
+## Guides and article publishing
+
+Runtime's public content system supports both the original built-in guides and database-managed guides. Administrators can create, edit, draft and publish new content from **Admin → Guides & Articles**. Database-managed content is stored in the Firestore `guides` collection through authenticated backend endpoints; clients do not write guide documents directly.
+
+A published guide is available at `/guides/<slug>`. Each guide can define its title, excerpt, article body, category, author, featured-image URL and alt text, SEO title and meta description. Featured images should normally be 1200×630 and publicly reachable over HTTPS. The same image is used on the guide page and for Open Graph/Twitter social previews.
+
+The backend `/api/guides/render/:slug` endpoint returns the Runtime SPA shell with the published guide's server-visible title, description, canonical URL, featured image and Article JSON-LD. Vercel rewrites `/guides/:slug` to this renderer so link-preview crawlers can read metadata before React executes. The browser still loads the normal Runtime SPA at the requested guide URL. `/sitemap.xml` is also proxied to the backend so newly published database guides can enter the sitemap without a frontend redeploy. Drafts are excluded.
+
+The Admin content screen includes **Copy link** so a published guide URL can be pasted directly into Runtime's existing Email Campaigns CTA URL. Content publishing and email delivery remain separate systems by design.
+
+When adding a future guide, prefer a genuinely useful article over multiple near-duplicate SEO pages. Do not publish a draft merely to make it appear in search. Do not put secrets, customer data, private registry information or internal infrastructure credentials in guide content.
+
+## Guide publishing and engagement
+
+Runtime's public guides are database-managed through the Admin **Guides & articles** screen. On the first guide API request after this version is deployed, the eight original built-in guides are migrated once into the Firestore `guides` collection. Existing documents are never overwritten by the migration, and a `_runtime_meta/guides_builtin_v1` marker prevents deleted or edited guides from being recreated later.
+
+Each guide can have its own 1200×630 featured-image URL and alt text. The same image is used on the guide, guide listing and social metadata. Public guide URLs are rendered through the API route configured in `vercel.json`, allowing social crawlers to receive the guide's title, description and image before React loads. Published Firestore guides are included in the dynamic sitemap.
+
+Guide pages provide WhatsApp, Facebook, X, LinkedIn, email and copy-link sharing. Lightweight engagement counters are stored on the guide document as `views` and `useful_count`. A browser session counts a guide view once per session, and the useful action is limited once per browser with local storage. These are convenience engagement metrics, not authenticated unique-person analytics and should not be treated as exact audience counts.

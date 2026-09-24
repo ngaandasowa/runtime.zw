@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   LogOut,
   Mail,
+  BookOpen,
   Menu,
   Server,
   Settings,
@@ -65,6 +66,8 @@ import {
   AdminEmailCampaigns,
 } from './AdminEmailCampaigns';
 
+import { AdminGuides } from './AdminGuides';
+
 type NavItem = {
   id:
     | 'dashboard'
@@ -76,6 +79,7 @@ type NavItem = {
     | 'pricing'
     | 'nameservers'
     | 'email_campaigns'
+    | 'guides'
     | 'settings';
   label: string;
   icon: React.ComponentType<{
@@ -196,6 +200,11 @@ export const AdminShell:
         id: 'email_campaigns',
         label: 'Email Campaigns',
         icon: Mail,
+      },
+      {
+        id: 'guides',
+        label: 'Guides & Articles',
+        icon: BookOpen,
       },
       {
         id: 'settings',
@@ -450,6 +459,11 @@ export const AdminShell:
               {adminSubView ===
                 'email_campaigns' && (
                 <AdminEmailCampaigns />
+              )}
+
+              {adminSubView ===
+                'guides' && (
+                <AdminGuides />
               )}
 
               {adminSubView ===
