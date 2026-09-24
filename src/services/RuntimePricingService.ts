@@ -20,7 +20,7 @@ export class RuntimePricingService {
       id: 'price-com',
       tld: '.com',
       upstream_price: 12.50,
-      runtime_registration_price: 14.00,
+      runtime_registration_price: 15.00,
       runtime_renewal_price: 1.00,
       registry_cost: 12.50,
       currency: 'USD',
