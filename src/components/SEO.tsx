@@ -2,378 +2,47 @@ import React, { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 
 const SITE_URL = 'https://runtime.co.zw';
-const DEFAULT_TITLE =
-  'Runtime | Domain Registration & Technology Platform';
-const DEFAULT_DESCRIPTION =
-  'Register and manage .co.zw, .org.zw, .ac.zw and other domains with Runtime. .co.zw domains from $2/year with simple renewal pricing.';
+const OG_IMAGE = `${SITE_URL}/og-image.webp`;
+const DEFAULT_DESCRIPTION = 'Register and manage domains with Runtime, including .co.zw domains, DNS management powered by Cloudflare, renewals and transfers.';
 
-type SeoConfig = {
-  title: string;
-  description: string;
-  canonical?: string;
-  noindex?: boolean;
+type SeoConfig = { title:string; description:string; canonical?:string; noindex?:boolean; type?:'website'|'article'; structuredData?:Record<string, unknown>[] };
+
+const page = (title:string, description:string, canonical:string, structuredData:Record<string, unknown>[] = []):SeoConfig => ({title,description,canonical,structuredData});
+
+const guides: Record<string, [string,string]> = {
+  '/guides/connect-domain-to-vercel':['Connect a Domain to Vercel | Runtime Guide','How to connect a Runtime-managed domain to Vercel using the DNS records Vercel provides.'],
+  '/guides/connect-domain-to-netlify':['Connect a Domain to Netlify | Runtime Guide','How to connect a domain to Netlify using Runtime DNS or your existing Custom DNS provider.'],
+  '/guides/connect-domain-to-render':['Connect a Domain to Render | Runtime Guide','How to connect a domain to a Render service and publish the required DNS records.'],
+  '/guides/connect-domain-to-github-pages':['Connect a Domain to GitHub Pages | Runtime Guide','How to configure a custom domain for GitHub Pages using the correct authoritative DNS provider.'],
+  '/guides/connect-domain-to-firebase':['Connect a Domain to Firebase Hosting | Runtime Guide','How to verify and connect a custom domain to Firebase Hosting using the DNS records Firebase provides.'],
+  '/guides/connect-domain-to-vps-hosting':['Connect a Domain to a VPS or Web Hosting | Runtime Guide','Learn how to point a domain to a VPS or hosting server with DNS records or Custom DNS nameservers.'],
+  '/guides/dns-records':['DNS Records Explained: A, AAAA, CNAME, MX, TXT & NS | Runtime','Understand common DNS record types and when they are used to connect websites, email and other services.'],
+  '/guides/register-co-zw-domain':['How to Register a .co.zw Domain | Runtime Guide','A practical guide to searching, ordering and configuring DNS for a .co.zw domain with Runtime.'],
 };
 
-const routeSeo = (
-  pathname: string
-): SeoConfig => {
-  if (pathname === '/') {
-    return {
-      title: DEFAULT_TITLE,
-      description: DEFAULT_DESCRIPTION,
-      canonical: '/',
-    };
-  }
+const breadcrumb = (items:{name:string;path:string}[]) => ({ '@context':'https://schema.org','@type':'BreadcrumbList',itemListElement:items.map((item,index)=>({'@type':'ListItem',position:index+1,name:item.name,item:`${SITE_URL}${item.path}`})) });
 
-  if (
-    pathname === '/pricing' ||
-    pathname === '/domain-pricing'
-  ) {
-    return {
-      title:
-        'Domain Pricing | .co.zw from $2/year | Runtime',
-      description:
-        'Compare domain registration and renewal prices at Runtime. Register or renew .co.zw for $2/year and .org.zw or .ac.zw for $3/year.',
-      canonical: '/domain-pricing',
-    };
-  }
-
-  if (pathname === '/whois') {
-    return {
-      title:
-        'WHOIS Domain Lookup | Check Domain Information | Runtime',
-      description:
-        'Look up domain registration information with Runtime WHOIS. Check domain details and find your next domain.',
-      canonical: '/whois',
-    };
-  }
-
-  if (pathname === '/contact') {
-    return {
-      title: 'Contact Runtime | Domain Support',
-      description:
-        'Contact Runtime for help with domain registration, renewals, transfers and account support.',
-      canonical: '/contact',
-    };
-  }
-
-  if (pathname === '/terms') {
-    return {
-      title: 'Terms of Service | Runtime',
-      description:
-        'Read the terms that apply when using Runtime services.',
-      canonical: '/terms',
-    };
-  }
-
-  if (pathname === '/privacy') {
-    return {
-      title: 'Privacy Policy | Runtime',
-      description:
-        'Read how Runtime handles and protects personal information.',
-      canonical: '/privacy',
-    };
-  }
-
-  if (
-    pathname === '/coming-soon' ||
-    pathname === '/login' ||
-    pathname === '/register' ||
-    pathname === '/auth/action' ||
-    pathname.startsWith('/dashboard')
-  ) {
-    return {
-      title: 'Runtime',
-      description: DEFAULT_DESCRIPTION,
-      noindex: true,
-    };
-  }
-
-  return {
-    title: 'Page not found | Runtime',
-    description:
-      'The page you requested could not be found.',
-    noindex: true,
-  };
+const routeSeo = (pathname:string):SeoConfig => {
+  if (pathname === '/') return page('Runtime | Domain Registration & DNS in Zimbabwe', DEFAULT_DESCRIPTION, '/', [{ '@context':'https://schema.org','@type':'Organization','@id':`${SITE_URL}/#organization`,name:'Runtime',url:SITE_URL,logo:`${SITE_URL}/runtime-logo.png`,description:'Domain registration and DNS management platform.' },{ '@context':'https://schema.org','@type':'WebSite','@id':`${SITE_URL}/#website`,url:SITE_URL,name:'Runtime',publisher:{'@id':`${SITE_URL}/#organization`} }]);
+  if (pathname === '/pricing' || pathname === '/domain-pricing') return page('Domain Pricing | Runtime','Compare Runtime domain registration and renewal pricing for available domain extensions.','/domain-pricing',[breadcrumb([{name:'Home',path:'/'},{name:'Domain pricing',path:'/domain-pricing'}])]);
+  if (pathname === '/domains') return page('Domain Registration & Management | Runtime','Search, register and manage domains with Runtime, including Zimbabwe domains and flexible DNS options.','/domains',[breadcrumb([{name:'Home',path:'/'},{name:'Domains',path:'/domains'}]),{'@context':'https://schema.org','@type':'Service',name:'Domain registration and management',provider:{'@id':`${SITE_URL}/#organization`},url:`${SITE_URL}/domains`}]);
+  if (pathname === '/domains/co-zw') return page('.co.zw Domain Registration in Zimbabwe | Runtime','Register and manage a .co.zw domain with Runtime and choose Runtime DNS powered by Cloudflare or Custom DNS.','/domains/co-zw',[breadcrumb([{name:'Home',path:'/'},{name:'Domains',path:'/domains'},{name:'.co.zw',path:'/domains/co-zw'}]),{'@context':'https://schema.org','@type':'Service',name:'.co.zw domain registration',provider:{'@id':`${SITE_URL}/#organization`},areaServed:{'@type':'Country',name:'Zimbabwe'},url:`${SITE_URL}/domains/co-zw`}]);
+  if (pathname === '/dns') return page('Runtime DNS | Cloudflare-Powered DNS Management','Learn how Runtime DNS works with Cloudflare-assigned nameservers, how Custom DNS differs, and how to connect domains to web platforms.','/dns',[breadcrumb([{name:'Home',path:'/'},{name:'DNS',path:'/dns'}]),{'@context':'https://schema.org','@type':'Service',name:'Runtime DNS',description:'DNS management for Runtime domains through Cloudflare zones and their individually assigned authoritative nameservers.',provider:{'@id':`${SITE_URL}/#organization`},url:`${SITE_URL}/dns`}]);
+  if (pathname === '/guides') return page('Domain & DNS Guides | Runtime','Practical Runtime guides for .co.zw registration, DNS records and connecting domains to popular hosting platforms.','/guides',[breadcrumb([{name:'Home',path:'/'},{name:'Guides',path:'/guides'}])]);
+  if (guides[pathname]) { const [title,description]=guides[pathname]; const name=title.split(' | ')[0]; return {...page(title,description,pathname,[breadcrumb([{name:'Home',path:'/'},{name:'Guides',path:'/guides'},{name,path:pathname}]),{'@context':'https://schema.org','@type':'Article',headline:name,description,mainEntityOfPage:`${SITE_URL}${pathname}`,author:{'@type':'Organization',name:'Runtime'},publisher:{'@id':`${SITE_URL}/#organization`}}]),type:'article'}; }
+  if (pathname === '/whois') return page('WHOIS Domain Lookup | Runtime','Look up domain registration information and check available domain names with Runtime.','/whois',[breadcrumb([{name:'Home',path:'/'},{name:'WHOIS',path:'/whois'}])]);
+  if (pathname === '/contact') return page('Contact Runtime | Domain Support','Contact Runtime for help with domain registration, renewals, transfers, DNS and account support.','/contact');
+  if (pathname === '/terms') return page('Terms of Service | Runtime','Read the terms that apply when using Runtime services.','/terms');
+  if (pathname === '/privacy') return page('Privacy Policy | Runtime','Read how Runtime handles and protects personal information.','/privacy');
+  if (pathname === '/coming-soon' || pathname === '/login' || pathname === '/register' || pathname === '/auth/action' || pathname.startsWith('/dashboard')) return {title:'Runtime',description:DEFAULT_DESCRIPTION,noindex:true};
+  return {title:'Page not found | Runtime',description:'The page you requested could not be found.',noindex:true};
 };
 
-const upsertMeta = (
-  selector: string,
-  attributes: Record<string, string>
-) => {
-  let element =
-    document.head.querySelector<HTMLMetaElement>(
-      selector
-    );
+const upsertMeta=(selector:string,attributes:Record<string,string>)=>{let el=document.head.querySelector<HTMLMetaElement>(selector);if(!el){el=document.createElement('meta');Object.entries(attributes).forEach(([k,v])=>el!.setAttribute(k,v));document.head.appendChild(el);}return el;};
+const upsertLink=(rel:string,href:string)=>{let el=document.head.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`);if(!el){el=document.createElement('link');el.rel=rel;document.head.appendChild(el);}el.href=href;};
 
-  if (!element) {
-    element =
-      document.createElement('meta');
-
-    Object.entries(attributes).forEach(
-      ([key, value]) => {
-        element!.setAttribute(
-          key,
-          value
-        );
-      }
-    );
-
-    document.head.appendChild(
-      element
-    );
-  }
-
-  return element;
-};
-
-const upsertLink = (
-  rel: string,
-  href: string
-) => {
-  let element =
-    document.head.querySelector<HTMLLinkElement>(
-      `link[rel="${rel}"]`
-    );
-
-  if (!element) {
-    element =
-      document.createElement('link');
-    element.rel = rel;
-    document.head.appendChild(
-      element
-    );
-  }
-
-  element.href = href;
-};
-
-export const SEO: React.FC = () => {
-  const location = useLocation();
-
-  useEffect(() => {
-    const config =
-      routeSeo(location.pathname);
-
-    document.title =
-      config.title;
-
-    const description =
-      upsertMeta(
-        'meta[name="description"]',
-        {
-          name: 'description',
-          content:
-            config.description,
-        }
-      );
-    description.content =
-      config.description;
-
-    const robots =
-      upsertMeta(
-        'meta[name="robots"]',
-        {
-          name: 'robots',
-          content: 'index,follow',
-        }
-      );
-
-    robots.content =
-      config.noindex
-        ? 'noindex,nofollow'
-        : 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1';
-
-    const googlebot =
-      upsertMeta(
-        'meta[name="googlebot"]',
-        {
-          name: 'googlebot',
-          content: robots.content,
-        }
-      );
-    googlebot.content =
-      robots.content;
-
-    const canonicalUrl =
-      config.canonical
-        ? `${SITE_URL}${config.canonical}`
-        : `${SITE_URL}${location.pathname}`;
-
-    if (!config.noindex) {
-      upsertLink(
-        'canonical',
-        canonicalUrl
-      );
-    } else {
-      const canonical =
-        document.head.querySelector(
-          'link[rel="canonical"]'
-        );
-
-      canonical?.remove();
-    }
-
-    const ogTitle =
-      upsertMeta(
-        'meta[property="og:title"]',
-        {
-          property: 'og:title',
-          content: config.title,
-        }
-      );
-    ogTitle.content =
-      config.title;
-
-    const ogDescription =
-      upsertMeta(
-        'meta[property="og:description"]',
-        {
-          property:
-            'og:description',
-          content:
-            config.description,
-        }
-      );
-    ogDescription.content =
-      config.description;
-
-    const ogUrl =
-      upsertMeta(
-        'meta[property="og:url"]',
-        {
-          property: 'og:url',
-          content: canonicalUrl,
-        }
-      );
-    ogUrl.content =
-      canonicalUrl;
-
-    const ogSiteName =
-      upsertMeta(
-        'meta[property="og:site_name"]',
-        {
-          property:
-            'og:site_name',
-          content: 'Runtime',
-        }
-      );
-    ogSiteName.content =
-      'Runtime';
-
-    const ogType =
-      upsertMeta(
-        'meta[property="og:type"]',
-        {
-          property: 'og:type',
-          content: 'website',
-        }
-      );
-    ogType.content =
-      'website';
-
-    const twitterCard =
-      upsertMeta(
-        'meta[name="twitter:card"]',
-        {
-          name: 'twitter:card',
-          content:
-            'summary_large_image',
-        }
-      );
-    twitterCard.content =
-      'summary_large_image';
-
-    const twitterTitle =
-      upsertMeta(
-        'meta[name="twitter:title"]',
-        {
-          name: 'twitter:title',
-          content: config.title,
-        }
-      );
-    twitterTitle.content =
-      config.title;
-
-    const twitterDescription =
-      upsertMeta(
-        'meta[name="twitter:description"]',
-        {
-          name:
-            'twitter:description',
-          content:
-            config.description,
-        }
-      );
-    twitterDescription.content =
-      config.description;
-
-    const existingStructuredData =
-      document.getElementById(
-        'runtime-seo-structured-data'
-      );
-
-    if (
-      location.pathname === '/' &&
-      !config.noindex
-    ) {
-      const script =
-        existingStructuredData ||
-        document.createElement(
-          'script'
-        );
-
-      script.id =
-        'runtime-seo-structured-data';
-      script.setAttribute(
-        'type',
-        'application/ld+json'
-      );
-
-      script.textContent =
-        JSON.stringify({
-          '@context':
-            'https://schema.org',
-          '@graph': [
-            {
-              '@type':
-                'Organization',
-              '@id':
-                `${SITE_URL}/#organization`,
-              name: 'Runtime',
-              url: SITE_URL,
-              description:
-                'Technology platform for domains, cloud infrastructure and developer services.',
-            },
-            {
-              '@type':
-                'WebSite',
-              '@id':
-                `${SITE_URL}/#website`,
-              url: SITE_URL,
-              name: 'Runtime',
-              publisher: {
-                '@id':
-                  `${SITE_URL}/#organization`,
-              },
-            },
-          ],
-        });
-
-      if (
-        !existingStructuredData
-      ) {
-        document.head.appendChild(
-          script
-        );
-      }
-    } else {
-      existingStructuredData?.remove();
-    }
-  }, [
-    location.pathname,
-    location.search,
-  ]);
-
-  return null;
-};
+export const SEO:React.FC=()=>{const location=useLocation();useEffect(()=>{const c=routeSeo(location.pathname);document.title=c.title;upsertMeta('meta[name="description"]',{name:'description',content:c.description}).content=c.description;const robots=c.noindex?'noindex,nofollow':'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1';upsertMeta('meta[name="robots"]',{name:'robots',content:robots}).content=robots;upsertMeta('meta[name="googlebot"]',{name:'googlebot',content:robots}).content=robots;const canonical=c.canonical?`${SITE_URL}${c.canonical}`:`${SITE_URL}${location.pathname}`;if(!c.noindex)upsertLink('canonical',canonical);else document.head.querySelector('link[rel="canonical"]')?.remove();
+  const metas:[string,string,string][]=[['meta[property="og:title"]','property','og:title'],['meta[property="og:description"]','property','og:description'],['meta[property="og:url"]','property','og:url'],['meta[property="og:site_name"]','property','og:site_name'],['meta[property="og:type"]','property','og:type'],['meta[property="og:image"]','property','og:image'],['meta[property="og:image:alt"]','property','og:image:alt'],['meta[name="twitter:card"]','name','twitter:card'],['meta[name="twitter:title"]','name','twitter:title'],['meta[name="twitter:description"]','name','twitter:description'],['meta[name="twitter:image"]','name','twitter:image']];
+  const vals=[c.title,c.description,canonical,'Runtime',c.type||'website',OG_IMAGE,`${c.title} — Runtime`,'summary_large_image',c.title,c.description,OG_IMAGE];metas.forEach(([sel,key,name],i)=>{const e=upsertMeta(sel,{[key]:name,content:vals[i]});e.content=vals[i];});
+  document.querySelectorAll('script[data-runtime-base-schema="true"], script[data-runtime-seo="true"]').forEach(n=>n.remove());(c.structuredData||[]).forEach((obj,i)=>{const script=document.createElement('script');script.type='application/ld+json';script.dataset.runtimeSeo='true';script.id=`runtime-seo-jsonld-${i}`;script.textContent=JSON.stringify(obj);document.head.appendChild(script);});
+},[location.pathname]);return null;};

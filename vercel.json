@@ -1,8 +1,12 @@
 {
+  "redirects": [
+    { "source": "/pricing", "destination": "/domain-pricing", "permanent": true }
+  ],
   "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
+    { "source": "/login", "destination": "/index.html" },
+    { "source": "/register", "destination": "/index.html" },
+    { "source": "/auth/action", "destination": "/index.html" },
+    { "source": "/coming-soon", "destination": "/index.html" },
+    { "source": "/dashboard/:path*", "destination": "/index.html" }
   ]
 }

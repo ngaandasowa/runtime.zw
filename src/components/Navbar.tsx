@@ -60,7 +60,7 @@ export const Navbar: React.FC = () => {
    */
   const goToDomains = () => {
     closeMenu();
-    navigate('/#domain-search');
+    navigate('/domains');
   };
 
   /*

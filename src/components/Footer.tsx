@@ -290,7 +290,7 @@ export const Footer: React.FC = () => {
               type="button"
               onClick={() =>
                 goToPage(
-                  '/login'
+                  '/dns'
                 )
               }
               className="block w-full text-left transition-colors hover:text-[#3120ff]"
@@ -386,12 +386,12 @@ export const Footer: React.FC = () => {
               type="button"
               onClick={() =>
                 goToPage(
-                  '/about'
+                  '/guides'
                 )
               }
               className="block w-full text-left transition-colors hover:text-[#3120ff]"
             >
-              About Runtime
+              Guides
             </button>
 
             <button

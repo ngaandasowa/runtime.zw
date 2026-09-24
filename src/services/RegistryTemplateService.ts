@@ -277,23 +277,12 @@ export class RegistryTemplateService {
         : [];
 
     const requiredNsIp = (
-      index: number
-    ) => {
-      const hostname =
-        value(
-          domain.nameservers[index]
-        );
-
-      return (
-        value(
-          suppliedIps[index]
-        ) ||
-        KNOWN_NAMESERVER_IPS[
-          hostname.toLowerCase()
-        ] ||
-        ''
-      );
-    };
+  index: number
+) => {
+  return value(
+    suppliedIps[index]
+  );
+};
 
     if (
       !value(
