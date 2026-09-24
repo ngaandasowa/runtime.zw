@@ -88,7 +88,7 @@ export const Hero: React.FC = () => {
        * the upstream Ngaatec prices.
        */
       map['.co.zw'] = 2;
-      map['.com'] = 14;
+      map['.com'] = 15;
       map['.org.zw'] = 3;
       map['.ac.zw'] = 3;
 
@@ -105,7 +105,7 @@ export const Hero: React.FC = () => {
        */
       setPrices({
         '.co.zw': 2,
-        '.com': 14,
+        '.com': 15,
         '.org.zw': 3,
         '.ac.zw': 3,
       });
