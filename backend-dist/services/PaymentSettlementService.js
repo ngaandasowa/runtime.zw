@@ -282,6 +282,24 @@ export const settleOrderPayment = async ({ paymentId, actor, providerStatus, pro
                     amountRemaining: result.amountDue,
                     paymentBreakdown: paymentBreakdown || undefined,
                 });
+                /*
+                 * Payment confirmation and service-status confirmation are separate.
+                 * Once a registration is fully paid and fulfillment has moved it into
+                 * processing, tell the customer what happens next.
+                 */
+                if (result.fullyPaid &&
+                    result.fulfillment.handled &&
+                    result.fulfillment.itemType === 'domain_registration' &&
+                    domainName) {
+                    await emailService.sendEvent('domain_registration_requested', {
+                        email,
+                        name: String(user.name || settledOrder.customer_name || '').trim() || undefined,
+                        orderReference: String(settledOrder.reference || result.orderId),
+                        paymentReference: String(settledPayment.reference || paymentId),
+                        domainName,
+                        amount: Number(settledOrder.total || 0),
+                    });
+                }
             }
         }
         catch (error) {

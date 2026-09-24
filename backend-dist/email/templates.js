@@ -254,6 +254,15 @@ const customerContent = (event) => {
                 intro: 'we received your domain order.',
                 note: 'Complete the payment shown in your Runtime account. Registration starts after payment is verified. If you selected Runtime DNS, it is included free and will be prepared automatically during registration.',
             };
+        case 'domain_registration_requested':
+            return {
+                subject: (data) => `Registration processing started for ${data.domainName}`,
+                title: 'Your domain registration is being processed',
+                intro: 'your payment has been verified and your domain registration can now be processed.',
+                note: (data) => isCoZwDomain(data.domainName)
+                    ? 'Your .co.zw registration request is now in the registry processing stage. Please allow up to 24 hours for the request to be processed. We will email you again when the registration has been completed and the domain is active.'
+                    : 'Your domain registration request is now being processed. We will email you again when the registration has been completed and the domain is active.',
+            };
         case 'renewal_order_created':
             return {
                 subject: (data) => `Renewal order ${data.orderReference || ''} created`.trim(),

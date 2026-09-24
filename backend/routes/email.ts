@@ -161,6 +161,7 @@ const claimNameserverNotification =
 const supportedEvents:
   EmailEvent[] = [
     'domain_order_created',
+    'domain_registration_requested',
     'renewal_order_created',
     'order_cancelled',
     'payment_approved',
@@ -216,6 +217,7 @@ const adminOnlyEvents =
 const domainRequiredEvents =
   new Set<EmailEvent>([
     'domain_order_created',
+    'domain_registration_requested',
     'renewal_order_created',
     'renewal_completed',
     'domain_activated',

@@ -70,6 +70,7 @@ const claimNameserverNotification = async (runtimeUser, data) => {
 };
 const supportedEvents = [
     'domain_order_created',
+    'domain_registration_requested',
     'renewal_order_created',
     'order_cancelled',
     'payment_approved',
@@ -121,6 +122,7 @@ const adminOnlyEvents = new Set([
 ]);
 const domainRequiredEvents = new Set([
     'domain_order_created',
+    'domain_registration_requested',
     'renewal_order_created',
     'renewal_completed',
     'domain_activated',

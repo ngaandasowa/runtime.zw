@@ -4,6 +4,7 @@ import {
 
 export type EmailNotificationEvent =
   | 'domain_order_created'
+  | 'domain_registration_requested'
   | 'renewal_order_created'
   | 'order_cancelled'
   | 'payment_approved'
