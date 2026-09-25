@@ -242,7 +242,9 @@ router.get('/render/:slug', async (req, res) => {
         const title = data?.seo_title || data?.title || 'Runtime Guide';
         const description = data?.meta_description || data?.excerpt || 'Practical domain and DNS guidance from Runtime.';
         const canonical = `${SITE_URL}/guides/${slug}`;
-        const image = data?.featured_image || `${SITE_URL}/og-image.webp`;
+        const rawImage = clean(data?.featured_image);
+        const image = rawImage ? (rawImage.startsWith('http://') || rawImage.startsWith('https://') ? rawImage : `${SITE_URL}${rawImage.startsWith('/') ? '' : '/'}${rawImage}`) : `${SITE_URL}/og-image.webp`;
+        const imageAlt = clean(data?.featured_image_alt || data?.title || 'Runtime Guide');
         const esc = (v) => String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const replacements = [
             [/<title>.*?<\/title>/s, `<title>${esc(title)}</title>`],
@@ -252,6 +254,7 @@ router.get('/render/:slug', async (req, res) => {
             [/<meta\s+property="og:description"\s+content="[^"]*"\s*\/?>/s, `<meta property="og:description" content="${esc(description)}" />`],
             [/<meta\s+property="og:url"\s+content="[^"]*"\s*\/?>/s, `<meta property="og:url" content="${canonical}" />`],
             [/<meta\s+property="og:image"\s+content="[^"]*"\s*\/?>/s, `<meta property="og:image" content="${esc(image)}" />`],
+            [/<meta\s+property="og:image:alt"\s+content="[^"]*"\s*\/?>/s, `<meta property="og:image:alt" content="${esc(imageAlt)}" />`],
             [/<meta\s+name="twitter:title"\s+content="[^"]*"\s*\/?>/s, `<meta name="twitter:title" content="${esc(title)}" />`],
             [/<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/?>/s, `<meta name="twitter:description" content="${esc(description)}" />`],
             [/<meta\s+name="twitter:image"\s+content="[^"]*"\s*\/?>/s, `<meta name="twitter:image" content="${esc(image)}" />`],
