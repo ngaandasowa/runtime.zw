@@ -4,19 +4,66 @@ import { FaFacebookF, FaLinkedinIn, FaWhatsapp, FaXTwitter } from 'react-icons/f
 
 type Phase='idle'|'ping'|'download'|'upload'|'done'|'error';
 type Results={ping:number|null;jitter:number|null;download:number|null;upload:number|null;loadedPing:number|null;packetLoss:number|null};
-type Meta={clientIp?:string;city?:string;region?:string;country?:string;colo?:string;asn?:number;asOrganization?:string};
+type Meta={clientIp?:string;city?:string;region?:string;country?:string;colo?:string;asn?:number;asOrganization?:string;isp?:string;locality?:string;locationAccuracy?:number;preciseLocation?:boolean};
 const initial:Results={ping:null,jitter:null,download:null,upload:null,loadedPing:null,packetLoss:null};
 const DOWN='https://speed.cloudflare.com/__down';
 const UP='https://speed.cloudflare.com/__up';
 const META='https://speed.cloudflare.com/meta';
+const IP_INFO='https://ipwho.is/';
 const API=import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV?'http://localhost:4000':'https://api.runtime.co.zw');
 const median=(a:number[])=>{const s=[...a].sort((x,y)=>x-y);return s.length?s[Math.floor(s.length/2)]:0};
 const fmt=(v:number|null,d=1)=>v==null?'—':v.toFixed(d);
 const safeJson=async(res:Response)=>{try{return await res.json()}catch{return {}}};
+const loadInternetProvider=async(clientIp:string|undefined,setMeta:React.Dispatch<React.SetStateAction<Meta>>)=>{
+ if(!clientIp)return;
+ try{
+  const res=await fetch(`${IP_INFO}${encodeURIComponent(clientIp)}`,{cache:'no-store'});
+  if(!res.ok)return;
+  const data=await res.json();
+  if(data?.success!==false){
+   const provider=data?.connection?.isp||data?.connection?.org||'';
+   if(provider)setMeta(m=>({...m,isp:provider}));
+  }
+ }catch{}
+};
+const getPreciseLocation=(setMeta:React.Dispatch<React.SetStateAction<Meta>>)=>{
+ if(!navigator.geolocation)return;
+ navigator.geolocation.getCurrentPosition(async pos=>{
+  try{
+   const {latitude,longitude,accuracy}=pos.coords;
+   const res=await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`,{cache:'no-store'});
+   if(!res.ok)return;
+   const loc=await res.json();
+   const locality=loc.localityName||loc.locality||loc.city||'';
+   setMeta(m=>({...m,locality,city:loc.city||m.city,region:loc.principalSubdivision||m.region,country:loc.countryName||m.country,locationAccuracy:accuracy,preciseLocation:true}));
+  }catch{}
+ },()=>{}, {enableHighAccuracy:true,timeout:10000,maximumAge:0});
+};
 
 export const SpeedTest:React.FC=()=>{
  const [phase,setPhase]=useState<Phase>('idle'); const [r,setR]=useState<Results>(initial); const [progress,setProgress]=useState(0); const [error,setError]=useState(''); const [meta,setMeta]=useState<Meta>({}); const [testedAt,setTestedAt]=useState<Date|null>(null); const [live,setLive]=useState(0); const [useful,setUseful]=useState(()=>localStorage.getItem('runtime-speedtest-useful')==='1'); const [usefulCount,setUsefulCount]=useState(0); const [copied,setCopied]=useState(false); const runId=useRef(0);
- useEffect(()=>{fetch(META,{cache:'no-store'}).then(async x=>{if(x.ok)setMeta(await safeJson(x))}).catch(()=>{});fetch(`${API}/api/speed-test/stats`,{cache:'no-store'}).then(x=>x.ok?x.json():null).then(x=>{if(x?.success)setUsefulCount(Number(x.useful_count||0))}).catch(()=>{});return()=>{runId.current++}},[]);
+ useEffect(()=>{ 
+  const loadMeta = async () => { 
+   try { 
+    const x = await fetch(META,{cache:'no-store'}); 
+    if(x.ok) {
+     const data = await safeJson(x);
+     setMeta(m => ({...m, ...data}));
+    }
+   } catch {} 
+  }; 
+  const loadStats = async () => { 
+   try { 
+    const x = await fetch(`${API}/api/speed-test/stats`,{cache:'no-store'}); 
+    const data = x.ok ? await x.json() : null; 
+    if(data?.success) setUsefulCount(Number(data.useful_count || 0)); 
+   } catch {} 
+  }; 
+  getPreciseLocation(setMeta); 
+  void loadMeta(); 
+  void loadStats(); 
+  return ()=>{runId.current++}; 
+ },[]);
  const displayValue=phase==='download'||phase==='upload'?live:phase==='ping'?r.ping??live:phase==='done'?r.download??0:0;
  const displayUnit=phase==='ping'?'ms':'Mbps';
  const gaugeMax=phase==='ping'?150:Math.max(100,Math.ceil((Math.max(displayValue,r.download||0,r.upload||0)+20)/50)*50);
@@ -26,7 +73,7 @@ export const SpeedTest:React.FC=()=>{
  const measureLatency=async(id:number,count=6)=>{const vals:number[]=[];let failed=0;for(let i=0;i<count;i++){const t=performance.now();try{const res=await fetch(`${DOWN}?bytes=0&t=${Date.now()}-${i}`,{cache:'no-store'});if(!res.ok)throw 0;await res.arrayBuffer();vals.push(performance.now()-t)}catch{failed++}if(id!==runId.current)return {vals:[],failed};await new Promise(x=>setTimeout(x,70))}return{vals,failed}};
  const run=async()=>{const id=++runId.current;setR(initial);setError('');setTestedAt(null);setLive(0);setProgress(2);setPhase('ping');
   try{
-   fetch(META,{cache:'no-store'}).then(async x=>{if(x.ok&&id===runId.current)setMeta(await safeJson(x))}).catch(()=>{});
+   fetch(META,{cache:'no-store'}).then(async x=>{if(x.ok&&id===runId.current){const fresh=await safeJson(x);setMeta(m=>({...fresh,...(m.preciseLocation?{locality:m.locality,city:m.city,region:m.region,country:m.country,locationAccuracy:m.locationAccuracy,preciseLocation:true}:{})}));void loadInternetProvider(fresh.clientIp,setMeta)}}).catch(()=>{});
    const base=await measureLatency(id,8);if(id!==runId.current)return;if(!base.vals.length)throw new Error('The test server did not respond.');const ping=median(base.vals);const diffs=base.vals.slice(1).map((v,i)=>Math.abs(v-base.vals[i]));const jitter=diffs.reduce((a,b)=>a+b,0)/Math.max(1,diffs.length);setR(x=>({...x,ping,jitter}));setLive(ping);setProgress(25);
    setPhase('download');const downPoints:number[]=[];for(const [i,size] of [1_000_000,5_000_000,10_000_000,15_000_000].entries()){const t=performance.now();const res=await fetch(`${DOWN}?bytes=${size}&t=${Date.now()}-${i}`,{cache:'no-store'});if(!res.ok)throw new Error('Download test failed.');const b=await res.arrayBuffer();const sec=(performance.now()-t)/1000;const speed=(b.byteLength*8/sec)/1e6;if(sec>0)downPoints.push(speed);if(id!==runId.current)return;const v=median(downPoints);setLive(v);setR(x=>({...x,download:v}));setProgress(32+i*8)}
    const loaded=await measureLatency(id,4);if(id!==runId.current)return;setR(x=>({...x,loadedPing:loaded.vals.length?median(loaded.vals):null,packetLoss:((base.failed+loaded.failed)/(12))*100}));
@@ -58,7 +105,7 @@ export const SpeedTest:React.FC=()=>{
       {quality&&<div className="mt-7 rounded-2xl border border-zinc-200 bg-white p-4"><div className="flex items-center justify-between gap-3"><span className="text-sm font-bold text-zinc-950">Connection quality</span><span className="rounded-full bg-[#3120ff]/10 px-3 py-1 text-xs font-bold text-[#3120ff]">{quality[0]}</span></div><p className="mt-2 text-xs leading-5 text-zinc-500">{quality[1]}</p></div>}
      </div>
     </div>
-    <div className="border-t border-zinc-200 bg-white px-6 py-5 sm:px-9"><div className="grid gap-5 sm:grid-cols-3"><Detail icon={<Network/>} label="Provider" value={meta.asOrganization|| (meta.asn?`AS${meta.asn}`:'Detecting…')}/><Detail icon={<Globe2/>} label="Public IP" value={meta.clientIp||'Detecting…'}/><Detail icon={<MapPin/>} label="Approx. location" value={[meta.city,meta.region||meta.country].filter(Boolean).join(', ')||'Detecting…'}/></div>{testedAt&&<div className="mt-5 flex items-center gap-2 border-t border-zinc-100 pt-4 text-xs text-zinc-400"><Clock3 className="h-3.5 w-3.5"/>Tested {testedAt.toLocaleString()}</div>}</div>
+    <div className="border-t border-zinc-200 bg-white px-6 py-5 sm:px-9"><div className="grid gap-5 sm:grid-cols-3"><Detail icon={<Network/>} label="Provider" value={meta.isp||meta.asOrganization||(meta.asn?`AS${meta.asn}`:'Detecting…')}/><Detail icon={<Globe2/>} label="Public IP" value={meta.clientIp||'Detecting…'}/><Detail icon={<MapPin/>} label={meta.preciseLocation?'Location':'Approx. location'} value={(()=>{const parts=[meta.locality,meta.city,meta.country].filter(Boolean);return [...new Set(parts)].join(', ')||'Detecting…'})()}/></div>{testedAt&&<div className="mt-5 flex items-center gap-2 border-t border-zinc-100 pt-4 text-xs text-zinc-400"><Clock3 className="h-3.5 w-3.5"/>Tested {testedAt.toLocaleString()}</div>}</div>
    </div>
    <div className="mx-auto mt-6 max-w-5xl rounded-2xl border border-zinc-200 bg-white px-5 py-5 sm:px-6">
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -76,7 +123,7 @@ export const SpeedTest:React.FC=()=>{
      <button type="button" onClick={markUseful} disabled={useful} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-full border px-5 text-sm font-bold transition ${useful?'border-[#3120ff]/20 bg-[#3120ff]/10 text-[#3120ff]':'border-zinc-200 bg-white text-zinc-800 hover:border-[#3120ff]/40 hover:text-[#3120ff]'}`}><ThumbsUp className="h-4 w-4"/>{useful?'Thanks!':'Yes, useful'}</button>
     </div>
    </div>
-   <p className="mx-auto mt-4 max-w-3xl text-center text-[11px] leading-5 text-zinc-400">IP, provider and location are network-derived and may be approximate. The test transfers data to measure throughput. VPNs can change the network information shown.</p>
+   <p className="mx-auto mt-4 max-w-3xl text-center text-[11px] leading-5 text-zinc-400">Privacy: Runtime does not store your IP address, location, provider, or speed test results. Location access is used only to show a more accurate location during your test.</p>
   </div></section>
   <section className="mx-auto max-w-4xl px-4 py-14 sm:px-6 sm:py-20"><div className="space-y-10 text-zinc-700"><Info title="What is an internet speed test?">An internet speed test measures how quickly data travels between your device and a test server. Runtime measures download and upload throughput, latency, jitter and packet loss to give you a broader picture of connection quality.</Info><div className="grid gap-8 sm:grid-cols-2"><Info title="Download vs upload speed">Download speed affects websites, video and files. Upload speed affects video calls, cloud backups and file uploads. Both are measured in megabits per second (Mbps).</Info><Info title="Unloaded vs loaded latency">Unloaded latency measures responsiveness when the connection is quiet. Loaded latency checks responsiveness after throughput activity. A large increase can indicate that the connection becomes less responsive when busy.</Info></div><div className="grid gap-8 sm:grid-cols-2"><Info title="What are jitter and packet loss?">Jitter is variation between latency measurements. Packet loss is the percentage of test requests that fail. Both can affect calls, gaming and other real-time applications.</Info><Info title="Why can results change?">Wi-Fi strength, other devices, ISP congestion, VPNs, browser activity and routing can affect a test. For comparison, run several tests under similar conditions.</Info></div><div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-6"><h2 className="text-xl font-bold text-zinc-950">Domains, DNS and the internet</h2><p className="mt-3 text-sm leading-7">Runtime provides domain registration and DNS management alongside practical internet tools. If a website is not loading as expected, connection speed is only one possibility—DNS configuration can also affect whether a domain reaches the correct service.</p><div className="mt-4 flex flex-wrap gap-3"><a href="/dns" className="text-sm font-bold text-[#3120ff] hover:underline">Learn about Runtime DNS</a><a href="/guides" className="text-sm font-bold text-[#3120ff] hover:underline">Read DNS guides</a></div></div></div></section>
  </div>;
