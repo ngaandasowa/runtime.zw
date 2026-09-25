@@ -27,6 +27,7 @@ import { ContactUs } from './pages/ContactUs';
 import { NotFound } from './pages/NotFound';
 import { DomainsPage, CoZwPage, DnsPage, GuidesPage } from './pages/SeoLandingPages';
 import { GuidePage } from './pages/guides/GuidePage';
+import { SpeedTest } from './pages/SpeedTest';
 
 import { DomainRegistrationModal } from './components/DomainRegistrationModal';
 import { AuthPage } from './components/AuthPage';
@@ -421,6 +422,7 @@ const AppContent: React.FC = () => {
         <Route path="/domains/co-zw" element={<PublicLayout><CoZwPage /></PublicLayout>} />
         <Route path="/dns" element={<PublicLayout><DnsPage /></PublicLayout>} />
         <Route path="/guides" element={<PublicLayout><GuidesPage /></PublicLayout>} />
+        <Route path="/speed-test" element={<PublicLayout><SpeedTest /></PublicLayout>} />
         <Route path="/guides/:slug" element={<PublicLayout><GuidePage /></PublicLayout>} />
 
         <Route

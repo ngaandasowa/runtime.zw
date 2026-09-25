@@ -20,6 +20,7 @@ import adminDnsRoutes from './routes/adminDns.js';
 import dnsMigrationRoutes from './routes/dnsMigration.js';
 import registryRequestRoutes from './routes/registryRequests.js';
 import guideRoutes from './routes/guides.js';
+import speedTestRoutes from './routes/speedTest.js';
 import { startAbandonedCleanupScheduler, } from './services/AbandonedOrderCleanupService.js';
 import { startRuntimeDnsActivationScheduler, } from './services/RuntimeDnsActivationService.js';
 import { startRenewalLifecycleScheduler, } from './services/RenewalLifecycleScheduler.js';
@@ -103,6 +104,7 @@ app.use('/api/admin-dns', adminDnsRoutes);
 app.use('/api/dns-migration', dnsMigrationRoutes);
 app.use('/api/registry-requests', registryRequestRoutes);
 app.use('/api/guides', guideRoutes);
+app.use('/api/speed-test', speedTestRoutes);
 /*
  * ----------------------------------------------------------
  * ERROR HANDLER

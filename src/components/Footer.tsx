@@ -312,6 +312,14 @@ export const Footer: React.FC = () => {
           >
             <button
               type="button"
+              onClick={() => goToPage('/speed-test')}
+              className="block w-full text-left transition-colors hover:text-[#3120ff]"
+            >
+              Internet Speed Test
+            </button>
+
+            <button
+              type="button"
               onClick={() =>
                 goToPage(
                   '/coming-soon?service=cloud'

@@ -147,7 +147,7 @@ router.get('/sitemap.xml', async (_req, res) => {
         await ensureBuiltinGuides();
         const snap = await collection.where('status', '==', 'published').limit(500).get();
         const dynamic = snap.docs.map(d => d.data()).map((g) => ({ loc: `${SITE_URL}/guides/${g.slug}`, lastmod: g.updated_at || g.published_at }));
-        const fixed = ['', '/domains', '/domains/co-zw', '/domain-pricing', '/dns', '/whois', '/guides', '/contact', '/terms', '/privacy'].map(path => ({ loc: `${SITE_URL}${path}`, lastmod: null }));
+        const fixed = ['', '/domains', '/domains/co-zw', '/domain-pricing', '/dns', '/whois', '/speed-test', '/guides', '/contact', '/terms', '/privacy'].map(path => ({ loc: `${SITE_URL}${path}`, lastmod: null }));
         const seen = new Set();
         const rows = [...fixed, ...dynamic].filter(x => !seen.has(x.loc) && seen.add(x.loc));
         const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${rows.map(x => `  <url><loc>${x.loc}</loc>${x.lastmod ? `<lastmod>${String(x.lastmod).slice(0, 10)}</lastmod>` : ''}</url>`).join('\n')}\n</urlset>`;

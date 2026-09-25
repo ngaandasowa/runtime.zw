@@ -7,6 +7,7 @@ const routes={
 '/domain-pricing':['Domain Pricing | Runtime','Compare Runtime domain registration and renewal pricing for available domain extensions.'],
 '/dns':['Runtime DNS | Cloudflare-Powered DNS Management','Learn how Runtime DNS works with Cloudflare-assigned nameservers, how Custom DNS differs, and how to connect domains to web platforms.'],
 '/whois':['WHOIS Domain Lookup | Runtime','Look up domain registration information and check available domain names with Runtime.'],
+'/speed-test':['Internet Speed Test – Check Download, Upload & Ping | Runtime','Test your internet connection speed for free. Check download speed, upload speed, ping and jitter with Runtime Speed Test.'],
 '/guides':['Domain & DNS Guides | Runtime','Practical Runtime guides for .co.zw registration, DNS records and connecting domains to popular hosting platforms.'],
 '/guides/connect-domain-to-vercel':['Connect a Domain to Vercel | Runtime Guide','How to connect a Runtime-managed domain to Vercel using the DNS records Vercel provides.'],
 '/guides/connect-domain-to-netlify':['Connect a Domain to Netlify | Runtime Guide','How to connect a domain to Netlify using Runtime DNS or your existing Custom DNS provider.'],
