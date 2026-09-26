@@ -185,6 +185,8 @@ const starterCampaigns = {
 
 export const AdminEmailCampaigns:
   React.FC = () => {
+    const [viewMode, setViewMode] = useState<'campaigns' | 'customer_email'>('campaigns');
+
     const [
       campaigns,
       setCampaigns,
@@ -694,6 +696,19 @@ export const AdminEmailCampaigns:
           </button>
         </div>
 
+        <div className="flex w-fit rounded-xl border border-zinc-200 bg-white p-1">
+          <button type="button" onClick={() => setViewMode('campaigns')} className={`rounded-lg px-4 py-2 text-xs font-bold transition ${viewMode === 'campaigns' ? 'bg-[#3120ff] text-white' : 'text-zinc-600 hover:bg-zinc-50'}`}>
+            Campaigns
+          </button>
+          <button type="button" onClick={() => setViewMode('customer_email')} className={`rounded-lg px-4 py-2 text-xs font-bold transition ${viewMode === 'customer_email' ? 'bg-[#3120ff] text-white' : 'text-zinc-600 hover:bg-zinc-50'}`}>
+            Customer Email
+          </button>
+        </div>
+
+        {viewMode === 'customer_email' ? (
+          <CustomerEmailPanel customers={customers} customersLoading={customersLoading} />
+        ) : (
+          <>
         <div className="grid gap-3 sm:grid-cols-3">
           <Stat
             icon={CheckCircle2}
@@ -1030,9 +1045,280 @@ export const AdminEmailCampaigns:
             }
           />
         )}
+          </>
+        )}
       </div>
     );
   };
+
+type CustomerDomain = {
+  id: string;
+  domain_name: string;
+  status: string;
+  tld?: string;
+  processing_type?: string;
+};
+
+type DirectEmailHistory = {
+  id: string;
+  subject: string;
+  customer_email: string;
+  domains?: string[];
+  email_type?: string;
+  sent_at: string;
+};
+
+const CUSTOMER_EMAIL_TYPES = [
+  { value: 'registration_details', label: 'Registration details need attention' },
+  { value: 'dns_nameserver', label: 'DNS / nameserver issue' },
+  { value: 'domain_information', label: 'Domain information' },
+  { value: 'renewal', label: 'Renewal information' },
+  { value: 'service_information', label: 'Service information' },
+  { value: 'general', label: 'General customer message' },
+] as const;
+
+const REGISTRATION_ISSUES = [
+  { value: 'owner_name', label: 'Registrant / owner name' },
+  { value: 'physical_address', label: 'Physical address' },
+  { value: 'postal_address', label: 'Postal address' },
+  { value: 'city', label: 'City' },
+  { value: 'email', label: 'Owner email address' },
+  { value: 'phone', label: 'Phone number' },
+  { value: 'other_owner', label: 'Domain is for another person / company' },
+  { value: 'documents', label: 'Supporting documents' },
+] as const;
+
+const registrationIssueText: Record<string, string> = {
+  owner_name: 'Registrant / owner name — enter the actual person or organisation that will own the domain.',
+  physical_address: 'Physical address — provide a complete, locatable address including street or stand number, street/road name and suburb where applicable.',
+  postal_address: 'Postal address — provide the complete postal/contact address.',
+  city: 'City — enter the town or city separately from the street address.',
+  email: 'Owner email address — provide a valid email address for the registered owner.',
+  phone: 'Phone number — provide a valid contact number for the registered owner.',
+  other_owner: 'Owner details — if you are registering for a client or another person/company, provide that owner’s details rather than your own.',
+  documents: 'Supporting documents — provide the required owner verification documents through the secure method requested by Runtime.',
+};
+
+const CustomerEmailPanel: React.FC<{
+  customers: CustomerOption[];
+  customersLoading: boolean;
+}> = ({ customers, customersLoading }) => {
+  const [userId, setUserId] = useState('');
+  const [domains, setDomains] = useState<CustomerDomain[]>([]);
+  const [domainIds, setDomainIds] = useState<string[]>([]);
+  const [emailType, setEmailType] = useState('registration_details');
+  const [issues, setIssues] = useState<string[]>([]);
+  const [subject, setSubject] = useState('');
+  const [title, setTitle] = useState('');
+  const [message, setMessage] = useState('');
+  const [customNote, setCustomNote] = useState('');
+  const [domainsLoading, setDomainsLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [history, setHistory] = useState<DirectEmailHistory[]>([]);
+
+  const customer = customers.find((item) => item.id === userId);
+  const selectedDomains = domains.filter((domain) => domainIds.includes(domain.id));
+  const domainLabel = selectedDomains.length === 1
+    ? selectedDomains[0].domain_name
+    : selectedDomains.length > 1
+      ? `${selectedDomains.length} domains`
+      : 'your domain';
+
+  const loadHistory = useCallback(async (selectedUserId: string) => {
+    if (!selectedUserId) { setHistory([]); return; }
+    try {
+      const result = await campaignApi(`/customer-email/history?userId=${encodeURIComponent(selectedUserId)}`);
+      setHistory(result.history || []);
+    } catch {
+      setHistory([]);
+    }
+  }, []);
+
+  const loadDomains = useCallback(async (selectedUserId: string) => {
+    setDomainIds([]);
+    setDomains([]);
+    if (!selectedUserId) return;
+    setDomainsLoading(true);
+    setError(null);
+    try {
+      const result = await campaignApi(`/customers/${encodeURIComponent(selectedUserId)}/domains`);
+      setDomains(result.domains || []);
+      await loadHistory(selectedUserId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load customer domains.');
+    } finally {
+      setDomainsLoading(false);
+    }
+  }, [loadHistory]);
+
+  useEffect(() => { void loadDomains(userId); }, [userId, loadDomains]);
+
+  const buildTemplate = useCallback(() => {
+    const names = selectedDomains.map((domain) => domain.domain_name);
+    const domainLines = names.length ? `\n\nDomain${names.length === 1 ? '' : 's'}:\n${names.map((name) => `• ${name}`).join('\n')}` : '';
+    const note = customNote.trim() ? `\n\nAdditional information:\n${customNote.trim()}` : '';
+
+    if (emailType === 'registration_details') {
+      const selectedIssueLines = issues.map((issue) => registrationIssueText[issue]).filter(Boolean);
+      setSubject(`Action required: registration details for ${names.length === 1 ? names[0] : names.length > 1 ? 'your domains' : 'your .co.zw domain'}`);
+      setTitle('Registration details need attention');
+      setMessage(`Before we can complete the registration, some registrant information needs to be updated.${domainLines}${selectedIssueLines.length ? `\n\nPlease update:\n${selectedIssueLines.map((line) => `• ${line}`).join('\n')}` : ''}\n\nThe registrant details must belong to the actual person or organisation that will own the domain. If you are registering the domain for someone else or for a client, please provide their details rather than your own.\n\nOnce the details are updated, we can continue processing the registration.${note}`);
+      return;
+    }
+
+    if (emailType === 'dns_nameserver') {
+      setSubject(`DNS / nameserver attention required${names.length === 1 ? ` for ${names[0]}` : ''}`);
+      setTitle('Your domain configuration needs attention');
+      setMessage(`We need you to review the DNS or nameserver configuration for the domain${names.length === 1 ? '' : 's'} below.${domainLines}\n\nPlease check the details in your Runtime account or reply to this email if you need help resolving the issue.${note}`);
+      return;
+    }
+
+    if (emailType === 'renewal') {
+      setSubject(`Renewal information${names.length === 1 ? ` for ${names[0]}` : ''}`);
+      setTitle('Domain renewal information');
+      setMessage(`We are contacting you with information about the renewal of the domain${names.length === 1 ? '' : 's'} below.${domainLines}${note || '\n\nPlease review your Runtime account for the current domain details.'}`);
+      return;
+    }
+
+    if (emailType === 'domain_information') {
+      setSubject(`Information about ${names.length === 1 ? names[0] : 'your domain'}`);
+      setTitle('Domain information');
+      setMessage(`We are contacting you with an update about the domain${names.length === 1 ? '' : 's'} below.${domainLines}${note}`);
+      return;
+    }
+
+    if (emailType === 'service_information') {
+      setSubject('Information about your Runtime service');
+      setTitle('Service information');
+      setMessage(`We are contacting you with an update about your Runtime service.${domainLines}${note}`);
+      return;
+    }
+
+    setSubject(names.length === 1 ? `Regarding ${names[0]}` : 'A message from Runtime');
+    setTitle('A message from Runtime');
+    setMessage(`${domainLines ? `We are contacting you regarding:${domainLines}` : 'We are contacting you regarding your Runtime account.'}${note}`);
+  }, [emailType, issues, selectedDomains, customNote]);
+
+  useEffect(() => { buildTemplate(); }, [buildTemplate]);
+
+  const toggleDomain = (id: string) => {
+    setDomainIds((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
+  };
+
+  const toggleIssue = (value: string) => {
+    setIssues((current) => current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
+  };
+
+  const sendCustomerEmail = async () => {
+    if (!userId || !subject.trim() || !title.trim() || !message.trim()) {
+      setError('Choose a customer and complete the email before sending.');
+      return;
+    }
+    const confirmed = window.confirm(`Send this email to ${customer?.email || 'the selected customer'}?\n\nSubject: ${subject}`);
+    if (!confirmed) return;
+    setSending(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await campaignApi('/customer-email/send', {
+        method: 'POST',
+        body: JSON.stringify({ userId, domainIds, emailType, subject, title, message }),
+      });
+      setNotice(`Email sent to ${result.recipient}.`);
+      await loadHistory(userId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to send customer email.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      {error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
+      {notice && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div>}
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(340px,0.72fr)]">
+        <div className="space-y-5 rounded-2xl border border-zinc-200 bg-white p-5 sm:p-6">
+          <div>
+            <h2 className="text-base font-bold text-zinc-950">Customer email</h2>
+            <p className="mt-1 text-xs leading-5 text-zinc-500">Select the customer and their domain, choose the reason, review the generated message, then send it directly.</p>
+          </div>
+
+          <label className="block">
+            <span className="text-xs font-bold text-zinc-700">1. Customer</span>
+            <select value={userId} disabled={customersLoading} onChange={(event) => setUserId(event.target.value)} className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-3 text-sm outline-none focus:border-[#3120ff] focus:ring-2 focus:ring-[#3120ff]/10">
+              <option value="">{customersLoading ? 'Loading customers...' : 'Choose a customer'}</option>
+              {customers.map((item) => <option key={item.id} value={item.id}>{item.name ? `${item.name} — ${item.email}` : item.email}</option>)}
+            </select>
+          </label>
+
+          <div>
+            <span className="text-xs font-bold text-zinc-700">2. Related domain</span>
+            {!userId ? <p className="mt-2 text-xs text-zinc-500">Choose a customer first.</p> : domainsLoading ? <p className="mt-2 text-xs text-zinc-500">Loading domains...</p> : domains.length === 0 ? <p className="mt-2 rounded-xl bg-zinc-50 px-3 py-3 text-xs text-zinc-500">No domains found for this customer. You can still send a general service email.</p> : (
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {domains.map((domain) => <label key={domain.id} className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3.5 py-3 ${domainIds.includes(domain.id) ? 'border-[#3120ff] bg-[#3120ff]/5' : 'border-zinc-200'}`}>
+                  <input type="checkbox" checked={domainIds.includes(domain.id)} onChange={() => toggleDomain(domain.id)} className="mt-0.5 h-4 w-4 accent-[#3120ff]" />
+                  <span className="min-w-0"><span className="block truncate text-sm font-bold text-zinc-900">{domain.domain_name}</span><span className="mt-0.5 block text-[11px] capitalize text-zinc-500">{domain.status.replace(/_/g, ' ')}</span></span>
+                </label>)}
+              </div>
+            )}
+          </div>
+
+          <label className="block">
+            <span className="text-xs font-bold text-zinc-700">3. Email type</span>
+            <select value={emailType} onChange={(event) => { setEmailType(event.target.value); setIssues([]); setCustomNote(''); }} className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-3 text-sm outline-none focus:border-[#3120ff] focus:ring-2 focus:ring-[#3120ff]/10">
+              {CUSTOMER_EMAIL_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+            </select>
+          </label>
+
+          {emailType === 'registration_details' && (
+            <div>
+              <span className="text-xs font-bold text-zinc-700">4. What needs updating?</span>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {REGISTRATION_ISSUES.map((issue) => <label key={issue.value} className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-semibold ${issues.includes(issue.value) ? 'border-[#3120ff] bg-[#3120ff]/5 text-[#3120ff]' : 'border-zinc-200 text-zinc-700'}`}><input type="checkbox" checked={issues.includes(issue.value)} onChange={() => toggleIssue(issue.value)} className="h-4 w-4 accent-[#3120ff]" />{issue.label}</label>)}
+              </div>
+            </div>
+          )}
+
+          <label className="block">
+            <span className="text-xs font-bold text-zinc-700">{emailType === 'registration_details' ? '5.' : '4.'} Extra information (optional)</span>
+            <textarea rows={3} value={customNote} onChange={(event) => setCustomNote(event.target.value)} placeholder="Add only information specific to this customer or domain..." className="mt-2 w-full resize-y rounded-xl border border-zinc-200 px-3.5 py-3 text-sm outline-none focus:border-[#3120ff] focus:ring-2 focus:ring-[#3120ff]/10" />
+          </label>
+
+          <div className="border-t border-zinc-100 pt-5">
+            <p className="mb-4 text-xs font-bold text-zinc-700">{emailType === 'registration_details' ? '6.' : '5.'} Review and edit</p>
+            <div className="space-y-4">
+              <Field label="Email subject" value={subject} onChange={setSubject} />
+              <Field label="Email heading" value={title} onChange={setTitle} />
+              <label className="block"><span className="text-xs font-bold text-zinc-700">Message</span><textarea rows={11} value={message} onChange={(event) => setMessage(event.target.value)} className="mt-2 w-full resize-y rounded-xl border border-zinc-200 px-3.5 py-3 text-sm leading-6 outline-none focus:border-[#3120ff] focus:ring-2 focus:ring-[#3120ff]/10" /></label>
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-zinc-50 px-4 py-3 text-xs leading-5 text-zinc-500">The customer receives only the Runtime message above. Internal registrar correspondence, registrar pricing and internal processing details are not included.</div>
+
+          <button type="button" disabled={sending || !userId || !subject || !title || !message} onClick={() => void sendCustomerEmail()} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#3120ff] px-4 py-3 text-sm font-bold text-white disabled:opacity-50"><Send className="h-4 w-4" />{sending ? 'Sending...' : 'Send Email'}</button>
+        </div>
+
+        <div className="space-y-5">
+          <div className="rounded-2xl border border-zinc-200 bg-white p-5 sm:p-6">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">Email preview</p>
+            {customer && <p className="mt-2 text-xs text-zinc-500">To: <span className="font-semibold text-zinc-700">{customer.name || customer.email}</span> · {customer.email}{selectedDomains.length > 0 ? ` · ${domainLabel}` : ''}</p>}
+            <EmailPreview title={title || 'Your email heading'} message={message || 'Your message will appear here.'} />
+          </div>
+
+          <div className="rounded-2xl border border-zinc-200 bg-white p-5 sm:p-6">
+            <h3 className="text-sm font-bold text-zinc-950">Customer email history</h3>
+            <p className="mt-1 text-xs text-zinc-500">Recent direct emails sent to the selected customer.</p>
+            {!userId ? <p className="mt-4 text-xs text-zinc-500">Choose a customer to see history.</p> : history.length === 0 ? <p className="mt-4 text-xs text-zinc-500">No direct customer emails recorded yet.</p> : <div className="mt-4 space-y-2">{history.slice(0, 10).map((item) => <div key={item.id} className="rounded-xl border border-zinc-200 px-3.5 py-3"><p className="text-xs font-bold text-zinc-900">{item.subject}</p><p className="mt-1 text-[11px] text-zinc-500">{item.domains?.length ? `${item.domains.join(', ')} · ` : ''}{new Date(item.sent_at).toLocaleString()}</p></div>)}</div>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const EmailPreview:
   React.FC<{

@@ -358,6 +358,183 @@ router.get(
   }
 );
 
+/*
+ * ----------------------------------------------------------
+ * DIRECT CUSTOMER EMAILS
+ * ----------------------------------------------------------
+ * Operational one-to-one messages. These deliberately stay
+ * separate from bulk campaign queues and transactional email.
+ */
+router.get(
+  '/customers/:userId/domains',
+  authenticate,
+  requireSuperAdmin,
+  async (req, res) => {
+    try {
+      const userId = String(req.params.userId || '').trim();
+      if (!userId) {
+        return res.status(400).json({ success: false, message: 'Customer is required.' });
+      }
+
+      const userDoc = await adminDb.collection('users').doc(userId).get();
+      if (!userDoc.exists) {
+        return res.status(404).json({ success: false, message: 'Customer not found.' });
+      }
+
+      const user = userDoc.data() || {};
+      const email = String(user.email || '').trim().toLowerCase();
+
+      const byUser = await adminDb.collection('domains').where('user_id', '==', userId).get();
+      const found = new Map<string, any>();
+      byUser.docs.forEach((doc) => found.set(doc.id, { id: doc.id, ...doc.data() }));
+
+      // Older/imported records may only carry user_email. Merge those safely.
+      if (email) {
+        const byEmail = await adminDb.collection('domains').where('user_email', '==', email).get();
+        byEmail.docs.forEach((doc) => found.set(doc.id, { id: doc.id, ...doc.data() }));
+      }
+
+      const domains = Array.from(found.values())
+        .map((domain: any) => ({
+          id: String(domain.id),
+          domain_name: String(domain.domain_name || '').trim().toLowerCase(),
+          status: String(domain.status || 'unknown'),
+          tld: String(domain.tld || ''),
+          processing_type: String(domain.processing_type || ''),
+        }))
+        .filter((domain) => Boolean(domain.domain_name))
+        .sort((a, b) => a.domain_name.localeCompare(b.domain_name));
+
+      return res.json({ success: true, domains });
+    } catch (error) {
+      console.error('Load customer domains failed:', error);
+      return res.status(500).json({ success: false, message: 'Unable to load customer domains.' });
+    }
+  }
+);
+
+router.get(
+  '/customer-email/history',
+  authenticate,
+  requireSuperAdmin,
+  async (req, res) => {
+    try {
+      const userId = String(req.query.userId || '').trim();
+      let query: FirebaseFirestore.Query = adminDb.collection('customer_email_history');
+      if (userId) query = query.where('user_id', '==', userId);
+      const snapshot = await query.get();
+      const history = snapshot.docs
+        .map((doc) => ({ id: doc.id, ...doc.data() } as any))
+        .sort((a, b) => String(b.sent_at || '').localeCompare(String(a.sent_at || '')))
+        .slice(0, 50);
+      return res.json({ success: true, history });
+    } catch (error) {
+      console.error('Load customer email history failed:', error);
+      return res.status(500).json({ success: false, message: 'Unable to load customer email history.' });
+    }
+  }
+);
+
+router.post(
+  '/customer-email/send',
+  authenticate,
+  requireSuperAdmin,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = String(req.body?.userId || '').trim();
+      const subject = String(req.body?.subject || '').trim();
+      const title = String(req.body?.title || '').trim();
+      const message = String(req.body?.message || '').trim();
+      const emailType = String(req.body?.emailType || 'general').trim();
+      const requestedDomainIds: string[] = Array.isArray(req.body?.domainIds)
+        ? [...new Set(
+            (req.body.domainIds as unknown[])
+              .map((value: unknown) => String(value || '').trim())
+              .filter((value): value is string => Boolean(value))
+          )]
+        : [];
+
+      if (!userId || !subject || !title || !message) {
+        return res.status(400).json({ success: false, message: 'Customer, subject, heading and message are required.' });
+      }
+
+      const userDoc = await adminDb.collection('users').doc(userId).get();
+      if (!userDoc.exists) {
+        return res.status(404).json({ success: false, message: 'Customer not found.' });
+      }
+
+      const customer = userDoc.data() || {};
+      if (String(customer.role || 'customer') !== 'customer') {
+        return res.status(400).json({ success: false, message: 'The selected account is not a customer account.' });
+      }
+
+      const customerEmail = String(customer.email || '').trim().toLowerCase();
+      const customerName = String(customer.name || customer.full_name || '').trim();
+      if (!customerEmail) {
+        return res.status(400).json({ success: false, message: 'The selected customer does not have an email address.' });
+      }
+
+      const selectedDomains: Array<{ id: string; domain_name: string; status: string }> = [];
+      for (const domainId of requestedDomainIds) {
+        const domainDoc = await adminDb.collection('domains').doc(domainId).get();
+        if (!domainDoc.exists) {
+          return res.status(400).json({ success: false, message: 'One of the selected domains no longer exists.' });
+        }
+        const domain = domainDoc.data() || {};
+        const belongsToCustomer =
+          String(domain.user_id || '') === userId ||
+          (customerEmail && String(domain.user_email || '').trim().toLowerCase() === customerEmail);
+        if (!belongsToCustomer) {
+          return res.status(403).json({ success: false, message: 'A selected domain does not belong to this customer.' });
+        }
+        selectedDomains.push({
+          id: domainDoc.id,
+          domain_name: String(domain.domain_name || '').trim().toLowerCase(),
+          status: String(domain.status || 'unknown'),
+        });
+      }
+
+      await sendMail({
+        to: customerEmail,
+        subject,
+        html: buildCampaignHtml({ name: customerName, title, message }),
+        replyTo: process.env.SUPPORT_EMAIL || 'support@runtime.co.zw',
+      });
+
+      const now = new Date().toISOString();
+      const historyRef = adminDb.collection('customer_email_history').doc();
+      await historyRef.set({
+        user_id: userId,
+        customer_name: customerName,
+        customer_email: customerEmail,
+        email_type: emailType,
+        domain_ids: selectedDomains.map((domain) => domain.id),
+        domains: selectedDomains.map((domain) => domain.domain_name),
+        subject,
+        title,
+        message,
+        sent_by: req.runtimeUser!.uid,
+        sent_by_email: req.runtimeUser!.email,
+        sent_at: now,
+        created_at: now,
+      });
+
+      return res.json({
+        success: true,
+        historyId: historyRef.id,
+        recipient: customerEmail,
+        domains: selectedDomains.map((domain) => domain.domain_name),
+      });
+    } catch (error) {
+      console.error('Direct customer email failed:', error);
+      return res.status(500).json({
+        success: false,
+        message: error instanceof Error ? error.message : 'Unable to send customer email.',
+      });
+    }
+  }
+);
+
 router.get(
   '/:campaignId/recipients',
   authenticate,
