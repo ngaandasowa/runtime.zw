@@ -6,7 +6,6 @@ import React, {
 
 import {
   ChevronDown,
-  CreditCard,
 } from 'lucide-react';
 
 import {
@@ -475,11 +474,28 @@ export const Footer: React.FC = () => {
               Payment Options
             </h3>
 
-            <div className="mt-4 flex flex-wrap gap-2">
-              <div className="flex h-9 items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-700">
-                <CreditCard className="h-4 w-4" />
-                EcoCash
-              </div>
+            <div className="mt-4 grid grid-cols-6 gap-1.5">
+              {[
+                { src: '/images/payment-methods/ecocash-01.svg', alt: 'EcoCash' },
+                { src: '/images/payment-methods/innbucks-01.svg', alt: 'InnBucks' },
+                { src: '/images/payment-methods/omari-01.svg', alt: "O'mari" },
+                { src: '/images/payment-methods/visa-01.svg', alt: 'Visa' },
+                { src: '/images/payment-methods/mastercard-01.svg', alt: 'Mastercard' },
+                { src: '/images/payment-methods/zimswitch-01.svg', alt: 'Zimswitch' },
+              ].map((method) => (
+                <div
+                  key={method.alt}
+                  title={method.alt}
+                  className="min-w-0 overflow-hidden rounded-sm border border-zinc-200 bg-white"
+                >
+                  <img
+                    src={method.src}
+                    alt={method.alt}
+                    loading="lazy"
+                    className="h-full w-full object-contain"
+                  />
+                </div>
+              ))}
             </div>
           </div>
 
@@ -507,7 +523,7 @@ export const Footer: React.FC = () => {
         </div>
 
         {/* BOTTOM */}
-        <div className="flex flex-col gap-4 border-t border-zinc-200 py-7 text-xs text-zinc-500 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-row items-center justify-between gap-4 border-t border-zinc-200 py-7 text-xs text-zinc-500">
 
           <button
             type="button"

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import {
   Menu,
@@ -25,6 +25,50 @@ export const Navbar: React.FC = () => {
 
   const [menuOpen, setMenuOpen] =
     useState(false);
+
+  const navbarRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+
+      if (
+        target &&
+        navbarRef.current &&
+        !navbarRef.current.contains(target)
+      ) {
+        setMenuOpen(false);
+      }
+    };
+
+    // Close only when the user actually attempts to scroll.
+    // Listening to the window `scroll` event here causes a bug on sticky
+    // navbars: opening the menu can change layout/scroll position by a few
+    // pixels, which immediately fires `scroll` and closes the menu again.
+    const handleUserScroll = () => {
+      setMenuOpen(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('wheel', handleUserScroll, { passive: true });
+    window.addEventListener('touchmove', handleUserScroll, { passive: true });
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('wheel', handleUserScroll);
+      window.removeEventListener('touchmove', handleUserScroll);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [menuOpen]);
 
   const closeMenu = () => {
     setMenuOpen(false);
@@ -82,7 +126,7 @@ export const Navbar: React.FC = () => {
   };
 
   return (
-    <header className="sticky top-0 z-40 border-b border-zinc-200 bg-white/95 backdrop-blur">
+    <header ref={navbarRef} className="sticky top-0 z-40 border-b border-zinc-200 bg-white/95 backdrop-blur">
       <div className="mx-auto flex min-h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
 
         {/* LEFT SIDE */}
