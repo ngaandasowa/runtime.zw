@@ -4,7 +4,7 @@ import path from 'node:path';
 const dist=path.resolve('dist');
 const base=fs.readFileSync(path.join(dist,'index.html'),'utf8');
 const site='https://runtime.co.zw';
-const defaultImage=`${site}/og-image.webp`;
+const defaultImage=`${site}/new-og-image-01.webp`;
 
 // Static public pages. Individual /guides/:slug pages are deliberately NOT generated
 // here: Vercel rewrites those requests to the backend renderer so Firestore featured

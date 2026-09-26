@@ -215,7 +215,7 @@ router.get('/render/:slug', async (req, res) => {
     const description = data?.meta_description || data?.excerpt || 'Practical domain and DNS guidance from Runtime.';
     const canonical = `${SITE_URL}/guides/${slug}`;
     const rawImage = clean(data?.featured_image);
-    const image = rawImage ? (rawImage.startsWith('http://') || rawImage.startsWith('https://') ? rawImage : `${SITE_URL}${rawImage.startsWith('/') ? '' : '/'}${rawImage}`) : `${SITE_URL}/og-image.webp`;
+    const image = rawImage ? (rawImage.startsWith('http://') || rawImage.startsWith('https://') ? rawImage : `${SITE_URL}${rawImage.startsWith('/') ? '' : '/'}${rawImage}`) : `${SITE_URL}/new-og-image-01.webp`;
     const imageAlt = clean(data?.featured_image_alt || data?.title || 'Runtime Guide');
     const esc = (v:string) => String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     const replacements:[RegExp,string][] = [

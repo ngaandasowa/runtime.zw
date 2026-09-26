@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 
 const SITE_URL = 'https://runtime.co.zw';
-const OG_IMAGE = `${SITE_URL}/og-image.webp`;
+const OG_IMAGE = `${SITE_URL}/new-og-image-01.webp`;
 const DEFAULT_DESCRIPTION = 'Register and manage domains with Runtime, including .co.zw domains, DNS management powered by Cloudflare, renewals and transfers.';
 
 type SeoConfig = { title:string; description:string; canonical?:string; image?:string; imageAlt?:string; noindex?:boolean; type?:'website'|'article'; structuredData?:Record<string, unknown>[] };
