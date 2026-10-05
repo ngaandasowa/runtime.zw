@@ -163,6 +163,13 @@ export const AdminAnalytics: React.FC =
         }
       }
 
+      const defaultViewStats = {
+        allTime: 0,
+        selectedPeriod: 0,
+        today: 0,
+        onlineNow: 0,
+      };
+
       return {
         totalUsers: users.length,
         activeUsers: behavioral?.activeUsers || 0,
@@ -181,7 +188,7 @@ export const AdminAnalytics: React.FC =
         usersByRole,
         signInMethods: behavioral?.signInMethods || {},
         paymentMethods,
-        viewStats: behavioral?.viewStats || { today: 0, week: 0, month: 0, onlineNow: 0 },
+        viewStats: behavioral?.viewStats || defaultViewStats,
         recentSessions: behavioral?.recentSessions || [],
       };
     }, [
@@ -401,7 +408,7 @@ export const AdminAnalytics: React.FC =
           <div className="flex items-center justify-between gap-4">
             <div>
               <h2 className="text-sm font-bold text-zinc-950">Views</h2>
-              <p className="mt-1 text-xs text-zinc-500">Actual page views by time window.</p>
+              <p className="mt-1 text-xs text-zinc-500">Lifetime views plus the reporting window selected above.</p>
             </div>
             <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5">
               <span className="h-2 w-2 rounded-full bg-emerald-500" />
@@ -413,9 +420,12 @@ export const AdminAnalytics: React.FC =
 
           <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
+              { label: 'All Time', value: analytics.viewStats?.allTime || 0 },
+              {
+                label: `${daysBack} Days`,
+                value: analytics.viewStats?.selectedPeriod || 0,
+              },
               { label: 'Today', value: analytics.viewStats?.today || 0 },
-              { label: '7 Days', value: analytics.viewStats?.week || 0 },
-              { label: '30 Days', value: analytics.viewStats?.month || 0 },
               { label: 'Online Now', value: analytics.viewStats?.onlineNow || 0 },
             ].map((item) => (
               <div key={item.label} className="rounded-lg bg-zinc-50 p-4">

@@ -20,7 +20,7 @@ export interface AnalyticsStats {
   usersByRole: Record<string, number>;
   signInMethods: Record<string, number>;
   paymentMethods: Record<string, number>;
-  viewStats: { today: number; week: number; month: number; onlineNow: number };
+  viewStats: { allTime: number; selectedPeriod: number; today: number; onlineNow: number };
   recentSessions: Array<{
     userId: string;
     event: string;
@@ -105,7 +105,7 @@ class AnalyticsDataService {
       usersByRole: {},
       signInMethods: {},
       paymentMethods: {},
-      viewStats: { today: 0, week: 0, month: 0, onlineNow: 0 },
+      viewStats: { allTime: 0, selectedPeriod: 0, today: 0, onlineNow: 0 },
       recentSessions: [],
     };
   }
@@ -128,18 +128,21 @@ class AnalyticsDataService {
     const startDate = new Date(`${startKey}T00:00:00.000Z`);
 
     try {
-      // Always read at least 30 daily documents so the dashboard can show
-      // honest Today / 7 days / 30 days view totals at the same time.
-      const viewWindowDays = Math.max(days, 30);
-      const viewStartKey = this.startDayKey(viewWindowDays);
+      // Views follow the same reporting window selected at the top of the
+      // Analytics dashboard. A separate all-time read preserves the lifetime
+      // page-view total instead of replacing it with a rolling window.
       const onlineSince = new Date(Date.now() - 2 * 60 * 1000);
 
-      const [dailySnapshot, recentSnapshot, presenceSnapshot] = await Promise.all([
+      const [dailySnapshot, allTimeSnapshot, recentSnapshot, presenceSnapshot] = await Promise.all([
         this.db
           .collection('analytics_daily')
-          .where('date', '>=', viewStartKey)
+          .where('date', '>=', startKey)
           .orderBy('date', 'asc')
-          .limit(viewWindowDays)
+          .limit(days)
+          .get(),
+        this.db
+          .collection('analytics_daily')
+          .orderBy('date', 'asc')
           .get(),
         this.db
           .collection('analytics_events')
@@ -160,11 +163,17 @@ class AnalyticsDataService {
       const activeUsers = new Set<string>();
 
       const todayKey = utcDayKey();
-      const weekStartKey = this.startDayKey(7);
-      const monthStartKey = this.startDayKey(30);
       let viewsToday = 0;
-      let viewsWeek = 0;
-      let viewsMonth = 0;
+      let viewsSelectedPeriod = 0;
+      let viewsAllTime = 0;
+
+      for (const doc of allTimeSnapshot.docs) {
+        const data = doc.data() || {};
+        viewsAllTime += Object.values(data.pageCounts || {}).reduce(
+          (sum: number, value: unknown) => sum + safeCount(value),
+          0
+        );
+      }
 
       for (const doc of dailySnapshot.docs) {
         const data = doc.data() || {};
@@ -175,11 +184,10 @@ class AnalyticsDataService {
         );
 
         if (docDate === todayKey) viewsToday += pageViewsForDay;
-        if (docDate >= weekStartKey) viewsWeek += pageViewsForDay;
-        if (docDate >= monthStartKey) viewsMonth += pageViewsForDay;
+        viewsSelectedPeriod += pageViewsForDay;
 
-        // Other dashboard metrics still respect the selected reporting period.
-        if (docDate < startKey) continue;
+        // All dashboard metrics in this snapshot already respect the selected
+        // reporting period because the Firestore query starts at startKey.
 
         for (const [key, value] of Object.entries(data.eventCounts || {})) {
           const name = decodeKey(key);
@@ -241,9 +249,9 @@ class AnalyticsDataService {
         topPages,
         signInMethods,
         viewStats: {
+          allTime: viewsAllTime,
+          selectedPeriod: viewsSelectedPeriod,
           today: viewsToday,
-          week: viewsWeek,
-          month: viewsMonth,
           onlineNow: presenceSnapshot.size,
         },
         recentSessions,
