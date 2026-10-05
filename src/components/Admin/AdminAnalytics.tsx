@@ -108,6 +108,11 @@ export const AdminAnalytics: React.FC =
       );
 
       const paymentMethods: Record<string, number> = {};
+      const uniquePayingUsers = new Set(
+        periodPayments
+          .map((payment) => String((payment as any).user_id || '').trim())
+          .filter(Boolean)
+      ).size;
       const totalPaymentAmount = periodPayments.reduce(
         (total, payment) => {
           const method = String(
@@ -125,6 +130,7 @@ export const AdminAnalytics: React.FC =
 
       let domainRegistrations = 0;
       let domainTransfers = 0;
+      const domainCustomerIds = new Set<string>();
 
       for (const domain of domains) {
         const status = String(domain.status || '');
@@ -145,6 +151,8 @@ export const AdminAnalytics: React.FC =
         }
 
         domainRegistrations += 1;
+        const domainCustomerId = String((domain as any).user_id || '').trim();
+        if (domainCustomerId) domainCustomerIds.add(domainCustomerId);
 
         if (
           (domain as any).transfer === true ||
@@ -166,6 +174,8 @@ export const AdminAnalytics: React.FC =
         domainTransfers,
         totalPaymentAmount,
         paymentCount: periodPayments.length,
+        uniquePayingUsers,
+        uniqueDomainCustomers: domainCustomerIds.size,
         topDomains: behavioral?.topDomains || [],
         topPages: behavioral?.topPages || [],
         usersByRole,
@@ -184,16 +194,16 @@ export const AdminAnalytics: React.FC =
     const metrics = useMemo(() => ({
       totalVisitors: analytics.activeUsers,
       signUpConversion:
-        analytics.activeUsers > 0
+        analytics.totalUsers > 0
           ? (
-              (analytics.signUps / analytics.activeUsers) * 100
-            ).toFixed(2)
+              Math.min(100, (analytics.signUps / analytics.totalUsers) * 100)
+            ).toFixed(1)
           : '0',
       paymentConversion:
         analytics.totalUsers > 0
           ? (
-              (analytics.paymentCount / analytics.totalUsers) * 100
-            ).toFixed(2)
+              Math.min(100, ((analytics.uniquePayingUsers || 0) / analytics.totalUsers) * 100)
+            ).toFixed(1)
           : '0',
       averageOrderValue:
         analytics.paymentCount > 0
@@ -204,8 +214,8 @@ export const AdminAnalytics: React.FC =
       domainRegistrationRate:
         analytics.totalUsers > 0
           ? (
-              (analytics.domainRegistrations / analytics.totalUsers) * 100
-            ).toFixed(2)
+              Math.min(100, ((analytics.uniqueDomainCustomers || 0) / analytics.totalUsers) * 100)
+            ).toFixed(1)
           : '0',
     }), [analytics]);
 

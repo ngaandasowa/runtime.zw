@@ -1228,6 +1228,13 @@ const CustomerEmailPanel: React.FC<{
       });
       setNotice(`Email sent to ${result.recipient}.`);
       await loadHistory(userId);
+      setDomainIds([]);
+      setIssues([]);
+      setCustomNote('');
+      setEmailType('registration_details');
+      setSubject('');
+      setTitle('');
+      setMessage('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to send customer email.');
     } finally {

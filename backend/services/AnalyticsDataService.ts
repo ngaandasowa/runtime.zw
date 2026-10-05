@@ -155,7 +155,7 @@ class AnalyticsDataService {
           eventCounts[name] = (eventCounts[name] || 0) + safeCount(value);
         }
 
-        for (const [key, value] of Object.entries(data.domainCounts || {})) {
+        for (const [key, value] of Object.entries(data.searchDomainCountsV2 || {})) {
           const name = decodeKey(key);
           domainCounts[name] = (domainCounts[name] || 0) + safeCount(value);
         }
@@ -264,14 +264,8 @@ class AnalyticsDataService {
       }
 
       const domain = String(eventData?.domain || '').trim().toLowerCase();
-      if (
-        domain &&
-        (normalizedEvent === 'domain_search' ||
-          normalizedEvent === 'domain_check' ||
-          normalizedEvent === 'domain_registration_initiated' ||
-          normalizedEvent === 'domain_transfer_initiated')
-      ) {
-        payload.domainCounts = {
+      if (domain && normalizedEvent === 'domain_search') {
+        payload.searchDomainCountsV2 = {
           [encodeKey(domain)]: FieldValue.increment(1),
         };
       }

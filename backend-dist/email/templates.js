@@ -484,6 +484,7 @@ const adminEvents = new Set([
     'domain_order_created',
     'renewal_order_created',
     'order_cancelled',
+    'payment_received',
     'nameserver_change_requested',
     'dns_migration_ready',
     'domain_modify_requested',
@@ -498,7 +499,7 @@ export const buildAdminEmail = (event, data) => {
         .replace(/_/g, ' ')
         .replace(/\b\w/g, (character) => character.toUpperCase());
     return {
-        subject: `[Runtime] ${eventLabel}: ${data.domainName}`,
+        subject: `[Runtime] ${eventLabel}: ${data.domainName || data.orderReference || data.paymentReference || 'Customer payment'}`,
         html: layout({
             title: eventLabel,
             intro: `a customer action requires visibility in Runtime. Customer: ${data.email}.`,

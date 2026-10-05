@@ -6,7 +6,6 @@ import React, {
 import {
   CalendarDays,
   Clock3,
-  Globe2,
   Network,
   Play,
   RefreshCw,
@@ -77,6 +76,7 @@ export const AdminDomains:
       domains,
       updateDomainStatus,
       showNotification,
+      refreshRuntimeData,
       setAdminSubView,
     } = useStore();
 
@@ -284,11 +284,7 @@ export const AdminDomains:
            * Reload once after a successful admin recovery so both admin
            * and all derived UI state are rebuilt from Firestore.
            */
-          window.setTimeout(
-            () =>
-              window.location.reload(),
-            650
-          );
+          await refreshRuntimeData();
         } catch (error) {
           showNotification(
             error instanceof Error
@@ -565,12 +561,7 @@ export const AdminDomains:
             null
           );
 
-          window.setTimeout(
-            () =>
-              window.location
-                .reload(),
-            300
-          );
+          await refreshRuntimeData();
         } catch (error) {
           setEditError(
             error instanceof Error
@@ -807,9 +798,7 @@ export const AdminDomains:
                 </span>
                 <button
                   type="button"
-                  onClick={() =>
-                    window.location.reload()
-                  }
+                  onClick={() => void refreshRuntimeData()}
                   className="ml-auto font-bold text-[#3120ff]"
                 >
                   Reload domain data

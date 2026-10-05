@@ -242,6 +242,56 @@ export const settleOrderPayment = async ({ paymentId, actor, providerStatus, pro
             console.error('Runtime DNS provisioning failed after payment settlement:', error);
         }
     }
+    /*
+     * Registry work must be created by the authoritative settlement path,
+     * not by an admin browser. This makes PesePay, Runtime Credit and manual
+     * payment verification behave identically. The request is idempotent: an
+     * existing open request for the same domain/action is reused.
+     */
+    if (result.fullyPaid &&
+        result.fulfillment.handled &&
+        result.fulfillment.resourceType === 'domain' &&
+        result.fulfillment.resourceId &&
+        (result.fulfillment.itemType === 'domain_registration' ||
+            result.fulfillment.itemType === 'domain_transfer')) {
+        try {
+            const domainDoc = await adminDb.collection('domains').doc(result.fulfillment.resourceId).get();
+            const domain = domainDoc.exists ? domainDoc.data() : null;
+            if (domain && String(domain.processing_type || '').trim().toLowerCase() === 'zispa') {
+                const action = result.fulfillment.itemType === 'domain_transfer' ? 'T' : 'N';
+                const existing = await adminDb.collection('registry_requests')
+                    .where('domain_id', '==', domainDoc.id)
+                    .get();
+                const hasOpenRequest = existing.docs.some((doc) => String(doc.data()?.action || '').toUpperCase() === action &&
+                    !['confirmed', 'cancelled'].includes(String(doc.data()?.status || '').toLowerCase()));
+                if (!hasOpenRequest) {
+                    const settledPayment = await paymentRef.get();
+                    const payment = settledPayment.exists ? settledPayment.data() : {};
+                    const now = new Date().toISOString();
+                    const requestRef = adminDb.collection('registry_requests').doc();
+                    await requestRef.set({
+                        id: requestRef.id,
+                        domain_id: domainDoc.id,
+                        domain_name: String(domain.domain_name || ''),
+                        action,
+                        generated_template: '',
+                        status: 'ready',
+                        email_subject: `${action} ${String(domain.domain_name || '')}`.trim(),
+                        customer_email: String(domain.user_email || ''),
+                        submitted_by: actor || 'Runtime payment settlement',
+                        payment_reference: String(payment.reference || paymentId),
+                        workflow_type: 'standard_registry',
+                        created_at: now,
+                        updated_at: now,
+                        persisted_at: now,
+                    });
+                }
+            }
+        }
+        catch (error) {
+            console.error('Unable to create registry request after payment settlement:', error);
+        }
+    }
     if (!result.alreadySettled) {
         try {
             const [settledPaymentDoc, settledOrderDoc, allPaymentDocs] = await Promise.all([

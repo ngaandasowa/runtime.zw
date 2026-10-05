@@ -65,9 +65,10 @@ class AnalyticsService {
     eventName: string,
     eventData?: Record<string, any>
   ) {
-    // Log to backend Firestore (non-blocking)
+    // Log to backend Firestore (non-blocking). Suppress duplicate UI-driven events.
     if (
-      typeof window !== 'undefined'
+      typeof window !== 'undefined' &&
+      this.shouldSendBackendEvent(eventName, eventData)
     ) {
       analyticsRepository
         .logEvent(

@@ -142,6 +142,7 @@ export const DomainRegistrationModal: React.FC = () => {
     setActiveView,
     setDashboardSubView,
     showNotification,
+    refreshRuntimeData,
   } = useStore();
   const navigate = useNavigate();
 
@@ -1429,6 +1430,8 @@ const [placedOrder, setPlacedOrder] =
                   }
                 : previous
           );
+
+          await refreshRuntimeData();
 
           showNotification(
             'Payment confirmed successfully.',

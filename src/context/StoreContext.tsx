@@ -458,6 +458,7 @@ interface StoreContextType {
   // Notifications
   notification: { message: string; type: 'success' | 'info' | 'error' } | null;
   showNotification: (message: string, type?: 'success' | 'info' | 'error') => void;
+  refreshRuntimeData: () => Promise<void>;
   
   assignDomainToCustomer: (
     input: Omit<
@@ -893,6 +894,29 @@ useEffect(() => {
     setTimeout(() => setNotification(null), 4000);
   };
 
+  const refreshRuntimeData = async () => {
+    if (!currentUser) return;
+
+    const isAdmin = currentUser.role === 'super_admin';
+    const [freshDomains, freshOrders, freshPayments] = await Promise.all([
+      isAdmin ? domainRepository.getAllDomains() : domainRepository.getDomainsForUser(currentUser.id),
+      isAdmin ? orderRepository.getAllOrders() : orderRepository.getOrdersForUser(currentUser.id),
+      isAdmin ? paymentRepository.getAllPayments() : paymentRepository.getPaymentsForUser(currentUser.id),
+    ]);
+
+    setDomains(freshDomains);
+    setOrders(freshOrders);
+    setPayments(freshPayments);
+
+    if (isAdmin) {
+      try {
+        setRegistryRequests(await registryRequestApiService.getAll());
+      } catch (error) {
+        console.error('Unable to refresh registry requests:', error);
+      }
+    }
+  };
+
   const login = async (
     email: string,
     password: string
@@ -917,6 +941,8 @@ useEffect(() => {
     setCurrentUser(
       profile
     );
+    analyticsService.setUser(profile);
+    analyticsService.trackSignIn(profile.email, 'email');
 
     setActiveView(
       'dashboard'
@@ -949,6 +975,8 @@ useEffect(() => {
       setCurrentUser(
         profile
       );
+      analyticsService.setUser(profile);
+      analyticsService.trackSignIn(profile.email, 'google');
 
       setActiveView(
         'dashboard'
@@ -1053,6 +1081,7 @@ useEffect(() => {
     };
 
   const logout = async () => {
+    analyticsService.trackSignOut();
     await firebaseAuthService
       .signOut();
 
@@ -1091,6 +1120,8 @@ useEffect(() => {
     setCurrentUser(
       profile
     );
+    analyticsService.setUser(profile);
+    analyticsService.trackSignUp(profile.email, 'email');
 
     setActiveView(
       'dashboard'
@@ -4916,6 +4947,7 @@ const getDomainOrderDetails = async (
       closeCustomerAccount,
       notification,
       showNotification,
+      refreshRuntimeData,
     }}>
       {children}
     </StoreContext.Provider>

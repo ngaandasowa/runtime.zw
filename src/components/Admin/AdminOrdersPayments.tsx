@@ -29,6 +29,7 @@ export const AdminOrdersPayments:
       replacePaidDomainWithExisting,
       cancelOrder,
       showNotification,
+      refreshRuntimeData,
     } = useStore();
 
     const [
@@ -730,12 +731,7 @@ export const AdminOrdersPayments:
             'success'
           );
 
-          window.setTimeout(
-            () =>
-              window.location
-                .reload(),
-            250
-          );
+          await refreshRuntimeData();
         } catch (error) {
           showNotification(
             error instanceof Error
@@ -797,12 +793,7 @@ export const AdminOrdersPayments:
             'success'
           );
 
-          window.setTimeout(
-            () =>
-              window.location
-                .reload(),
-            250
-          );
+          await refreshRuntimeData();
         } catch (error) {
           showNotification(
             error instanceof Error

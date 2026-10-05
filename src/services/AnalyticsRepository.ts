@@ -17,6 +17,8 @@ export interface AnalyticsData {
   domainTransfers: number;
   totalPaymentAmount: number;
   paymentCount: number;
+  uniquePayingUsers?: number;
+  uniqueDomainCustomers?: number;
   topDomains: Array<{ domain: string; count: number }>;
   topPages: Array<{ page: string; count: number }>;
   usersByRole: Record<string, number>;

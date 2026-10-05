@@ -34,6 +34,7 @@ export const DashboardBilling:
       renewDomain,
       cancelOrder,
       showNotification,
+      refreshRuntimeData,
     } = useStore();
 
     const [
@@ -431,12 +432,7 @@ export const DashboardBilling:
             result?.fullyPaid ||
             summary.amountDue <= 0
           ) {
-            window.setTimeout(
-              () =>
-                window.location
-                  .reload(),
-              700
-            );
+            await refreshRuntimeData();
           }
         } catch (error) {
           setPaymentModalError(
@@ -764,12 +760,7 @@ export const DashboardBilling:
               'Payment confirmed successfully. Your order is now being processed.'
             );
 
-            window.setTimeout(
-              () =>
-                window.location
-                  .reload(),
-              800
-            );
+            await refreshRuntimeData();
 
             return;
           }

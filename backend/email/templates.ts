@@ -868,6 +868,7 @@ const adminEvents =
     'domain_order_created',
     'renewal_order_created',
     'order_cancelled',
+    'payment_received',
     'nameserver_change_requested',
     'dns_migration_ready',
     'domain_modify_requested',
@@ -896,7 +897,7 @@ export const buildAdminEmail = (
 
   return {
     subject:
-      `[Runtime] ${eventLabel}: ${data.domainName}`,
+      `[Runtime] ${eventLabel}: ${data.domainName || data.orderReference || data.paymentReference || 'Customer payment'}`,
 
     html:
       layout({
