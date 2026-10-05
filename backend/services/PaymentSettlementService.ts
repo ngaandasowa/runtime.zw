@@ -432,6 +432,168 @@ export const settleOrderPayment =
     );
 
     /*
+     * Reconcile the paid domain after settlement.
+     *
+     * This is deliberately outside the payment transaction as a recovery
+     * path for older/racing checkouts where the payment can become verified
+     * while the linked domain still says pending_payment. Payment/order state
+     * remains authoritative; this only advances a linked paid domain into the
+     * correct processing state.
+     */
+    if (result.fullyPaid) {
+      try {
+        const settledOrderDoc =
+          await adminDb
+            .collection('orders')
+            .doc(result.orderId)
+            .get();
+
+        const settledOrder =
+          settledOrderDoc.exists
+            ? settledOrderDoc.data()!
+            : {};
+
+        const settledItemType =
+          String(
+            settledOrder.purpose ||
+              settledOrder.metadata?.purpose ||
+              settledOrder.items?.[0]?.item_type ||
+              result.fulfillment.itemType ||
+              ''
+          )
+            .trim()
+            .toLowerCase();
+
+        if (
+          settledItemType === 'domain_registration' ||
+          settledItemType === 'domain_transfer'
+        ) {
+          let domainDoc:
+            FirebaseFirestore.QueryDocumentSnapshot |
+            FirebaseFirestore.DocumentSnapshot |
+            null = null;
+
+          if (
+            result.fulfillment.resourceType === 'domain' &&
+            result.fulfillment.resourceId
+          ) {
+            const direct =
+              await adminDb
+                .collection('domains')
+                .doc(result.fulfillment.resourceId)
+                .get();
+
+            domainDoc =
+              direct.exists
+                ? direct
+                : null;
+          }
+
+          if (!domainDoc) {
+            const domainSnapshot =
+              await adminDb
+                .collection('domains')
+                .where(
+                  'order_id',
+                  '==',
+                  result.orderId
+                )
+                .limit(1)
+                .get();
+
+            domainDoc =
+              domainSnapshot.empty
+                ? null
+                : domainSnapshot.docs[0];
+          }
+
+          if (domainDoc?.exists) {
+            const domain =
+              domainDoc.data() || {};
+
+            const targetStatus =
+              settledItemType === 'domain_transfer'
+                ? 'pending_transfer'
+                : 'pending_registration';
+
+            if (
+              String(domain.status || '') ===
+              'pending_payment'
+            ) {
+              const existingHistory =
+                Array.isArray(domain.history)
+                  ? domain.history
+                  : [];
+
+              const historyId =
+                `hist-payment-${paymentId.slice(0, 12)}`;
+
+              const alreadyRecorded =
+                existingHistory.some(
+                  (item: any) =>
+                    item?.id === historyId ||
+                    item?.payment_id === paymentId
+                );
+
+              await domainDoc.ref.set(
+                {
+                  status: targetStatus,
+                  payment_id: paymentId,
+                  updated_at: now,
+                  history:
+                    alreadyRecorded
+                      ? existingHistory
+                      : [
+                          ...existingHistory,
+                          {
+                            id: historyId,
+                            domain_id: domainDoc.id,
+                            action:
+                              settledItemType === 'domain_transfer'
+                                ? 'TRANSFER'
+                                : 'STATUS_CHANGE',
+                            description:
+                              settledItemType === 'domain_transfer'
+                                ? 'Payment verified. Domain transfer is now being processed.'
+                                : 'Payment verified. Domain registration is now being processed.',
+                            status: targetStatus,
+                            actor,
+                            payment_id: paymentId,
+                            created_at: now,
+                          },
+                        ],
+                },
+                { merge: true }
+              );
+            }
+
+            /*
+             * If fulfillment missed the domain during the transaction, recover
+             * the resource identity here so DNS and registry processing still
+             * continue for a fully-paid order.
+             */
+            if (
+              !result.fulfillment.handled ||
+              !result.fulfillment.resourceId
+            ) {
+              result.fulfillment = {
+                handled: true,
+                itemType: settledItemType,
+                resourceType: 'domain',
+                resourceId: domainDoc.id,
+              };
+            }
+          }
+        }
+      } catch (error) {
+        console.error(
+          'Unable to reconcile paid domain state after settlement:',
+          error
+        );
+      }
+    }
+
+    /*
      * DNS provisioning is deliberately outside the Firestore payment
      * transaction. Cloudflare is an external API and must never run
      * inside a Firestore transaction that can be retried.
@@ -490,7 +652,19 @@ export const settleOrderPayment =
             const settledPayment = await paymentRef.get();
             const payment = settledPayment.exists ? settledPayment.data()! : {};
             const now = new Date().toISOString();
-            const requestRef = adminDb.collection('registry_requests').doc();
+            /*
+             * Deterministic ID is the final idempotency guard. PesePay can
+             * settle from both callback and browser verification at nearly
+             * the same time; both executions now write the same request
+             * instead of creating two random documents.
+             */
+            const requestId =
+              `auto-${action.toLowerCase()}-${domainDoc.id}`;
+            const requestRef =
+              adminDb
+                .collection('registry_requests')
+                .doc(requestId);
+
             await requestRef.set({
               id: requestRef.id,
               domain_id: domainDoc.id,

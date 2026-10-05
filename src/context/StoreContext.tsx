@@ -3113,54 +3113,13 @@ const getDomainOrderDetails = async (
 
       /*
        * A paid transfer can now enter processing.
-       * Before this point the domain remains pending_payment.
+       * Registry request creation is owned by the backend settlement service.
+       * The browser must not create a second request after manual approval.
        */
       if (
         paidItemType ===
         'domain_transfer'
       ) {
-        if (
-          (fulfilledDomain as any)
-            .processing_type ===
-          'zispa'
-        ) {
-          const existingTransfer =
-            registryRequests.some(
-              (request) =>
-                request.domain_id ===
-                  fulfilledDomain.id &&
-                request.action ===
-                  'T'
-            );
-
-          if (!existingTransfer) {
-            const registryRequest =
-              registryService
-                .createRequest(
-                  fulfilledDomain,
-                  'T',
-                  currentUser.email
-                );
-
-            registryRequest
-              .payment_reference =
-              approvedPayment.reference;
-
-            const persistedRegistryRequest =
-              await registryRequestApiService.create({
-                ...registryRequest,
-                workflow_type: 'standard_registry',
-              } as RegistryRequest);
-
-            setRegistryRequests(
-              (prev) => [
-                persistedRegistryRequest,
-                ...prev.filter((item) => item.id !== persistedRegistryRequest.id),
-              ]
-            );
-          }
-        }
-
         emailNotificationService
           .notifyQuietly(
             'domain_transfer_requested',
@@ -3200,48 +3159,11 @@ const getDomainOrderDetails = async (
       }
 
       /*
-       * Preserve the existing registry-queue UI behaviour
-       * for domain registrations.
+       * Registry request creation for paid registrations is authoritative on
+       * the backend settlement path. Do not create it again in the admin
+       * browser; refreshRuntimeData below will load the backend-created request.
        */
-      if (
-        (fulfilledDomain as any)
-          .processing_type ===
-        'zispa'
-      ) {
-        const existing =
-          registryRequests.some(
-            (request) =>
-              request.domain_id ===
-                fulfilledDomain.id &&
-              request.action ===
-                'N'
-          );
-
-        if (!existing) {
-          const registryRequest =
-            registryService.createRequest(
-              fulfilledDomain,
-              'N',
-              currentUser.email
-            );
-
-          registryRequest.payment_reference =
-            approvedPayment.reference;
-
-          const persistedRegistryRequest =
-            await registryRequestApiService.create({
-              ...registryRequest,
-              workflow_type: 'standard_registry',
-            } as RegistryRequest);
-
-          setRegistryRequests(
-            (prev) => [
-              persistedRegistryRequest,
-              ...prev.filter((item) => item.id !== persistedRegistryRequest.id),
-            ]
-          );
-        }
-      }
+      await refreshRuntimeData();
 
       showNotification(
         `Payment approved for ${fulfilledDomain.domain_name}. Registration can now be processed.`,
