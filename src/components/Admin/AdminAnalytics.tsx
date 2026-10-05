@@ -181,6 +181,7 @@ export const AdminAnalytics: React.FC =
         usersByRole,
         signInMethods: behavioral?.signInMethods || {},
         paymentMethods,
+        viewStats: behavioral?.viewStats || { today: 0, week: 0, month: 0, onlineNow: 0 },
         recentSessions: behavioral?.recentSessions || [],
       };
     }, [
@@ -395,52 +396,35 @@ export const AdminAnalytics: React.FC =
           </div>
         </div>
 
-        {/* Page Views Overview */}
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-            {/* Total Page Views */}
-            <div className="rounded-lg border border-zinc-200 bg-white p-4">
-              <p className="text-xs font-medium text-zinc-500">
-                Total Page Views
-              </p>
-              <p className="mt-2 text-2xl font-bold text-zinc-950">
-                {analytics?.topPages?.reduce(
-                  (sum, page) =>
-                    sum + page.count,
-                  0
-                ) || 0}
-              </p>
+        {/* Views */}
+        <div className="rounded-lg border border-zinc-200 bg-white p-6">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-bold text-zinc-950">Views</h2>
+              <p className="mt-1 text-xs text-zinc-500">Actual page views by time window.</p>
             </div>
-
-            {/* Unique Pages */}
-            <div className="rounded-lg border border-zinc-200 bg-white p-4">
-              <p className="text-xs font-medium text-zinc-500">
-                Unique Pages
-              </p>
-              <p className="mt-2 text-2xl font-bold text-zinc-950">
-                {analytics?.topPages?.length || 0}
-              </p>
-            </div>
-
-            {/* Avg Views Per Page */}
-            <div className="rounded-lg border border-zinc-200 bg-white p-4">
-              <p className="text-xs font-medium text-zinc-500">
-                Avg per Page
-              </p>
-              <p className="mt-2 text-2xl font-bold text-zinc-950">
-                {(analytics?.topPages?.length || 0) > 0
-                  ? Math.round(
-                      (analytics?.topPages?.reduce(
-                        (sum, page) =>
-                          sum +
-                          page.count,
-                        0
-                      ) || 0) /
-                        (analytics?.topPages?.length || 1)
-                    )
-                  : 0}
-              </p>
+            <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              <span className="text-xs font-semibold text-emerald-700">
+                {analytics.viewStats?.onlineNow || 0} online now
+              </span>
             </div>
           </div>
+
+          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              { label: 'Today', value: analytics.viewStats?.today || 0 },
+              { label: '7 Days', value: analytics.viewStats?.week || 0 },
+              { label: '30 Days', value: analytics.viewStats?.month || 0 },
+              { label: 'Online Now', value: analytics.viewStats?.onlineNow || 0 },
+            ].map((item) => (
+              <div key={item.label} className="rounded-lg bg-zinc-50 p-4">
+                <p className="text-xs font-medium text-zinc-500">{item.label}</p>
+                <p className="mt-2 text-2xl font-bold text-zinc-950">{item.value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
 
         {/* Conversion Metrics */}
         <div className="rounded-lg border border-zinc-200 bg-white p-6">

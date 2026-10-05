@@ -20,6 +20,7 @@ export interface AnalyticsStats {
   usersByRole: Record<string, number>;
   signInMethods: Record<string, number>;
   paymentMethods: Record<string, number>;
+  viewStats: { today: number; week: number; month: number; onlineNow: number };
   recentSessions: Array<{
     userId: string;
     event: string;
@@ -104,6 +105,7 @@ class AnalyticsDataService {
       usersByRole: {},
       signInMethods: {},
       paymentMethods: {},
+      viewStats: { today: 0, week: 0, month: 0, onlineNow: 0 },
       recentSessions: [],
     };
   }
@@ -126,18 +128,28 @@ class AnalyticsDataService {
     const startDate = new Date(`${startKey}T00:00:00.000Z`);
 
     try {
-      const [dailySnapshot, recentSnapshot] = await Promise.all([
+      // Always read at least 30 daily documents so the dashboard can show
+      // honest Today / 7 days / 30 days view totals at the same time.
+      const viewWindowDays = Math.max(days, 30);
+      const viewStartKey = this.startDayKey(viewWindowDays);
+      const onlineSince = new Date(Date.now() - 2 * 60 * 1000);
+
+      const [dailySnapshot, recentSnapshot, presenceSnapshot] = await Promise.all([
         this.db
           .collection('analytics_daily')
-          .where('date', '>=', startKey)
+          .where('date', '>=', viewStartKey)
           .orderBy('date', 'asc')
-          .limit(days)
+          .limit(viewWindowDays)
           .get(),
         this.db
           .collection('analytics_events')
           .where('timestamp', '>=', Timestamp.fromDate(startDate))
           .orderBy('timestamp', 'desc')
           .limit(RECENT_ACTIVITY_LIMIT)
+          .get(),
+        this.db
+          .collection('analytics_presence')
+          .where('updatedAt', '>=', Timestamp.fromDate(onlineSince))
           .get(),
       ]);
 
@@ -147,8 +159,27 @@ class AnalyticsDataService {
       const signInMethods: Record<string, number> = {};
       const activeUsers = new Set<string>();
 
+      const todayKey = utcDayKey();
+      const weekStartKey = this.startDayKey(7);
+      const monthStartKey = this.startDayKey(30);
+      let viewsToday = 0;
+      let viewsWeek = 0;
+      let viewsMonth = 0;
+
       for (const doc of dailySnapshot.docs) {
         const data = doc.data() || {};
+        const docDate = String(data.date || doc.id);
+        const pageViewsForDay = Object.values(data.pageCounts || {}).reduce(
+          (sum: number, value: unknown) => sum + safeCount(value),
+          0
+        );
+
+        if (docDate === todayKey) viewsToday += pageViewsForDay;
+        if (docDate >= weekStartKey) viewsWeek += pageViewsForDay;
+        if (docDate >= monthStartKey) viewsMonth += pageViewsForDay;
+
+        // Other dashboard metrics still respect the selected reporting period.
+        if (docDate < startKey) continue;
 
         for (const [key, value] of Object.entries(data.eventCounts || {})) {
           const name = decodeKey(key);
@@ -209,6 +240,12 @@ class AnalyticsDataService {
         topDomains,
         topPages,
         signInMethods,
+        viewStats: {
+          today: viewsToday,
+          week: viewsWeek,
+          month: viewsMonth,
+          onlineNow: presenceSnapshot.size,
+        },
         recentSessions,
       };
 
@@ -240,6 +277,24 @@ class AnalyticsDataService {
       if (!normalizedEvent) return;
 
       const normalizedUser = String(userId || 'anonymous');
+
+      // Presence is a lightweight heartbeat, not a page view. One document per
+      // browser tab/session is updated, allowing Online Now to count sessions
+      // active in the last two minutes without inflating page-view analytics.
+      if (normalizedEvent === 'presence') {
+        const sessionId = String(eventData?.session_id || '').trim();
+        if (!sessionId) return;
+
+        await this.db.collection('analytics_presence').doc(encodeKey(sessionId)).set({
+          sessionId,
+          userId: normalizedUser,
+          page: String(eventData?.page_name || eventData?.page || ''),
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+        this.cache.clear();
+        return;
+      }
+
       const day = utcDayKey();
       const eventKey = encodeKey(normalizedEvent);
       const dailyRef = this.db.collection('analytics_daily').doc(day);

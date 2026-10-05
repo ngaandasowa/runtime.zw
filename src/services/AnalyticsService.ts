@@ -24,6 +24,34 @@ export interface AnalyticsEvent {
 class AnalyticsService {
   private currentUser: User | null = null;
   private backendEventCache = new Map<string, number>();
+  private sessionId = '';
+  private presenceTimer: number | null = null;
+
+  constructor() {
+    if (typeof window === 'undefined') return;
+
+    const existing = window.sessionStorage.getItem('runtime_analytics_session');
+    this.sessionId = existing || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    if (!existing) {
+      window.sessionStorage.setItem('runtime_analytics_session', this.sessionId);
+    }
+
+    const sendPresence = () => {
+      if (document.visibilityState !== 'visible') return;
+      void analyticsRepository.logEvent(
+        'presence',
+        this.currentUser?.id || null,
+        {
+          session_id: this.sessionId,
+          page_name: window.location.pathname,
+        }
+      );
+    };
+
+    sendPresence();
+    this.presenceTimer = window.setInterval(sendPresence, 60_000);
+    document.addEventListener('visibilitychange', sendPresence);
+  }
 
   private shouldSendBackendEvent(
     eventName: string,

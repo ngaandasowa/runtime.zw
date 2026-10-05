@@ -24,6 +24,7 @@ export interface AnalyticsData {
   usersByRole: Record<string, number>;
   signInMethods: Record<string, number>;
   paymentMethods: Record<string, number>;
+  viewStats: { today: number; week: number; month: number; onlineNow: number };
   recentSessions: Array<{
     userId: string;
     event: string;
